@@ -2,6 +2,7 @@ import {
   users, 
   classes, 
   quizSubmissions,
+  students,
   lessonProgress,
   adminLogs,
   currencyTransactions,
@@ -19,13 +20,15 @@ import {
   type AdminLog,
   type InsertAdminLog,
   type CurrencyTransaction,
-  type InsertCurrencyTransaction
+  type InsertCurrencyTransaction,
+  type Student
 } from "@shared/schema";
 import { generatePassportCode, CURRENCY_CONSTANTS } from "@shared/currency-types";
 import { db } from "./db";
 import { randomBytes } from "crypto";
 import { eq, desc, count, and, sql } from "drizzle-orm";
 import bcrypt from "bcrypt";
+import { FEATURE_FLAGS } from "./feature-flags";
 
 export interface IStorage {
   // User operations
@@ -212,13 +215,47 @@ export class DatabaseStorage implements IStorage {
       // Generate passport code for the student
       const passportCode = generatePassportCode(submission.animalType);
       
+      let studentId: string | null = null;
+      
+      // NEW LOGIC: Create or update student record if feature flag is enabled
+      if (FEATURE_FLAGS.USE_STUDENTS_TABLE) {
+        // Check if student already exists with this passport code
+        const [existingStudent] = await tx
+          .select()
+          .from(students)
+          .where(eq(students.passportCode, passportCode))
+          .limit(1);
+        
+        if (existingStudent) {
+          // Student exists, use their ID
+          studentId = existingStudent.id;
+        } else {
+          // Create new student
+          const [newStudent] = await tx
+            .insert(students)
+            .values({
+              classId: submission.classId,
+              displayName: submission.studentName,
+              passportCode: passportCode,
+              walletBalance: CURRENCY_CONSTANTS.QUIZ_COMPLETION_REWARD, // 50 coins
+              pendingBalance: 0
+            })
+            .returning();
+          
+          studentId = newStudent.id;
+          console.log(`✅ Created new student record: ${submission.studentName} (${passportCode})`);
+        }
+      }
+      
       // Add currency system fields to submission
       const enhancedSubmission = {
         ...submission,
         passportCode,
         currencyBalance: CURRENCY_CONSTANTS.QUIZ_COMPLETION_REWARD, // 50 coins for completing quiz
         avatarData: {},
-        roomData: { furniture: [] }
+        roomData: { furniture: [] },
+        // Include studentId if we're using the new table
+        ...(studentId ? { studentId } : {})
       };
 
       const [submissionRecord] = await tx

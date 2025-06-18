@@ -11,6 +11,9 @@ export const FEATURE_FLAGS = {
   CURRENCY_ENABLED: true,
   STORE_ENABLED: true,
   
+  // Database migration flags
+  USE_STUDENTS_TABLE: false, // Set to true when ready to use new students table
+  
   // Reduce background tasks
   CLEANUP_INTERVAL_MINUTES: 60, // Run cleanup less frequently
   METRICS_ENABLED: false, // Disable metrics collection

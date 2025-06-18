@@ -30,6 +30,17 @@ export const classes = pgTable("classes", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Students table (new!)
+export const students = pgTable("students", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  classId: integer("class_id").references(() => classes.id),
+  displayName: text("display_name").notNull(),
+  passportCode: varchar("passport_code", { length: 8 }).notNull().unique(),
+  walletBalance: integer("wallet_balance").default(0).notNull(),
+  pendingBalance: integer("pending_balance").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // Quiz submissions table (extended for currency system)
 export const quizSubmissions = pgTable("quiz_submissions", {
   id: serial("id").primaryKey(),
@@ -49,6 +60,8 @@ export const quizSubmissions = pgTable("quiz_submissions", {
   currencyBalance: integer("currency_balance").default(0).notNull(),
   avatarData: jsonb("avatar_data").default('{}').notNull(),
   roomData: jsonb("room_data").default('{}').notNull(),
+  // New foreign key to students table
+  studentId: text("student_id").references(() => students.id),
 });
 
 // Lesson progress tracking
@@ -75,7 +88,7 @@ export const adminLogs = pgTable("admin_logs", {
 // Currency system tables
 export const currencyTransactions = pgTable("currency_transactions", {
   id: serial("id").primaryKey(),
-  studentId: integer("student_id").references(() => quizSubmissions.id).notNull(),
+  studentId: integer("student_id").references(() => quizSubmissions.id).notNull(), // TODO: Will migrate to reference students.id
   teacherId: integer("teacher_id").references(() => users.id).notNull(),
   amount: integer("amount").notNull(),
   reason: varchar("reason", { length: 255 }),
@@ -94,7 +107,7 @@ export const storeSettings = pgTable("store_settings", {
 
 export const purchaseRequests = pgTable("purchase_requests", {
   id: serial("id").primaryKey(),
-  studentId: integer("student_id").references(() => quizSubmissions.id).notNull(),
+  studentId: integer("student_id").references(() => quizSubmissions.id).notNull(), // TODO: Will migrate to reference students.id
   itemType: varchar("item_type", { length: 50 }).notNull(), // 'avatar_hat', 'room_furniture', etc.
   itemId: varchar("item_id", { length: 50 }).notNull(), // 'wizard_hat', 'bookshelf', etc.
   cost: integer("cost").notNull(),
@@ -120,12 +133,27 @@ export const classesRelations = relations(classes, ({ one, many }) => ({
   submissions: many(quizSubmissions),
   lessonProgress: many(lessonProgress),
   storeSettings: many(storeSettings),
+  students: many(students),
+}));
+
+export const studentsRelations = relations(students, ({ one, many }) => ({
+  class: one(classes, {
+    fields: [students.classId],
+    references: [classes.id],
+  }),
+  submissions: many(quizSubmissions),
+  currencyTransactions: many(currencyTransactions),
+  purchaseRequests: many(purchaseRequests),
 }));
 
 export const quizSubmissionsRelations = relations(quizSubmissions, ({ one, many }) => ({
   class: one(classes, {
     fields: [quizSubmissions.classId],
     references: [classes.id],
+  }),
+  student: one(students, {
+    fields: [quizSubmissions.studentId],
+    references: [students.id],
   }),
   currencyTransactions: many(currencyTransactions),
   purchaseRequests: many(purchaseRequests),
@@ -277,6 +305,7 @@ export type UpdateUserProfile = z.infer<typeof updateUserProfileSchema>;
 export type UpdatePassword = z.infer<typeof updatePasswordSchema>;
 export type Class = typeof classes.$inferSelect;
 export type InsertClass = z.infer<typeof insertClassSchema>;
+export type Student = typeof students.$inferSelect;
 export type QuizSubmission = typeof quizSubmissions.$inferSelect;
 export type InsertQuizSubmission = z.infer<typeof insertQuizSubmissionSchema>;
 export type LessonProgress = typeof lessonProgress.$inferSelect;
