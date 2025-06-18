@@ -144,12 +144,12 @@ export function registerPurchaseApprovalRoutes(app: Express) {
             .limit(1);
           
           const currentAvatarData = currentStudent[0]?.avatarData || {};
-          const ownedItems = currentAvatarData.owned || [];
+          const currentOwnedItems = currentAvatarData.owned || [];
           
-          // Add item to owned items if not already owned
-          if (!ownedItems.includes(request.itemId)) {
-            ownedItems.push(request.itemId);
-          }
+          // Create new array to ensure Drizzle detects the change
+          const newOwnedItems = currentOwnedItems.includes(request.itemId)
+            ? currentOwnedItems
+            : [...currentOwnedItems, request.itemId];
           
           await tx
             .update(quizSubmissions)
@@ -157,7 +157,7 @@ export function registerPurchaseApprovalRoutes(app: Express) {
               currencyBalance: (studentBalance || 0) - request.cost,
               avatarData: {
                 ...currentAvatarData,
-                owned: ownedItems
+                owned: newOwnedItems
               }
             })
             .where(eq(quizSubmissions.id, studentId));
@@ -251,11 +251,12 @@ export function registerPurchaseApprovalRoutes(app: Express) {
                 .limit(1);
               
               const currentAvatarData = currentStudent[0]?.avatarData || {};
-              const ownedItems = currentAvatarData.owned || [];
+              const currentOwnedItems = currentAvatarData.owned || [];
               
-              if (!ownedItems.includes(request.itemId)) {
-                ownedItems.push(request.itemId);
-              }
+              // Create new array to ensure Drizzle detects the change
+              const newOwnedItems = currentOwnedItems.includes(request.itemId)
+                ? currentOwnedItems
+                : [...currentOwnedItems, request.itemId];
               
               await tx
                 .update(quizSubmissions)
@@ -263,7 +264,7 @@ export function registerPurchaseApprovalRoutes(app: Express) {
                   currencyBalance: (studentBalance || 0) - request.cost,
                   avatarData: {
                     ...currentAvatarData,
-                    owned: ownedItems
+                    owned: newOwnedItems
                   }
                 })
                 .where(eq(quizSubmissions.id, studentId));
