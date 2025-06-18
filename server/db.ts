@@ -10,16 +10,25 @@ import * as schema from "@shared/schema";
 console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL);
 console.log('NODE_ENV:', process.env.NODE_ENV);
 
-if (!process.env.DATABASE_URL) {
+// Determine if in production
+const isProduction = process.env.NODE_ENV === 'production';
+
+// Get the base connection string
+const dbUrl = process.env.DATABASE_URL;
+
+if (!dbUrl) {
   throw new Error(
     "DATABASE_URL must be set. Did you forget to provision a database?",
   );
 }
 
-// Create pool with standard pg driver for Railway
+// Append sslmode for production to ensure a secure and reliable connection to Supabase
+const connectionString = isProduction ? `${dbUrl}?sslmode=require` : dbUrl;
+
+// Create pool with the modified connection string
 export const pool = new Pool({ 
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  connectionString: connectionString,
+  // SSL object removed - sslmode in connection string handles this better
   max: 5,
   idleTimeoutMillis: 10000,
   connectionTimeoutMillis: 5000,
