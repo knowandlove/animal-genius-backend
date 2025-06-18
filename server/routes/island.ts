@@ -134,6 +134,9 @@ export function registerIslandRoutes(app: Express) {
         available: (student.currencyBalance || 0) - pendingTotal
       };
 
+      // Debug log
+      console.log(`[DEBUG] Student ${student.studentName} avatarData:`, JSON.stringify(student.avatarData, null, 2));
+      
       // Format consolidated response
       const pageData = {
         island: {
