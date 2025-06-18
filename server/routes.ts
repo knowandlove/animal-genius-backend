@@ -17,6 +17,7 @@ import { metricsService } from "./monitoring/metrics-service";
 import { registerIslandRoutes } from "./routes/island";
 import { registerSecureIslandRoutes } from "./routes/island-secure";
 import { registerPurchaseApprovalRoutes } from "./routes/purchase-approvals";
+import { registerStoreManagementRoutes } from "./routes/store-management";
 import { requireAuth } from "./middleware/auth";
 
 // Feature flags to disable unused features
@@ -1101,31 +1102,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // Toggle store status for a class
-  app.post("/api/currency/store/toggle", requireAuth, async (req: any, res) => {
-    try {
-      const teacherId = req.user.userId;
-      const { classId, isOpen } = req.body;
-      
-      // Verify teacher owns the class
-      const classInfo = await storage.getClassById(classId);
-      if (!classInfo || classInfo.teacherId !== teacherId) {
-        return res.status(403).json({ message: "Not authorized for this class" });
-      }
-      
-      // Toggle store status
-      await storage.updateStoreStatus(classId, isOpen);
-      
-      res.json({ 
-        success: true, 
-        isOpen,
-        message: `Store ${isOpen ? 'opened' : 'closed'} for ${classInfo.name}` 
-      });
-    } catch (error) {
-      console.error("Toggle store error:", error);
-      res.status(500).json({ message: "Failed to toggle store status" });
-    }
-  });
+
   
   // Get currency transactions for a class
   app.get("/api/currency/transactions/:classId", requireAuth, async (req: any, res) => {
@@ -1189,6 +1166,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Register purchase approval routes (teacher auth required)
   registerPurchaseApprovalRoutes(app);
+  
+  // Register store management routes (teacher auth required)
+  registerStoreManagementRoutes(app);
 
   const httpServer = createServer(app);
   
