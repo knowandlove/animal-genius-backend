@@ -117,6 +117,19 @@ export const purchaseRequests = pgTable("purchase_requests", {
   processedBy: integer("processed_by").references(() => users.id),
 });
 
+// Item positioning table for different animals
+export const itemAnimalPositions = pgTable("item_animal_positions", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  itemId: varchar("item_id", { length: 50 }).notNull(),
+  animalType: varchar("animal_type", { length: 20 }).notNull(),
+  positionX: integer("position_x").default(0).notNull(),
+  positionY: integer("position_y").default(0).notNull(),
+  scale: integer("scale").default(100).notNull(), // Store as percentage (100 = 1.0)
+  rotation: integer("rotation").default(0).notNull(), // Store in degrees
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   classes: many(classes),
