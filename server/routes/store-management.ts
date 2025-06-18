@@ -5,6 +5,7 @@ import { storeSettings, classes } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth";
 import { z } from "zod";
+import * as cache from "../lib/cache";
 
 // Store toggle schema
 const storeToggleSchema = z.object({
@@ -81,6 +82,11 @@ export function registerStoreManagementRoutes(app: Express) {
       const message = isOpen 
         ? "Store is now open! Students can start making purchase requests." 
         : "Store is now closed. Students cannot make new purchase requests.";
+
+      // Invalidate the cache for this class
+      const cacheKey = `store-status:${classId}`;
+      cache.del(cacheKey);
+      console.log(`🗑️ Cache invalidated for ${cacheKey}`);
 
       res.json({ 
         success: true, 

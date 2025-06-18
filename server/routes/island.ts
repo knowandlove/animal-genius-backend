@@ -5,6 +5,7 @@ import { quizSubmissions, classes, purchaseRequests, currencyTransactions, store
 import { eq, and, desc } from "drizzle-orm";
 import { isValidPassportCode, validatePurchaseRequest, getItemById, TRANSACTION_REASONS } from "@shared/currency-types";
 import { z } from "zod";
+import * as cache from "../lib/cache";
 
 // Passport code validation schema
 const passportCodeSchema = z.string().regex(/^[A-Z]{3}-[A-Z0-9]{3}$/, "Invalid passport code format");
@@ -51,45 +52,57 @@ export function registerIslandRoutes(app: Express) {
       const student = studentData[0];
 
       // 2. Get store status for the class
-      const storeSettingsData = await db
-        .select()
-        .from(storeSettings)
-        .where(eq(storeSettings.classId, student.classId))
-        .limit(1);
+      const cacheKey = `store-status:${student.classId}`;
+      let storeStatus = cache.get<any>(cacheKey);
+      
+      if (!storeStatus) {
+        console.log(`⚡ Cache miss for ${cacheKey}, fetching from DB`);
+        
+        const storeSettingsData = await db
+          .select()
+          .from(storeSettings)
+          .where(eq(storeSettings.classId, student.classId))
+          .limit(1);
 
-      let storeStatus;
-      if (storeSettingsData.length === 0) {
-        storeStatus = {
-          isOpen: false,
-          message: "Store is currently closed. Your teacher will announce when it opens!",
-          classId: student.classId,
-          className: student.className
-        };
-      } else {
-        const settings = storeSettingsData[0];
-        const now = new Date();
-        
-        let isOpen = settings.isOpen;
-        let message = "Store is open! Happy shopping!";
-        
-        if (!settings.isOpen) {
-          message = "Store is currently closed by your teacher.";
-        } else if (settings.closesAt && new Date(settings.closesAt) < now) {
-          isOpen = false;
-          message = "Store hours have ended for today.";
-        } else if (settings.openedAt && new Date(settings.openedAt) > now) {
-          isOpen = false;
-          message = "Store will open soon!";
+        if (storeSettingsData.length === 0) {
+          storeStatus = {
+            isOpen: false,
+            message: "Store is currently closed. Your teacher will announce when it opens!",
+            classId: student.classId,
+            className: student.className
+          };
+        } else {
+          const settings = storeSettingsData[0];
+          const now = new Date();
+          
+          let isOpen = settings.isOpen;
+          let message = "Store is open! Happy shopping!";
+          
+          if (!settings.isOpen) {
+            message = "Store is currently closed by your teacher.";
+          } else if (settings.closesAt && new Date(settings.closesAt) < now) {
+            isOpen = false;
+            message = "Store hours have ended for today.";
+          } else if (settings.openedAt && new Date(settings.openedAt) > now) {
+            isOpen = false;
+            message = "Store will open soon!";
+          }
+          
+          storeStatus = {
+            isOpen,
+            message,
+            classId: student.classId,
+            className: student.className,
+            openedAt: settings.openedAt,
+            closesAt: settings.closesAt
+          };
         }
         
-        storeStatus = {
-          isOpen,
-          message,
-          classId: student.classId,
-          className: student.className,
-          openedAt: settings.openedAt,
-          closesAt: settings.closesAt
-        };
+        // Cache the result
+        cache.set(cacheKey, storeStatus);
+        console.log(`💾 Cached store status for ${cacheKey}`);
+      } else {
+        console.log(`✅ Cache hit for ${cacheKey}`);
       }
 
       // 3. Get store catalog
@@ -103,12 +116,23 @@ export function registerIslandRoutes(app: Express) {
         rarity: item.rarity
       }));
 
-      // 4. Get purchase requests
+      // 4. Get purchase requests and calculate wallet
       const studentPurchaseRequests = await db
         .select()
         .from(purchaseRequests)
         .where(eq(purchaseRequests.studentId, student.id))
         .orderBy(desc(purchaseRequests.requestedAt));
+      
+      // Calculate pending total for wallet display
+      const pendingTotal = studentPurchaseRequests
+        .filter(req => req.status === 'pending')
+        .reduce((sum, req) => sum + req.cost, 0);
+      
+      const wallet = {
+        total: student.currencyBalance || 0,
+        pending: pendingTotal,
+        available: (student.currencyBalance || 0) - pendingTotal
+      };
 
       // Format consolidated response
       const pageData = {
@@ -128,6 +152,7 @@ export function registerIslandRoutes(app: Express) {
           classId: student.classId,
           completedAt: student.completedAt
         },
+        wallet,
         storeStatus,
         storeCatalog,
         purchaseRequests: studentPurchaseRequests
