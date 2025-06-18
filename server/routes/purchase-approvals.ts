@@ -146,21 +146,35 @@ export function registerPurchaseApprovalRoutes(app: Express) {
           const currentAvatarData = currentStudent[0]?.avatarData || {};
           const currentOwnedItems = currentAvatarData.owned || [];
           
+          console.log(`[APPROVAL DEBUG] Student ${studentId}:`);
+          console.log('  - Current avatarData:', JSON.stringify(currentAvatarData));
+          console.log('  - Current owned items:', currentOwnedItems);
+          console.log('  - Adding item:', request.itemId);
+          
           // Create new array to ensure Drizzle detects the change
           const newOwnedItems = currentOwnedItems.includes(request.itemId)
             ? currentOwnedItems
             : [...currentOwnedItems, request.itemId];
           
-          await tx
+          console.log('  - New owned items:', newOwnedItems);
+          
+          const updateData = {
+            currencyBalance: (studentBalance || 0) - request.cost,
+            avatarData: {
+              ...currentAvatarData,
+              owned: newOwnedItems
+            }
+          };
+          
+          console.log('  - Update data:', JSON.stringify(updateData));
+          
+          const updateResult = await tx
             .update(quizSubmissions)
-            .set({
-              currencyBalance: (studentBalance || 0) - request.cost,
-              avatarData: {
-                ...currentAvatarData,
-                owned: newOwnedItems
-              }
-            })
-            .where(eq(quizSubmissions.id, studentId));
+            .set(updateData)
+            .where(eq(quizSubmissions.id, studentId))
+            .returning();
+            
+          console.log('  - Update result:', updateResult?.[0]?.avatarData);
 
           // Create currency transaction record
           const item = getItemById(request.itemId);
@@ -175,6 +189,8 @@ export function registerPurchaseApprovalRoutes(app: Express) {
             });
         }
       });
+      
+      console.log('[APPROVAL DEBUG] Transaction completed successfully');
 
       const message = action === 'approve' 
         ? `Approved ${studentName}'s purchase request`
