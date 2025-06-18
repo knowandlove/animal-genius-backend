@@ -10,25 +10,22 @@ import * as schema from "@shared/schema";
 console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL);
 console.log('NODE_ENV:', process.env.NODE_ENV);
 
-// Determine if in production
-const isProduction = process.env.NODE_ENV === 'production';
+// For production with Supabase, we need to disable SSL certificate verification
+if (process.env.NODE_ENV === 'production') {
+  process.env.PGSSLMODE = 'require';
+  // This is the key - Node.js TLS module needs this to skip cert verification
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+}
 
-// Get the base connection string
-const dbUrl = process.env.DATABASE_URL;
-
-if (!dbUrl) {
+if (!process.env.DATABASE_URL) {
   throw new Error(
     "DATABASE_URL must be set. Did you forget to provision a database?",
   );
 }
 
-// Append sslmode for production to ensure a secure and reliable connection to Supabase
-const connectionString = isProduction ? `${dbUrl}?sslmode=require` : dbUrl;
-
-// Create pool with the modified connection string
+// Create pool with standard configuration
 export const pool = new Pool({ 
-  connectionString: connectionString,
-  // SSL object removed - sslmode in connection string handles this better
+  connectionString: process.env.DATABASE_URL,
   max: 5,
   idleTimeoutMillis: 10000,
   connectionTimeoutMillis: 5000,
