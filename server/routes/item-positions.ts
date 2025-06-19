@@ -5,6 +5,27 @@ import { eq, and } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth";
 
 export function registerItemPositionRoutes(app: Express) {
+  // Public endpoint to get item positions (for avatar display)
+  app.get("/api/item-positions", async (req, res) => {
+    try {
+      const positions = await db
+        .select({
+          item_id: itemAnimalPositions.itemId,
+          animal_type: itemAnimalPositions.animalType,
+          position_x: itemAnimalPositions.positionX,
+          position_y: itemAnimalPositions.positionY,
+          scale: itemAnimalPositions.scale,
+          rotation: itemAnimalPositions.rotation
+        })
+        .from(itemAnimalPositions);
+      
+      res.json(positions);
+    } catch (error) {
+      console.error("Get item positions error:", error);
+      res.status(500).json({ message: "Failed to get item positions" });
+    }
+  });
+
   // Get all item positions (for matrix view)
   app.get("/api/admin/item-positions", requireAuth, async (req: any, res) => {
     try {
