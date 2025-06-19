@@ -286,7 +286,7 @@ export const giveCurrencySchema = z.object({
 });
 
 export const purchaseRequestSchema = z.object({
-  itemType: z.enum(['avatar_hat', 'avatar_accessory', 'room_furniture', 'room_decoration']),
+  itemType: z.enum(['avatar_hat', 'avatar_accessory', 'room_furniture', 'room_decoration', 'room_wallpaper', 'room_flooring']),
   itemId: z.string().min(1).max(50),
   cost: z.number().positive().max(10000), // Max cost validation
 });
