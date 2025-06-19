@@ -18,6 +18,7 @@ import { registerIslandRoutes } from "./routes/island";
 import { registerSecureIslandRoutes } from "./routes/island-secure";
 import { registerPurchaseApprovalRoutes } from "./routes/purchase-approvals";
 import { registerStoreManagementRoutes } from "./routes/store-management";
+import { registerItemPositionRoutes } from "./routes/item-positions";
 import { requireAuth } from "./middleware/auth";
 
 // Feature flags to disable unused features
@@ -1169,6 +1170,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Register store management routes (teacher auth required)
   registerStoreManagementRoutes(app);
+  
+  // Register item position routes (admin auth required)
+  registerItemPositionRoutes(app);
 
   const httpServer = createServer(app);
   
