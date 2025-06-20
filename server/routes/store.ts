@@ -10,6 +10,7 @@ const uuidv4 = () => crypto.randomUUID();
 import fs from 'fs/promises';
 import { authenticateAdmin } from '../middleware/auth';
 import { fileURLToPath } from 'url';
+import StorageRouter from '../services/storage-router';
 
 // Get __dirname equivalent in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -91,8 +92,11 @@ router.get('/items', async (req, res) => {
       .limit(limit)
       .offset(offset);
     
+    // Prepare items with proper image URLs
+    const preparedItems = await StorageRouter.prepareStoreItemsResponse(items);
+    
     res.json({
-      items,
+      items: preparedItems,
       pagination: {
         page,
         limit,
@@ -117,7 +121,10 @@ router.get('/catalog', async (req, res) => {
       .where(eq(storeItems.isActive, true))
       .orderBy(asc(storeItems.sortOrder), asc(storeItems.name));
     
-    res.json(items);
+    // Prepare items with proper image URLs
+    const preparedItems = await StorageRouter.prepareStoreItemsResponse(items);
+    
+    res.json(preparedItems);
   } catch (error) {
     console.error('Error fetching store catalog:', error);
     res.status(500).json({ error: 'Failed to fetch store catalog' });
@@ -141,7 +148,10 @@ router.post('/items/batch', async (req, res) => {
       .from(storeItems)
       .where(inArray(storeItems.id, limitedIds));
     
-    res.json(items);
+    // Prepare items with proper image URLs
+    const preparedItems = await StorageRouter.prepareStoreItemsResponse(items);
+    
+    res.json(preparedItems);
   } catch (error) {
     console.error('Error fetching items by IDs:', error);
     res.status(500).json({ error: 'Failed to fetch items' });

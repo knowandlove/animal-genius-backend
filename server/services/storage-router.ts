@@ -120,19 +120,31 @@ export class StorageRouter {
    * Get the appropriate image URL based on storage method
    */
   static getImageUrl(item: any): string {
+    console.log('🔍 getImageUrl called with item:', { 
+      hasAsset: !!item.asset, 
+      assetId: item.assetId,
+      imageUrl: item.imageUrl,
+      cloudEnabled: this.isCloudStorageEnabled() 
+    });
+    
     if (this.isCloudStorageEnabled() && item.asset) {
       // Use cloud storage URL
-      return EnhancedStorageService.getPublicUrl(item.asset.bucket, item.asset.path);
+      const cloudUrl = EnhancedStorageService.getPublicUrl(item.asset.bucket, item.asset.path);
+      console.log('☁️ Returning cloud URL:', cloudUrl);
+      return cloudUrl;
     } else if (item.imageUrl) {
       // Use legacy URL
       // Ensure it's an absolute URL
       if (item.imageUrl.startsWith('/')) {
-        return `${process.env.API_URL || ''}${item.imageUrl}`;
+        const fullUrl = `${process.env.API_URL || ''}${item.imageUrl}`;
+        console.log('📁 Returning legacy URL:', fullUrl);
+        return fullUrl;
       }
       return item.imageUrl;
     }
     
     // Fallback
+    console.log('⚠️ Using fallback placeholder');
     return '/placeholder.png';
   }
 
