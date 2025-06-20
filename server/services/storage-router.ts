@@ -7,6 +7,13 @@ import { eq, inArray } from 'drizzle-orm';
 import path from 'path';
 import * as mime from 'mime-types';
 
+// Debug logging for cloud storage flag
+console.log('🚀 StorageRouter initializing...');
+console.log('USE_CLOUD_STORAGE env:', process.env.USE_CLOUD_STORAGE);
+console.log('Type:', typeof process.env.USE_CLOUD_STORAGE);
+console.log('Equals true (boolean)?:', process.env.USE_CLOUD_STORAGE === true);
+console.log('Equals "true" (string)?:', process.env.USE_CLOUD_STORAGE === 'true');
+
 /**
  * Storage Router Service
  * Routes storage operations based on USE_CLOUD_STORAGE feature flag
@@ -17,7 +24,9 @@ export class StorageRouter {
    * Check if cloud storage is enabled
    */
   static isCloudStorageEnabled(): boolean {
-    return process.env.USE_CLOUD_STORAGE === 'true';
+    const useCloudStorage = process.env.USE_CLOUD_STORAGE === 'true';
+    console.log('🔍 isCloudStorageEnabled called, returning:', useCloudStorage);
+    return useCloudStorage;
   }
 
   /**
