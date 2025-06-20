@@ -1,7 +1,13 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { config } from "dotenv";
 import { registerRoutes } from "./routes";
+import path from "path";
+import { fileURLToPath } from "url";
 // Vite imports removed - frontend is now separate
+
+// Get __dirname equivalent in ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Simple logging function
 function log(message: string) {
@@ -47,6 +53,9 @@ app.set('trust proxy', 1);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+// Serve static files from public directory
+app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
 
 // Apply general rate limiting to all routes
 app.use(apiLimiter);

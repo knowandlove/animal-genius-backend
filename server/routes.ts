@@ -19,7 +19,10 @@ import { registerSecureIslandRoutes } from "./routes/island-secure";
 import { registerPurchaseApprovalRoutes } from "./routes/purchase-approvals";
 import { registerStoreManagementRoutes } from "./routes/store-management";
 import { registerItemPositionRoutes } from "./routes/item-positions";
+import { registerStoreAdminRoutes } from "./routes/store/admin";
 import { requireAuth } from "./middleware/auth";
+import storeRoutes from "./routes/store";
+import adminUploadRoutes from "./routes/admin/upload-asset";
 
 // Feature flags to disable unused features
 const FEATURE_FLAGS = {
@@ -125,7 +128,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const user = await storage.createUser(userData);
       const token = jwt.sign(
-        { userId: user.id, email: user.email }, 
+        { userId: user.id, email: user.email, is_admin: user.isAdmin }, 
         jwtSecret,
         { expiresIn: process.env.SESSION_TIMEOUT || '24h' } as jwt.SignOptions
       );
@@ -170,7 +173,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const token = jwt.sign(
-        { userId: user.id, email: user.email }, 
+        { userId: user.id, email: user.email, is_admin: user.isAdmin }, 
         jwtSecret,
         { expiresIn: process.env.SESSION_TIMEOUT || '24h' } as jwt.SignOptions
       );
@@ -220,7 +223,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const newToken = jwt.sign(
-        { userId: user.id, email: user.email },
+        { userId: user.id, email: user.email, is_admin: user.isAdmin },
         jwtSecret,
         { expiresIn: process.env.SESSION_TIMEOUT || '24h' } as jwt.SignOptions
       );
@@ -1173,6 +1176,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Register item position routes (admin auth required)
   registerItemPositionRoutes(app);
+
+  // Register store admin routes
+  registerStoreAdminRoutes(app);
+  
+  // Register store routes
+  app.use('/api/store', storeRoutes);
+  
+  // Register admin upload routes
+  app.use('/api/admin', adminUploadRoutes);
 
   const httpServer = createServer(app);
   

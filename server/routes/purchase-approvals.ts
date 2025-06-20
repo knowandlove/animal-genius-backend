@@ -1,11 +1,11 @@
 // Teacher Purchase Approval Routes
 import type { Express } from "express";
 import { db } from "../db";
-import { purchaseRequests, quizSubmissions, currencyTransactions, classes } from "@shared/schema";
+import { purchaseRequests, quizSubmissions, currencyTransactions, classes, storeItems } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth";
 import { z } from "zod";
-import { getItemById } from "@shared/currency-types";
+// import { getItemById } from "@shared/currency-types"; // No longer needed - using database
 
 // Approval schema
 const approvalSchema = z.object({
@@ -66,16 +66,34 @@ export function registerPurchaseApprovalRoutes(app: Express) {
         .orderBy(desc(purchaseRequests.requestedAt));
 
       // Add item details to each request
-      const requestsWithItems = requests.map(request => {
-        const item = getItemById(request.itemId);
+      const requestsWithItems = await Promise.all(requests.map(async request => {
+        // Try to get item from database first
+        const itemData = await db
+          .select()
+          .from(storeItems)
+          .where(eq(storeItems.id, request.itemId))
+          .limit(1);
+        
+        if (itemData.length > 0) {
+          const dbItem = itemData[0];
+          return {
+            ...request,
+            itemName: dbItem.name,
+            itemDescription: dbItem.description || '',
+            itemRarity: dbItem.rarity || 'common',
+            balanceAfterPurchase: (request.studentBalance || 0) - request.cost
+          };
+        }
+        
+        // Item not found in database
         return {
           ...request,
-          itemName: item?.name || 'Unknown Item',
-          itemDescription: item?.description || '',
-          itemRarity: item?.rarity || 'common',
+          itemName: 'Unknown Item',
+          itemDescription: 'Item not found in store',
+          itemRarity: 'common',
           balanceAfterPurchase: (request.studentBalance || 0) - request.cost
         };
-      });
+      }));
 
       res.json(requestsWithItems);
     } catch (error) {
@@ -177,14 +195,22 @@ export function registerPurchaseApprovalRoutes(app: Express) {
           console.log('  - Update result:', updateResult?.[0]?.avatarData);
 
           // Create currency transaction record
-          const item = getItemById(request.itemId);
+          // Get item name from database for transaction record
+          const itemData = await tx
+            .select({ name: storeItems.name })
+            .from(storeItems)
+            .where(eq(storeItems.id, request.itemId))
+            .limit(1);
+          
+          const itemName = itemData[0]?.name || request.itemId;
+          
           await tx
             .insert(currencyTransactions)
             .values({
               studentId: studentId,
               teacherId: teacherId!,
               amount: -request.cost, // Negative for purchases
-              reason: `Purchase: ${item?.name || request.itemId}`,
+              reason: `Purchase: ${itemName}`,
               transactionType: 'purchase'
             });
         }
@@ -285,14 +311,22 @@ export function registerPurchaseApprovalRoutes(app: Express) {
                 })
                 .where(eq(quizSubmissions.id, studentId));
 
-              const item = getItemById(request.itemId);
+              // Get item name from database for transaction record
+              const itemData = await tx
+                .select({ name: storeItems.name })
+                .from(storeItems)
+                .where(eq(storeItems.id, request.itemId))
+                .limit(1);
+              
+              const itemName = itemData[0]?.name || request.itemId;
+              
               await tx
                 .insert(currencyTransactions)
                 .values({
                   studentId: studentId,
                   teacherId: teacherId!,
                   amount: -request.cost,
-                  reason: `Purchase: ${item?.name || request.itemId}`,
+                  reason: `Purchase: ${itemName}`,
                   transactionType: 'purchase'
                 });
             }

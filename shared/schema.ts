@@ -62,6 +62,9 @@ export const quizSubmissions = pgTable("quiz_submissions", {
   roomData: jsonb("room_data").default('{}').notNull(),
   // New foreign key to students table
   studentId: text("student_id").references(() => students.id),
+  // Cloud storage references
+  avatarAssetId: text("avatar_asset_id").references(() => assets.id),
+  roomAssetId: text("room_asset_id").references(() => assets.id),
 });
 
 // Lesson progress tracking
@@ -117,6 +120,23 @@ export const purchaseRequests = pgTable("purchase_requests", {
   processedBy: integer("processed_by").references(() => users.id),
 });
 
+// Store items table
+export const storeItems = pgTable("store_items", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  itemType: varchar("item_type", { length: 50 }).notNull(),
+  cost: integer("cost").notNull(),
+  imageUrl: varchar("image_url", { length: 500 }),
+  assetId: text("asset_id").references(() => assets.id), // Reference to cloud storage asset
+  legacyImageUrl: varchar("legacy_image_url", { length: 500 }), // For rollback
+  rarity: varchar("rarity", { length: 20 }).default('common').notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // Item positioning table for different animals
 export const itemAnimalPositions = pgTable("item_animal_positions", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -126,8 +146,27 @@ export const itemAnimalPositions = pgTable("item_animal_positions", {
   positionY: integer("position_y").default(0).notNull(),
   scale: integer("scale").default(100).notNull(), // Store as percentage (100 = 1.0)
   rotation: integer("rotation").default(0).notNull(), // Store in degrees
+  assetId: text("asset_id").references(() => assets.id), // Reference to cloud storage asset
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Cloud storage assets table
+export const assets = pgTable("assets", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  type: varchar("type", { length: 50 }).notNull(), // 'animal', 'item', 'ui', 'user'
+  category: varchar("category", { length: 50 }), // 'hat', 'furniture', 'wallpaper', etc.
+  name: varchar("name", { length: 255 }).notNull(),
+  bucket: varchar("bucket", { length: 50 }).notNull(), // 'public-assets', 'store-items', 'user-generated'
+  path: varchar("path", { length: 500 }).notNull(), // relative path within bucket
+  mimeType: varchar("mime_type", { length: 50 }),
+  sizeBytes: integer("size_bytes"),
+  width: integer("width"),
+  height: integer("height"),
+  variants: jsonb("variants").default('{}'), // {"thumb": "path", "medium": "path"}
+  metadata: jsonb("metadata").default('{}'),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 // Relations
@@ -252,6 +291,13 @@ export const insertQuizSubmissionSchema = createInsertSchema(quizSubmissions).om
   }),
 });
 
+// Assets relations
+export const assetsRelations = relations(assets, ({ many }) => ({
+  storeItems: many(storeItems),
+  itemPositions: many(itemAnimalPositions),
+  avatarSubmissions: many(quizSubmissions),
+}));
+
 export const insertLessonProgressSchema = createInsertSchema(lessonProgress).omit({
   id: true,
   completedAt: true,
@@ -260,6 +306,28 @@ export const insertLessonProgressSchema = createInsertSchema(lessonProgress).omi
 export const insertAdminLogSchema = createInsertSchema(adminLogs).omit({
   id: true,
   timestamp: true,
+});
+
+// Store items schema
+export const insertStoreItemSchema = createInsertSchema(storeItems).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  itemType: z.enum(['avatar_hat', 'avatar_accessory', 'room_furniture', 'room_decoration', 'room_wallpaper', 'room_flooring']),
+  rarity: z.enum(['common', 'rare', 'legendary']).default('common'),
+});
+
+export const updateStoreItemSchema = insertStoreItemSchema.partial();
+
+// Assets schema
+export const insertAssetSchema = createInsertSchema(assets).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  type: z.enum(['animal', 'item', 'ui', 'user']),
+  bucket: z.enum(['public-assets', 'store-items', 'user-generated']),
 });
 
 // Currency system schemas
@@ -325,6 +393,15 @@ export type LessonProgress = typeof lessonProgress.$inferSelect;
 export type InsertLessonProgress = z.infer<typeof insertLessonProgressSchema>;
 export type AdminLog = typeof adminLogs.$inferSelect;
 export type InsertAdminLog = z.infer<typeof insertAdminLogSchema>;
+
+// Store types
+export type StoreItem = typeof storeItems.$inferSelect;
+export type InsertStoreItem = z.infer<typeof insertStoreItemSchema>;
+export type UpdateStoreItem = z.infer<typeof updateStoreItemSchema>;
+
+// Asset types
+export type Asset = typeof assets.$inferSelect;
+export type InsertAsset = z.infer<typeof insertAssetSchema>;
 
 // Currency system types
 export type CurrencyTransaction = typeof currencyTransactions.$inferSelect;

@@ -1,14 +1,7 @@
-// Currency System Types and Constants
-// Shared between client and server
+// Store System Types
+// This file contains only the type definitions for the store system
+// The actual store data is now stored in the database
 
-// Transaction types for currency movements
-export type TransactionType = 
-  | 'teacher_gift'      // Teacher manually gives coins
-  | 'quiz_complete'     // Automatic reward for completing quiz
-  | 'achievement'       // Milestone rewards
-  | 'purchase';         // Spending coins in store
-
-// Store item categories
 export type ItemType = 
   | 'avatar_hat'
   | 'avatar_accessory' 
@@ -17,19 +10,23 @@ export type ItemType =
   | 'room_wallpaper'
   | 'room_flooring';
 
-// Purchase request status
+export type ItemRarity = 'common' | 'rare' | 'legendary';
+
 export type PurchaseStatus = 'pending' | 'approved' | 'denied';
 
-// Store catalog interface
+// Store item interface (matches database schema)
 export interface StoreItem {
   id: string;
   name: string;
-  type: ItemType;
+  description: string | null;
+  itemType: ItemType;
   cost: number;
-  description: string;
-  imageUrl?: string;
-  rarity?: 'common' | 'rare' | 'legendary';
-  unlockLevel?: number; // Future feature
+  imageUrl: string | null;
+  rarity: ItemRarity;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // Student island data structure
@@ -62,6 +59,8 @@ export interface RoomData {
   furniture: FurnitureItem[];
   wallpaper?: string;
   flooring?: string;
+  wallColor?: string;
+  floorColor?: string;
 }
 
 export interface FurnitureItem {
@@ -98,58 +97,6 @@ export const CURRENCY_CONSTANTS = {
   STARTING_BALANCE: 0,         // Starting currency balance
 } as const;
 
-// Store catalog - Now using database instead!
-// This is kept for backwards compatibility but should be empty
-export const STORE_CATALOG: StoreItem[] = [];
-
-// Helper function to get the correct folder for an item
-export function getItemFolder(itemId: string): string {
-  // Glasses items
-  if (itemId === 'greenblinds' || itemId === 'hearts' || itemId === 'sunglasses' || itemId === 'star_glasses') {
-    return 'glasses';
-  }
-  
-  // Check if it's in the store catalog
-  const item = STORE_CATALOG.find(i => i.id === itemId);
-  if (!item) return 'accessories';
-  
-  // Hats
-  if (item.type === 'avatar_hat') {
-    return 'hats';
-  }
-  
-  // Default to accessories
-  return 'accessories';
-}
-
-// Helper functions for store operations
-export function getItemById(itemId: string): StoreItem | undefined {
-  return STORE_CATALOG.find(item => item.id === itemId);
-}
-
-export function getItemsByType(type: ItemType): StoreItem[] {
-  return STORE_CATALOG.filter(item => item.type === type);
-}
-
-export function canAffordItem(balance: number, itemCost: number): boolean {
-  return balance >= itemCost;
-}
-
-// Validation helpers
-export function validatePurchaseRequest(itemId: string, studentBalance: number): { valid: boolean; error?: string } {
-  const item = getItemById(itemId);
-  
-  if (!item) {
-    return { valid: false, error: 'Item not found in store catalog' };
-  }
-  
-  if (!canAffordItem(studentBalance, item.cost)) {
-    return { valid: false, error: 'Insufficient funds' };
-  }
-  
-  return { valid: true };
-}
-
 // Transaction reason templates
 export const TRANSACTION_REASONS = {
   QUIZ_COMPLETE: 'Quiz completion reward',
@@ -159,3 +106,27 @@ export const TRANSACTION_REASONS = {
   IMPROVEMENT: 'Amazing improvement',
   PURCHASE: 'Store purchase',
 } as const;
+
+// Helper function to get the correct folder for an item
+export function getItemFolder(item: StoreItem): string {
+  switch (item.itemType) {
+    case 'avatar_hat':
+      return 'hats';
+    case 'avatar_accessory':
+      // Special case for glasses
+      if (item.name.toLowerCase().includes('glass') || item.name.toLowerCase().includes('shade')) {
+        return 'glasses';
+      }
+      return 'accessories';
+    case 'room_furniture':
+      return 'furniture';
+    case 'room_decoration':
+      return 'decorations';
+    case 'room_wallpaper':
+      return 'wallpapers';
+    case 'room_flooring':
+      return 'flooring';
+    default:
+      return 'misc';
+  }
+}

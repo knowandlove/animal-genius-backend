@@ -3,7 +3,7 @@ import type { Express } from "express";
 import { db } from "../db";
 import { quizSubmissions, classes, purchaseRequests, currencyTransactions, storeSettings } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
-import { isValidPassportCode, validatePurchaseRequest, getItemById, TRANSACTION_REASONS } from "@shared/currency-types";
+import { isValidPassportCode, TRANSACTION_REASONS } from "@shared/currency-types";
 import { z } from "zod";
 import * as cache from "../lib/cache";
 
@@ -105,12 +105,20 @@ export function registerIslandRoutes(app: Express) {
         console.log(`✅ Cache hit for ${cacheKey}`);
       }
 
-      // 3. Get store catalog
-      const { STORE_CATALOG } = await import("@shared/currency-types");
-      const storeCatalog = STORE_CATALOG.map(item => ({
+      // 3. Get store catalog from database
+      const { storeItems } = await import("@shared/schema");
+      const { asc } = await import("drizzle-orm");
+      
+      const items = await db
+        .select()
+        .from(storeItems)
+        .where(eq(storeItems.isActive, true))
+        .orderBy(asc(storeItems.sortOrder), asc(storeItems.name));
+      
+      const storeCatalog = items.map(item => ({
         id: item.id,
         name: item.name,
-        type: item.type,
+        type: item.itemType,
         cost: item.cost,
         description: item.description,
         rarity: item.rarity
@@ -134,8 +142,33 @@ export function registerIslandRoutes(app: Express) {
         available: (student.currencyBalance || 0) - pendingTotal
       };
 
+      // 5. Get inventory items from avatarData.owned and store catalog
+      const ownedItemIds = student.avatarData?.owned || [];
+      const inventoryItems = ownedItemIds.map(itemId => {
+        const catalogItem = storeCatalog.find(item => item.id === itemId);
+        if (catalogItem) {
+          return {
+            ...catalogItem,
+            quantity: 1,
+            obtainedAt: new Date()
+          };
+        }
+        // If item not in catalog (maybe it was removed), still include it
+        return {
+          id: itemId,
+          name: itemId,
+          type: 'avatar_accessory' as const,
+          cost: 0,
+          description: 'Legacy item',
+          rarity: 'common' as const,
+          quantity: 1,
+          obtainedAt: new Date()
+        };
+      });
+
       // Debug log
       console.log(`[DEBUG] Student ${student.studentName} avatarData:`, JSON.stringify(student.avatarData, null, 2));
+      console.log(`[DEBUG] Student ${student.studentName} inventoryItems:`, inventoryItems);
       
       // Format consolidated response
       const pageData = {
@@ -153,7 +186,8 @@ export function registerIslandRoutes(app: Express) {
           roomData: student.roomData || { furniture: [] },
           className: student.className,
           classId: student.classId,
-          completedAt: student.completedAt
+          completedAt: student.completedAt,
+          inventoryItems // Add this field that the frontend expects
         },
         wallet,
         storeStatus,
@@ -311,14 +345,22 @@ export function registerIslandRoutes(app: Express) {
   // Get available store catalog (shared endpoint, no auth needed)
   app.get("/api/store/catalog", async (req, res) => {
     try {
-      // Import store catalog from currency types
-      const { STORE_CATALOG } = await import("@shared/currency-types");
+      // Import store items table
+      const { storeItems } = await import("@shared/schema");
+      const { asc } = await import("drizzle-orm");
       
-      // Return catalog with basic filtering
-      const catalog = STORE_CATALOG.map(item => ({
+      // Fetch active store items from database
+      const items = await db
+        .select()
+        .from(storeItems)
+        .where(eq(storeItems.isActive, true))
+        .orderBy(asc(storeItems.sortOrder), asc(storeItems.name));
+      
+      // Return catalog with consistent format (matching old structure)
+      const catalog = items.map(item => ({
         id: item.id,
         name: item.name,
-        type: item.type,
+        type: item.itemType,
         cost: item.cost,
         description: item.description,
         rarity: item.rarity
@@ -359,16 +401,26 @@ export function registerIslandRoutes(app: Express) {
 
       const student = studentData[0];
       
-      // Validate purchase request
-      const validation = validatePurchaseRequest(itemId, student.currencyBalance || 0);
-      if (!validation.valid) {
-        return res.status(400).json({ message: validation.error });
+      // Get item details from database
+      const { storeItems } = await import("@shared/schema");
+      const itemData = await db
+        .select()
+        .from(storeItems)
+        .where(and(
+          eq(storeItems.id, itemId),
+          eq(storeItems.isActive, true)
+        ))
+        .limit(1);
+      
+      if (itemData.length === 0) {
+        return res.status(400).json({ message: "Item not found in store" });
       }
-
-      // Get item details
-      const item = getItemById(itemId);
-      if (!item) {
-        return res.status(400).json({ message: "Item not found" });
+      
+      const item = itemData[0];
+      
+      // Validate student has enough balance
+      if (student.currencyBalance < item.cost) {
+        return res.status(400).json({ message: "Insufficient funds" });
       }
 
       // Check if store is open for the class
@@ -427,8 +479,8 @@ export function registerIslandRoutes(app: Express) {
         .insert(purchaseRequests)
         .values({
           studentId: student.id,
-          itemType: item.type,
-          itemId: item.id,
+          itemType: item.itemType,
+          itemId: itemId,
           cost: item.cost,
           status: 'pending'
         })
