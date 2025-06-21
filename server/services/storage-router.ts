@@ -7,12 +7,7 @@ import { eq, inArray } from 'drizzle-orm';
 import path from 'path';
 import * as mime from 'mime-types';
 
-// Debug logging for cloud storage flag
-console.log('🚀 StorageRouter initializing...');
-console.log('USE_CLOUD_STORAGE env:', process.env.USE_CLOUD_STORAGE);
-console.log('Type:', typeof process.env.USE_CLOUD_STORAGE);
-console.log('Equals true (boolean)?:', process.env.USE_CLOUD_STORAGE === true);
-console.log('Equals "true" (string)?:', process.env.USE_CLOUD_STORAGE === 'true');
+
 
 /**
  * Storage Router Service
@@ -21,12 +16,10 @@ console.log('Equals "true" (string)?:', process.env.USE_CLOUD_STORAGE === 'true'
  */
 export class StorageRouter {
   /**
-   * Check if cloud storage is enabled
+   * Cloud storage is always enabled now
    */
   static isCloudStorageEnabled(): boolean {
-    const useCloudStorage = process.env.USE_CLOUD_STORAGE === 'true';
-    console.log('🔍 isCloudStorageEnabled called, returning:', useCloudStorage);
-    return useCloudStorage;
+    return true; // Always use cloud storage
   }
 
   /**
@@ -40,111 +33,52 @@ export class StorageRouter {
       folder?: string;
       type?: 'animal' | 'item' | 'ui' | 'user';
       category?: string;
-      itemType?: string; // For store items
+      itemType?: string;
       name?: string;
+      mimeType?: string;
     } = {}
-  ): Promise<{ url: string; assetId?: string; path?: string }> {
-    if (this.isCloudStorageEnabled()) {
-      // Use cloud storage
-      const uploadFile: UploadFile = {
-        buffer,
-        metadata: {
-          bucket: options.bucket || 'store-items',
-          folder: options.folder || options.itemType || 'misc',
-          fileName,
-          mimeType: mime.lookup(fileName) || 'application/octet-stream',
-          type: options.type || 'item',
-          category: options.category || options.itemType,
-          name: options.name || fileName
-        }
-      };
+  ): Promise<{ url: string; assetId: string; path: string }> {
+    // Always use cloud storage
+    const uploadFile: UploadFile = {
+      buffer,
+      metadata: {
+        bucket: options.bucket || 'store-items',
+        folder: options.folder || options.itemType || 'misc',
+        fileName,
+        mimeType: options.mimeType || mime.lookup(fileName) || 'application/octet-stream',
+        type: options.type || 'item',
+        category: options.category || options.itemType,
+        name: options.name || fileName
+      }
+    };
 
-      const uploadResult = await EnhancedStorageService.upload(uploadFile);
-      const asset = await EnhancedStorageService.createAsset(uploadResult, uploadFile.metadata);
+    const uploadResult = await EnhancedStorageService.upload(uploadFile);
+    const asset = await EnhancedStorageService.createAsset(uploadResult, uploadFile.metadata);
 
-      return {
-        url: EnhancedStorageService.getPublicUrl(asset.bucket, asset.path),
-        assetId: asset.id,
-        path: asset.path
-      };
-    } else {
-      // Use local storage (legacy)
-      // For now, just return a local URL
-      // TODO: Implement actual local file storage if needed
-      const localPath = `/uploads/${options.folder || 'misc'}/${fileName}`;
-      return {
-        url: localPath,
-        // No assetId for legacy uploads
-      };
-    }
+    return {
+      url: EnhancedStorageService.getPublicUrl(asset.bucket, asset.path),
+      assetId: asset.id,
+      path: asset.path
+    };
   }
 
   /**
-   * Delete a file using the appropriate storage method
+   * Delete a file - Always uses cloud storage
    */
-  static async deleteFile(
-    identifier: string | { assetId?: string; url?: string }
-  ): Promise<void> {
-    if (this.isCloudStorageEnabled()) {
-      // For cloud storage, we need an assetId
-      let assetId: string;
-      
-      if (typeof identifier === 'string') {
-        assetId = identifier;
-      } else if (identifier.assetId) {
-        assetId = identifier.assetId;
-      } else {
-        throw new Error('Asset ID required for cloud storage deletion');
-      }
-
-      await EnhancedStorageService.deleteAsset(assetId);
-    } else {
-      // For local storage, we need a URL
-      let url: string;
-      
-      if (typeof identifier === 'string') {
-        url = identifier;
-      } else if (identifier.url) {
-        url = identifier.url;
-      } else {
-        throw new Error('URL required for local storage deletion');
-      }
-
-      // For local storage, we can't actually delete files
-      // Just log it for now
-      console.log(`Would delete local file at: ${url}`);
-    }
+  static async deleteFile(assetId: string): Promise<void> {
+    await EnhancedStorageService.deleteAsset(assetId);
   }
 
   /**
-   * Get the appropriate image URL based on storage method
+   * Get image URL - Simple version, no legacy support
    */
   static getImageUrl(item: any): string {
-    console.log('🔍 getImageUrl called with item:', { 
-      hasAsset: !!item.asset, 
-      assetId: item.assetId,
-      imageUrl: item.imageUrl,
-      cloudEnabled: this.isCloudStorageEnabled() 
-    });
-    
-    if (this.isCloudStorageEnabled() && item.asset) {
-      // Use cloud storage URL
-      const cloudUrl = EnhancedStorageService.getPublicUrl(item.asset.bucket, item.asset.path);
-      console.log('☁️ Returning cloud URL:', cloudUrl);
-      return cloudUrl;
-    } else if (item.imageUrl) {
-      // Use legacy URL
-      // Ensure it's an absolute URL
-      if (item.imageUrl.startsWith('/')) {
-        const fullUrl = `${process.env.API_URL || ''}${item.imageUrl}`;
-        console.log('📁 Returning legacy URL:', fullUrl);
-        return fullUrl;
-      }
-      return item.imageUrl;
+    // Only support cloud storage assets
+    if (item.asset && item.asset.bucket && item.asset.path) {
+      return EnhancedStorageService.getPublicUrl(item.asset.bucket, item.asset.path);
     }
     
-    // Fallback
-    console.log('⚠️ Using fallback placeholder');
+    // No asset = no image
     return '/placeholder.png';
   }
 
@@ -217,44 +151,34 @@ export class StorageRouter {
   }
 
   /**
-   * Batch prepare store items for response
+   * Prepare store items for response - Clean version
    */
   static async prepareStoreItemsResponse(items: any[]): Promise<any[]> {
-    // If cloud storage enabled, fetch all assets in one query
-    if (this.isCloudStorageEnabled()) {
-      const assetIds = items
-        .filter(item => item.assetId)
-        .map(item => item.assetId);
+    // Fetch all assets in one query
+    const assetIds = items
+      .filter(item => item.assetId)
+      .map(item => item.assetId);
+    
+    if (assetIds.length > 0) {
+      const assetsData = await db.select()
+        .from(assets)
+        .where(inArray(assets.id, assetIds));
       
-      if (assetIds.length > 0) {
-        const assetsData = await db.select()
-          .from(assets)
-          .where(inArray(assets.id, assetIds)); // Fixed: Use inArray for proper batch query
-        
-        // Create a map for quick lookup
-        const assetMap = new Map(assetsData.map(a => [a.id, a]));
-        
-        // Attach assets to items
-        items.forEach(item => {
-          if (item.assetId && assetMap.has(item.assetId)) {
-            item.asset = assetMap.get(item.assetId);
-          }
-        });
-      }
+      const assetMap = new Map(assetsData.map(a => [a.id, a]));
+      
+      items.forEach(item => {
+        if (item.assetId && assetMap.has(item.assetId)) {
+          item.asset = assetMap.get(item.assetId);
+        }
+      });
     }
 
-    // Now map over items to generate final response (avoid N+1)
-    return items.map(item => {
-      const imageUrl = this.getImageUrl(item);
-      return {
-        ...item,
-        imageUrl,
-        ...(item.asset && {
-          assetId: item.assetId,
-          assetUrl: imageUrl
-        })
-      };
-    });
+    // Return clean items with single imageUrl
+    return items.map(item => ({
+      ...item,
+      imageUrl: this.getImageUrl(item),
+      asset: undefined // Don't expose internal asset object
+    }));
   }
 }
 

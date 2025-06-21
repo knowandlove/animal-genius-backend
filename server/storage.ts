@@ -7,6 +7,7 @@ import {
   adminLogs,
   currencyTransactions,
   storeSettings,
+  purchaseRequests,
   type User, 
   type InsertUser,
   type UpdateUserProfile,
@@ -199,13 +200,38 @@ export class DatabaseStorage implements IStorage {
   async deleteClass(id: number): Promise<void> {
     // Delete all related data in proper order to avoid foreign key constraints
     
-    // 1. Delete all submissions for this class
+    // 1. Delete purchase requests for students in this class
+    // First get all student IDs from quiz_submissions for this class
+    const submissions = await db
+      .select({ id: quizSubmissions.id })
+      .from(quizSubmissions)
+      .where(eq(quizSubmissions.classId, id));
+    
+    const submissionIds = submissions.map(s => s.id);
+    
+    if (submissionIds.length > 0) {
+      // Delete purchase requests for these submissions
+      await db.delete(purchaseRequests)
+        .where(sql`${purchaseRequests.studentId} = ANY(${submissionIds})`);
+      
+      // Delete currency transactions for these submissions
+      await db.delete(currencyTransactions)
+        .where(sql`${currencyTransactions.studentId} = ANY(${submissionIds})`);
+    }
+    
+    // 2. Delete store settings for this class
+    await db.delete(storeSettings).where(eq(storeSettings.classId, id));
+    
+    // 3. Delete all quiz submissions for this class
     await db.delete(quizSubmissions).where(eq(quizSubmissions.classId, id));
     
-    // 2. Delete all lesson progress for this class
+    // 4. Delete all students in this class
+    await db.delete(students).where(eq(students.classId, id));
+    
+    // 5. Delete all lesson progress for this class
     await db.delete(lessonProgress).where(eq(lessonProgress.classId, id));
     
-    // 3. Finally delete the class itself
+    // 6. Finally delete the class itself
     await db.delete(classes).where(eq(classes.id, id));
   }
 

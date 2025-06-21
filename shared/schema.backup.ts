@@ -1,11 +1,7 @@
 import { pgTable, text, serial, integer, boolean, timestamp, varchar, jsonb } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
-import { createInsertSchema, createSelectSchema } from "drizzle-zod";
+import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-
-// ============================================
-// EXISTING TABLES (unchanged)
-// ============================================
 
 // Users table for teachers
 export const users = pgTable("users", {
@@ -34,7 +30,7 @@ export const classes = pgTable("classes", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// Students table
+// Students table (new!)
 export const students = pgTable("students", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   classId: integer("class_id").references(() => classes.id),
@@ -45,25 +41,30 @@ export const students = pgTable("students", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-// Quiz submissions table
+// Quiz submissions table (extended for currency system)
 export const quizSubmissions = pgTable("quiz_submissions", {
   id: serial("id").primaryKey(),
   classId: integer("class_id").notNull(),
   studentName: text("student_name").notNull(),
   gradeLevel: text("grade_level"),
-  answers: jsonb("answers").notNull(),
+  answers: jsonb("answers").notNull(), // Array of answer objects
   personalityType: varchar("personality_type", { length: 4 }).notNull(),
   animalType: text("animal_type").notNull(),
   animalGenius: text("animal_genius").default("Feeler").notNull(),
-  scores: jsonb("scores").notNull(),
+  scores: jsonb("scores").notNull(), // E/I, S/N, T/F, J/P scores
   learningStyle: text("learning_style").notNull(),
-  learningScores: jsonb("learning_scores").notNull(),
+  learningScores: jsonb("learning_scores").notNull(), // Visual, Auditory, Kinesthetic, Reading/Writing scores
   completedAt: timestamp("completed_at").defaultNow(),
+  // Currency system extensions
   passportCode: varchar("passport_code", { length: 8 }).unique(),
   currencyBalance: integer("currency_balance").default(0).notNull(),
   avatarData: jsonb("avatar_data").default('{}').notNull(),
   roomData: jsonb("room_data").default('{}').notNull(),
+  // New foreign key to students table
   studentId: text("student_id").references(() => students.id),
+  // Cloud storage references
+  avatarAssetId: text("avatar_asset_id").references(() => assets.id),
+  roomAssetId: text("room_asset_id").references(() => assets.id),
 });
 
 // Lesson progress tracking
@@ -90,11 +91,11 @@ export const adminLogs = pgTable("admin_logs", {
 // Currency system tables
 export const currencyTransactions = pgTable("currency_transactions", {
   id: serial("id").primaryKey(),
-  studentId: integer("student_id").references(() => quizSubmissions.id).notNull(),
+  studentId: integer("student_id").references(() => quizSubmissions.id).notNull(), // TODO: Will migrate to reference students.id
   teacherId: integer("teacher_id").references(() => users.id).notNull(),
   amount: integer("amount").notNull(),
   reason: varchar("reason", { length: 255 }),
-  transactionType: varchar("transaction_type", { length: 50 }).notNull(),
+  transactionType: varchar("transaction_type", { length: 50 }).notNull(), // 'teacher_gift', 'quiz_complete', 'achievement', 'purchase'
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -109,48 +110,26 @@ export const storeSettings = pgTable("store_settings", {
 
 export const purchaseRequests = pgTable("purchase_requests", {
   id: serial("id").primaryKey(),
-  studentId: integer("student_id").references(() => quizSubmissions.id).notNull(),
-  itemType: varchar("item_type", { length: 50 }).notNull(),
-  itemId: varchar("item_id", { length: 50 }).notNull(),
+  studentId: integer("student_id").references(() => quizSubmissions.id).notNull(), // TODO: Will migrate to reference students.id
+  itemType: varchar("item_type", { length: 50 }).notNull(), // 'avatar_hat', 'room_furniture', etc.
+  itemId: varchar("item_id", { length: 50 }).notNull(), // 'wizard_hat', 'bookshelf', etc.
   cost: integer("cost").notNull(),
-  status: varchar("status", { length: 20 }).default('pending').notNull(),
+  status: varchar("status", { length: 20 }).default('pending').notNull(), // 'pending', 'approved', 'denied'
   requestedAt: timestamp("requested_at").defaultNow().notNull(),
   processedAt: timestamp("processed_at"),
   processedBy: integer("processed_by").references(() => users.id),
 });
 
-// ============================================
-// REDESIGNED STORE TABLES
-// ============================================
-
-// Assets table - manages all uploaded files
-export const assets = pgTable("assets", {
-  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  type: varchar("type", { length: 50 }).notNull(), // 'animal', 'item', 'ui', 'user'
-  category: varchar("category", { length: 50 }),
-  name: varchar("name", { length: 255 }).notNull(),
-  bucket: varchar("bucket", { length: 50 }).notNull(),
-  path: varchar("path", { length: 500 }).notNull(),
-  mimeType: varchar("mime_type", { length: 50 }),
-  sizeBytes: integer("size_bytes"),
-  width: integer("width"),
-  height: integer("height"),
-  variants: jsonb("variants").default('{}'),
-  metadata: jsonb("metadata").default('{}'),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-  status: text("status").default('pending'),
-  expiresAt: timestamp("expires_at"),
-});
-
-// Store items table - simplified with required asset reference
+// Store items table
 export const storeItems = pgTable("store_items", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),
   itemType: varchar("item_type", { length: 50 }).notNull(),
   cost: integer("cost").notNull(),
-  assetId: text("asset_id").notNull().references(() => assets.id), // Now required!
+  imageUrl: varchar("image_url", { length: 500 }),
+  assetId: text("asset_id").references(() => assets.id), // Reference to cloud storage asset
+  legacyImageUrl: varchar("legacy_image_url", { length: 500 }), // For rollback
   rarity: varchar("rarity", { length: 20 }).default('common').notNull(),
   isActive: boolean("is_active").default(true).notNull(),
   sortOrder: integer("sort_order").default(0).notNull(),
@@ -158,23 +137,39 @@ export const storeItems = pgTable("store_items", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-// Item positioning table
+// Item positioning table for different animals
 export const itemAnimalPositions = pgTable("item_animal_positions", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  itemId: text("item_id").notNull().references(() => storeItems.id),
+  itemId: varchar("item_id", { length: 50 }).notNull(),
   animalType: varchar("animal_type", { length: 20 }).notNull(),
   positionX: integer("position_x").default(0).notNull(),
   positionY: integer("position_y").default(0).notNull(),
   scale: integer("scale").default(100).notNull(), // Store as percentage (100 = 1.0)
   rotation: integer("rotation").default(0).notNull(), // Store in degrees
+  assetId: text("asset_id").references(() => assets.id), // Reference to cloud storage asset
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-// ============================================
-// RELATIONS
-// ============================================
+// Cloud storage assets table
+export const assets = pgTable("assets", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  type: varchar("type", { length: 50 }).notNull(), // 'animal', 'item', 'ui', 'user'
+  category: varchar("category", { length: 50 }), // 'hat', 'furniture', 'wallpaper', etc.
+  name: varchar("name", { length: 255 }).notNull(),
+  bucket: varchar("bucket", { length: 50 }).notNull(), // 'public-assets', 'store-items', 'user-generated'
+  path: varchar("path", { length: 500 }).notNull(), // relative path within bucket
+  mimeType: varchar("mime_type", { length: 50 }),
+  sizeBytes: integer("size_bytes"),
+  width: integer("width"),
+  height: integer("height"),
+  variants: jsonb("variants").default('{}'), // {"thumb": "path", "medium": "path"}
+  metadata: jsonb("metadata").default('{}'),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
 
+// Relations
 export const usersRelations = relations(users, ({ many }) => ({
   classes: many(classes),
   lessonProgress: many(lessonProgress),
@@ -227,6 +222,7 @@ export const lessonProgressRelations = relations(lessonProgress, ({ one }) => ({
   }),
 }));
 
+// Currency system relations
 export const currencyTransactionsRelations = relations(currencyTransactions, ({ one }) => ({
   student: one(quizSubmissions, {
     fields: [currencyTransactions.studentId],
@@ -256,31 +252,7 @@ export const purchaseRequestsRelations = relations(purchaseRequests, ({ one }) =
   }),
 }));
 
-// Store relations
-export const assetsRelations = relations(assets, ({ many }) => ({
-  storeItems: many(storeItems),
-}));
-
-export const storeItemsRelations = relations(storeItems, ({ one, many }) => ({
-  asset: one(assets, {
-    fields: [storeItems.assetId],
-    references: [assets.id],
-  }),
-  positions: many(itemAnimalPositions),
-}));
-
-export const itemAnimalPositionsRelations = relations(itemAnimalPositions, ({ one }) => ({
-  item: one(storeItems, {
-    fields: [itemAnimalPositions.itemId],
-    references: [storeItems.id],
-  }),
-}));
-
-// ============================================
-// ZOD SCHEMAS
-// ============================================
-
-// Existing schemas (unchanged)
+// Zod schemas
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
@@ -319,6 +291,13 @@ export const insertQuizSubmissionSchema = createInsertSchema(quizSubmissions).om
   }),
 });
 
+// Assets relations
+export const assetsRelations = relations(assets, ({ many }) => ({
+  storeItems: many(storeItems),
+  itemPositions: many(itemAnimalPositions),
+  avatarSubmissions: many(quizSubmissions),
+}));
+
 export const insertLessonProgressSchema = createInsertSchema(lessonProgress).omit({
   id: true,
   completedAt: true,
@@ -327,6 +306,29 @@ export const insertLessonProgressSchema = createInsertSchema(lessonProgress).omi
 export const insertAdminLogSchema = createInsertSchema(adminLogs).omit({
   id: true,
   timestamp: true,
+});
+
+// Store items schema
+export const insertStoreItemSchema = createInsertSchema(storeItems).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  itemType: z.enum(['avatar_hat', 'avatar_accessory', 'room_furniture', 'room_decoration', 'room_wallpaper', 'room_flooring']),
+  rarity: z.enum(['common', 'rare', 'legendary']).default('common'),
+  assetId: z.string().optional(), // Explicitly include assetId
+});
+
+export const updateStoreItemSchema = insertStoreItemSchema.partial();
+
+// Assets schema
+export const insertAssetSchema = createInsertSchema(assets).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  type: z.enum(['animal', 'item', 'ui', 'user']),
+  bucket: z.enum(['public-assets', 'store-items', 'user-generated']),
 });
 
 // Currency system schemas
@@ -345,16 +347,17 @@ export const insertPurchaseRequestSchema = createInsertSchema(purchaseRequests).
   requestedAt: true,
 });
 
+// Currency system validation schemas
 export const giveCurrencySchema = z.object({
   studentId: z.number().positive(),
-  amount: z.number().positive().max(1000),
+  amount: z.number().positive().max(1000), // Max 1000 coins per transaction
   reason: z.string().min(1).max(255),
 });
 
 export const purchaseRequestSchema = z.object({
   itemType: z.enum(['avatar_hat', 'avatar_accessory', 'room_furniture', 'room_decoration', 'room_wallpaper', 'room_flooring']),
   itemId: z.string().min(1).max(50),
-  cost: z.number().positive().max(10000),
+  cost: z.number().positive().max(10000), // Max cost validation
 });
 
 // Avatar and room data schemas
@@ -367,7 +370,7 @@ export const avatarDataSchema = z.object({
 export const furnitureItemSchema = z.object({
   id: z.string(),
   type: z.string(),
-  x: z.number().min(0).max(3),
+  x: z.number().min(0).max(3), // 4x4 grid
   y: z.number().min(0).max(3),
 });
 
@@ -377,70 +380,7 @@ export const roomDataSchema = z.object({
   flooring: z.string().optional(),
 }).default({ furniture: [] });
 
-// ============================================
-// NEW STORE SCHEMAS
-// ============================================
-
-// Asset schemas
-export const assetStatusEnum = z.enum(['pending', 'active', 'deleted']);
-export const assetTypeEnum = z.enum(['avatar_hat', 'avatar_accessory', 'room_furniture', 'room_decoration', 'room_wallpaper', 'room_flooring']);
-
-export const prepareAssetUploadSchema = z.object({
-  type: assetTypeEnum,
-  fileName: z.string().min(1).max(255),
-});
-
-export const createAssetSchema = z.object({
-  type: z.string(),
-  category: z.string().optional(),
-  name: z.string(),
-  bucket: z.string(),
-  path: z.string(),
-  mimeType: z.string().optional(),
-  sizeBytes: z.number().optional(),
-  width: z.number().optional(),
-  height: z.number().optional(),
-  variants: z.record(z.any()).optional(),
-  metadata: z.record(z.any()).optional(),
-  status: assetStatusEnum.default('pending'),
-});
-
-// Store item schemas
-export const itemTypeEnum = z.enum(['avatar_hat', 'avatar_accessory', 'room_furniture', 'room_decoration', 'room_wallpaper', 'room_flooring']);
-export const rarityEnum = z.enum(['common', 'rare', 'legendary']);
-
-export const createStoreItemSchema = z.object({
-  name: z.string().min(1).max(255),
-  description: z.string().optional(),
-  itemType: itemTypeEnum,
-  cost: z.number().int().positive().max(10000),
-  assetId: z.string().uuid(), // Now required!
-  rarity: rarityEnum.default('common'),
-  isActive: z.boolean().default(true),
-  sortOrder: z.number().int().default(0),
-});
-
-export const updateStoreItemSchema = createStoreItemSchema.partial().omit({ assetId: true });
-
-// Item position schemas
-export const animalTypeEnum = z.enum(['dog', 'cat', 'owl', 'panther', 'dolphin', 'eagle', 'bear', 'octopus']);
-
-export const createItemPositionSchema = z.object({
-  itemId: z.string().uuid(),
-  animalType: animalTypeEnum,
-  positionX: z.number().int().default(0),
-  positionY: z.number().int().default(0),
-  scale: z.number().int().min(10).max(200).default(100),
-  rotation: z.number().int().min(-360).max(360).default(0),
-});
-
-export const updateItemPositionSchema = createItemPositionSchema.partial().omit({ itemId: true, animalType: true });
-
-// ============================================
-// TYPES
-// ============================================
-
-// Existing types
+// Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type UpdateUserProfile = z.infer<typeof updateUserProfileSchema>;
@@ -455,44 +395,25 @@ export type InsertLessonProgress = z.infer<typeof insertLessonProgressSchema>;
 export type AdminLog = typeof adminLogs.$inferSelect;
 export type InsertAdminLog = z.infer<typeof insertAdminLogSchema>;
 
-// Currency types
+// Store types
+export type StoreItem = typeof storeItems.$inferSelect;
+export type InsertStoreItem = z.infer<typeof insertStoreItemSchema>;
+export type UpdateStoreItem = z.infer<typeof updateStoreItemSchema>;
+
+// Asset types
+export type Asset = typeof assets.$inferSelect;
+export type InsertAsset = z.infer<typeof insertAssetSchema>;
+
+// Currency system types
 export type CurrencyTransaction = typeof currencyTransactions.$inferSelect;
 export type InsertCurrencyTransaction = z.infer<typeof insertCurrencyTransactionSchema>;
 export type StoreSettings = typeof storeSettings.$inferSelect;
 export type InsertStoreSettings = z.infer<typeof insertStoreSettingsSchema>;
 export type PurchaseRequest = typeof purchaseRequests.$inferSelect;
 export type InsertPurchaseRequest = z.infer<typeof insertPurchaseRequestSchema>;
+
+// Utility types
 export type GiveCurrencyData = z.infer<typeof giveCurrencySchema>;
 export type PurchaseRequestData = z.infer<typeof purchaseRequestSchema>;
 export type AvatarData = z.infer<typeof avatarDataSchema>;
 export type RoomData = z.infer<typeof roomDataSchema>;
-
-// New store types
-export type Asset = typeof assets.$inferSelect;
-export type CreateAsset = z.infer<typeof createAssetSchema>;
-export type AssetStatus = z.infer<typeof assetStatusEnum>;
-export type AssetType = z.infer<typeof assetTypeEnum>;
-
-export type StoreItem = typeof storeItems.$inferSelect;
-export type CreateStoreItem = z.infer<typeof createStoreItemSchema>;
-export type UpdateStoreItem = z.infer<typeof updateStoreItemSchema>;
-export type ItemType = z.infer<typeof itemTypeEnum>;
-export type Rarity = z.infer<typeof rarityEnum>;
-
-export type ItemAnimalPosition = typeof itemAnimalPositions.$inferSelect;
-export type CreateItemPosition = z.infer<typeof createItemPositionSchema>;
-export type UpdateItemPosition = z.infer<typeof updateItemPositionSchema>;
-export type AnimalType = z.infer<typeof animalTypeEnum>;
-
-// API Types
-export type PrepareAssetUploadRequest = z.infer<typeof prepareAssetUploadSchema>;
-export type PrepareAssetUploadResponse = {
-  assetId: string;
-  uploadUrl: string;
-  uploadFields: Record<string, string>;
-  expiresAt: string;
-};
-
-export type StoreItemWithAsset = StoreItem & {
-  asset: Asset;
-};

@@ -66,6 +66,18 @@ export function registerStoreAdminRoutes(app: Express) {
     try {
       const validatedData = createItemSchema.parse(req.body);
       
+      // Get assetId from request body (required)
+      const assetId = req.body.assetId;
+      const imageUrl = req.body.imageUrl;
+      
+      // Ensure we have an assetId (required by schema)
+      if (!assetId) {
+        return res.status(400).json({ 
+          message: "Asset ID is required. Please upload an image first." 
+        });
+      }
+      
+      // Now create the store item with the asset ID
       const [newItem] = await db
         .insert(storeItems)
         .values({
@@ -77,7 +89,8 @@ export function registerStoreAdminRoutes(app: Express) {
           rarity: validatedData.rarity,
           isActive: validatedData.isActive,
           sortOrder: validatedData.sortOrder,
-          imageUrl: req.body.imageUrl || null // Image URL from separate upload
+          assetId: assetId, // Use the asset ID
+          imageUrl: imageUrl || null // Keep for feature flag compatibility
         })
         .returning();
       
@@ -141,28 +154,28 @@ export function registerStoreAdminRoutes(app: Express) {
         return res.status(404).json({ message: "Item not found" });
       }
       
-      // Delete from database
+      // Delete associated asset FIRST if it exists
+      if (item.assetId) {
+        try {
+          // Import StorageRouter to handle deletion
+          const StorageRouter = (await import('../../services/storage-router')).default;
+          await StorageRouter.deleteFile(item.assetId);
+        } catch (error) {
+          console.error(`Failed to delete asset ${item.assetId} for store item ${id}:`, error);
+          // Return an error WITHOUT deleting the DB record, so the operation can be retried
+          return res.status(500).json({ 
+            message: "Failed to delete associated image asset. Database record was not deleted.",
+            error: error instanceof Error ? error.message : 'Unknown error'
+          });
+        }
+      }
+      
+      // If asset deletion was successful (or not needed), delete from database
       await db
         .delete(storeItems)
         .where(eq(storeItems.id, id));
       
-      // Delete image from Supabase if it exists
-      if (item.imageUrl && item.imageUrl.includes('supabase')) {
-        try {
-          // Extract path from URL
-          const url = new URL(item.imageUrl);
-          const pathMatch = url.pathname.match(/\/storage\/v1\/object\/public\/([^/]+)\/(.+)/);
-          if (pathMatch) {
-            const [, bucket, path] = pathMatch;
-            await StorageService.deleteImage(bucket, path);
-          }
-        } catch (error) {
-          console.error('Failed to delete image:', error);
-          // Continue even if image deletion fails
-        }
-      }
-      
-      res.json({ message: "Item deleted successfully" });
+      res.json({ message: "Item and associated asset deleted successfully" });
     } catch (error) {
       console.error("Delete store item error:", error);
       res.status(500).json({ message: "Failed to delete store item" });
@@ -201,27 +214,5 @@ export function registerStoreAdminRoutes(app: Express) {
     }
   );
   
-  // Get active store items (public endpoint for students)
-  app.get("/api/store/catalog", async (req, res) => {
-    try {
-      const items = await db
-        .select({
-          id: storeItems.id,
-          name: storeItems.name,
-          type: storeItems.itemType,
-          cost: storeItems.cost,
-          description: storeItems.description,
-          rarity: storeItems.rarity,
-          imageUrl: storeItems.imageUrl
-        })
-        .from(storeItems)
-        .where(eq(storeItems.isActive, true))
-        .orderBy(asc(storeItems.sortOrder), asc(storeItems.name));
-      
-      res.json(items);
-    } catch (error) {
-      console.error("Get store catalog error:", error);
-      res.status(500).json({ message: "Failed to get store catalog" });
-    }
-  });
+  // Note: Public catalog endpoint is in the main store router at /api/store/catalog
 }

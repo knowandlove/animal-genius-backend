@@ -11,10 +11,18 @@ const router = Router();
 // Rate limiting for upload endpoint
 const uploadLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // limit each IP to 10 uploads per window
+  max: 5, // limit each IP to 5 uploads per window (more restrictive)
   message: 'Too many upload attempts, please try again later',
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  skipSuccessfulRequests: false, // Count all requests, not just errors
+  // Store rate limit data in memory (consider Redis for production)
+  keyGenerator: (req) => {
+    // Use both IP and user ID for rate limiting
+    const userId = req.user?.id || 'anonymous';
+    const ip = req.ip || req.socket.remoteAddress || 'unknown';
+    return `${ip}:${userId}`;
+  }
 });
 
 // Configure multer for memory storage
@@ -76,9 +84,15 @@ router.post('/upload-asset', authenticateAdmin, uploadLimiter, upload.single('fi
 
     const { type, category, itemType, name, bucket } = validationResult.data;
 
-    // Validate image dimensions
+    // Validate and optimize image
+    let optimizedBuffer: Buffer;
+    let finalMimeType: string = req.file.mimetype;
+    
     try {
-      const metadata = await sharp(req.file.buffer).metadata();
+      const image = sharp(req.file.buffer);
+      const metadata = await image.metadata();
+      
+      // Check dimensions
       if (metadata.width && metadata.width > 4096) {
         return res.status(400).json({ 
           success: false, 
@@ -91,8 +105,49 @@ router.post('/upload-asset', authenticateAdmin, uploadLimiter, upload.single('fi
           error: 'Image height exceeds maximum of 4096 pixels' 
         });
       }
+      
+      // Optimize image: resize if too large and convert to efficient format
+      // Keep original format for GIF (animations) and WebP (already optimized)
+      if (req.file.mimetype === 'image/gif' || req.file.mimetype === 'image/webp') {
+        optimizedBuffer = req.file.buffer;
+      } else {
+        // For JPEG and PNG, optimize size and quality
+        const optimized = image
+          .resize(2048, 2048, { 
+            fit: 'inside', 
+            withoutEnlargement: true 
+          });
+        
+        // Convert PNG to JPEG for non-transparent images to save space
+        if (req.file.mimetype === 'image/png' && !metadata.hasAlpha) {
+          optimizedBuffer = await optimized
+            .jpeg({ 
+              quality: 85, 
+              progressive: true,
+              mozjpeg: true 
+            })
+            .toBuffer();
+          finalMimeType = 'image/jpeg';
+        } else {
+          // Keep PNG for images with transparency
+          optimizedBuffer = await optimized
+            .png({ 
+              quality: 85,
+              compressionLevel: 7, // Reduced from 9 for better performance
+              progressive: true 
+            })
+            .toBuffer();
+        }
+      }
+      
+      // Log optimization results
+      const originalSize = req.file.buffer.length;
+      const optimizedSize = optimizedBuffer.length;
+      const savings = ((originalSize - optimizedSize) / originalSize * 100).toFixed(1);
+      console.log(`Image optimization: ${originalSize} → ${optimizedSize} bytes (${savings}% saved)`);
+      
     } catch (sharpError) {
-      console.error('Image validation error:', sharpError);
+      console.error('Image validation/optimization error:', sharpError);
       return res.status(400).json({ 
         success: false, 
         error: 'Invalid image file' 
@@ -112,7 +167,7 @@ router.post('/upload-asset', authenticateAdmin, uploadLimiter, upload.single('fi
 
     // Upload using storage router (respects feature flag)
     const uploadResult = await StorageRouter.uploadFile(
-      req.file.buffer,
+      optimizedBuffer, // Use optimized buffer instead of original
       req.file.originalname,
       {
         bucket,
@@ -120,7 +175,8 @@ router.post('/upload-asset', authenticateAdmin, uploadLimiter, upload.single('fi
         type,
         category: category || itemType,
         itemType,
-        name: name || req.file.originalname
+        name: name || req.file.originalname,
+        mimeType: finalMimeType // Pass the final mime type
       }
     );
 

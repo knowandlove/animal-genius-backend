@@ -21,6 +21,7 @@ function log(message: string) {
 }
 import { apiLimiter } from "./middleware/rateLimiter";
 import cors from "cors";
+import { setCacheHeaders } from "./middleware/cache-headers";
 
 // Load environment variables
 config();
@@ -53,6 +54,9 @@ app.set('trust proxy', 1);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+// Apply cache headers middleware
+app.use(setCacheHeaders);
 
 // Serve static files from public directory
 app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));

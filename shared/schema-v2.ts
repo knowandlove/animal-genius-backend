@@ -126,21 +126,17 @@ export const purchaseRequests = pgTable("purchase_requests", {
 // Assets table - manages all uploaded files
 export const assets = pgTable("assets", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  type: varchar("type", { length: 50 }).notNull(), // 'animal', 'item', 'ui', 'user'
-  category: varchar("category", { length: 50 }),
-  name: varchar("name", { length: 255 }).notNull(),
-  bucket: varchar("bucket", { length: 50 }).notNull(),
-  path: varchar("path", { length: 500 }).notNull(),
-  mimeType: varchar("mime_type", { length: 50 }),
+  storagePath: text("storage_path").notNull().unique(),
+  bucket: text("bucket").notNull().default('store-items'),
+  status: text("status").notNull().default('pending'), // 'pending', 'active', 'deleted'
+  type: text("type").notNull(), // 'avatar_hat', 'avatar_accessory', 'room_furniture', etc.
+  mimeType: text("mime_type"),
   sizeBytes: integer("size_bytes"),
   width: integer("width"),
   height: integer("height"),
-  variants: jsonb("variants").default('{}'),
   metadata: jsonb("metadata").default('{}'),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-  status: text("status").default('pending'),
-  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  expiresAt: timestamp("expires_at"), // For cleanup of abandoned uploads
 });
 
 // Store items table - simplified with required asset reference
@@ -391,18 +387,15 @@ export const prepareAssetUploadSchema = z.object({
 });
 
 export const createAssetSchema = z.object({
-  type: z.string(),
-  category: z.string().optional(),
-  name: z.string(),
-  bucket: z.string(),
-  path: z.string(),
+  storagePath: z.string(),
+  bucket: z.string().default('store-items'),
+  status: assetStatusEnum.default('pending'),
+  type: assetTypeEnum,
   mimeType: z.string().optional(),
   sizeBytes: z.number().optional(),
   width: z.number().optional(),
   height: z.number().optional(),
-  variants: z.record(z.any()).optional(),
   metadata: z.record(z.any()).optional(),
-  status: assetStatusEnum.default('pending'),
 });
 
 // Store item schemas

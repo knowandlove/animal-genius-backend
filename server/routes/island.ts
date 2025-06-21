@@ -115,13 +115,18 @@ export function registerIslandRoutes(app: Express) {
         .where(eq(storeItems.isActive, true))
         .orderBy(asc(storeItems.sortOrder), asc(storeItems.name));
       
-      const storeCatalog = items.map(item => ({
+      // Import StorageRouter to prepare items with image URLs
+      const { default: StorageRouter } = await import("../services/storage-router");
+      const preparedItems = await StorageRouter.prepareStoreItemsResponse(items);
+      
+      const storeCatalog = preparedItems.map(item => ({
         id: item.id,
         name: item.name,
         type: item.itemType,
         cost: item.cost,
         description: item.description,
-        rarity: item.rarity
+        rarity: item.rarity,
+        imageUrl: item.imageUrl // Now includes the imageUrl!
       }));
 
       // 4. Get purchase requests and calculate wallet
@@ -345,9 +350,10 @@ export function registerIslandRoutes(app: Express) {
   // Get available store catalog (shared endpoint, no auth needed)
   app.get("/api/store/catalog", async (req, res) => {
     try {
-      // Import store items table
+      // Import store items table and StorageRouter
       const { storeItems } = await import("@shared/schema");
       const { asc } = await import("drizzle-orm");
+      const { default: StorageRouter } = await import("../services/storage-router");
       
       // Fetch active store items from database
       const items = await db
@@ -356,14 +362,18 @@ export function registerIslandRoutes(app: Express) {
         .where(eq(storeItems.isActive, true))
         .orderBy(asc(storeItems.sortOrder), asc(storeItems.name));
       
-      // Return catalog with consistent format (matching old structure)
-      const catalog = items.map(item => ({
+      // Use StorageRouter to prepare items with image URLs
+      const preparedItems = await StorageRouter.prepareStoreItemsResponse(items);
+      
+      // Return catalog with imageUrl included
+      const catalog = preparedItems.map(item => ({
         id: item.id,
         name: item.name,
         type: item.itemType,
         cost: item.cost,
         description: item.description,
-        rarity: item.rarity
+        rarity: item.rarity,
+        imageUrl: item.imageUrl // Include the image URL!
       }));
 
       res.json(catalog);
@@ -539,6 +549,14 @@ export function registerIslandRoutes(app: Express) {
       // Validate passport code
       if (!isValidPassportCode(passportCode)) {
         return res.status(400).json({ message: "Invalid passport code format" });
+      }
+      
+      // Validate room item limit (50 items max)
+      const ROOM_ITEM_LIMIT = 50;
+      if (roomData?.furniture && roomData.furniture.length > ROOM_ITEM_LIMIT) {
+        return res.status(400).json({ 
+          message: `Room cannot have more than ${ROOM_ITEM_LIMIT} items. You have ${roomData.furniture.length} items.` 
+        });
       }
       
       // Get student data

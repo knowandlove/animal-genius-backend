@@ -21,8 +21,13 @@ import { registerStoreManagementRoutes } from "./routes/store-management";
 import { registerItemPositionRoutes } from "./routes/item-positions";
 import { registerStoreAdminRoutes } from "./routes/store/admin";
 import { requireAuth } from "./middleware/auth";
-import storeRoutes from "./routes/store";
+// import storeRoutes from "./routes/store"; // OLD SYSTEM - commented out
+import assetsRouter from './routes/admin/assets-direct';
+import storeRouter from './routes/store';
 import adminUploadRoutes from "./routes/admin/upload-asset";
+import monitoringRoutes from "./routes/admin/monitoring";
+import quickStatsRoutes from "./routes/admin/quick-stats";
+import debugStoreRouter from './routes/debug-store';
 
 // Feature flags to disable unused features
 const FEATURE_FLAGS = {
@@ -1180,11 +1185,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Register store admin routes
   registerStoreAdminRoutes(app);
   
-  // Register store routes
-  app.use('/api/store', storeRoutes);
+  // Register asset management routes (admin only)
+  app.use('/api/admin/assets', assetsRouter);
+  
+  // Register new store routes (simple version)
+  app.use('/api/store', storeRouter);
+  
+  // Debug route for testing
+  app.use('/api/debug/store', debugStoreRouter);
+  
+  // Comment out or remove the old store routes:
+  // app.use('/api/store', storeRoutes);
   
   // Register admin upload routes
   app.use('/api/admin', adminUploadRoutes);
+  
+  // Register monitoring routes
+  app.use('/api/admin', monitoringRoutes);
+  
+  // Register quick stats routes
+  app.use('/api/admin', quickStatsRoutes);
 
   const httpServer = createServer(app);
   
