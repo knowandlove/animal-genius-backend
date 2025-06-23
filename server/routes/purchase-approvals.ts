@@ -2,10 +2,9 @@
 import type { Express } from "express";
 import { db } from "../db";
 import { purchaseRequests, quizSubmissions, currencyTransactions, classes, storeItems } from "@shared/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, inArray } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth";
 import { z } from "zod";
-// import { getItemById } from "@shared/currency-types"; // No longer needed - using database
 
 // Approval schema
 const approvalSchema = z.object({
@@ -65,35 +64,33 @@ export function registerPurchaseApprovalRoutes(app: Express) {
         )
         .orderBy(desc(purchaseRequests.requestedAt));
 
-      // Add item details to each request
-      const requestsWithItems = await Promise.all(requests.map(async request => {
-        // Try to get item from database first
-        const itemData = await db
-          .select()
-          .from(storeItems)
-          .where(eq(storeItems.id, request.itemId))
-          .limit(1);
-        
-        if (itemData.length > 0) {
-          const dbItem = itemData[0];
-          return {
-            ...request,
-            itemName: dbItem.name,
-            itemDescription: dbItem.description || '',
-            itemRarity: dbItem.rarity || 'common',
-            balanceAfterPurchase: (request.studentBalance || 0) - request.cost
-          };
-        }
-        
-        // Item not found in database
+      if (requests.length === 0) {
+        return res.json([]);
+      }
+
+      // Collect all unique item IDs from the requests
+      const itemIds = [...new Set(requests.map(r => r.itemId))];
+
+      // Fetch all item details in a single query
+      const itemDetailsList = await db
+        .select()
+        .from(storeItems)
+        .where(inArray(storeItems.id, itemIds));
+
+      // Create a lookup map for quick access
+      const itemDetailsMap = new Map(itemDetailsList.map(item => [item.id, item]));
+
+      // Map requests to include item details (in memory, no more DB calls)
+      const requestsWithItems = requests.map(request => {
+        const dbItem = itemDetailsMap.get(request.itemId);
         return {
           ...request,
-          itemName: 'Unknown Item',
-          itemDescription: 'Item not found in store',
-          itemRarity: 'common',
+          itemName: dbItem?.name || 'Unknown Item',
+          itemDescription: dbItem?.description || 'Item not found in store',
+          itemRarity: dbItem?.rarity || 'common',
           balanceAfterPurchase: (request.studentBalance || 0) - request.cost
         };
-      }));
+      });
 
       res.json(requestsWithItems);
     } catch (error) {

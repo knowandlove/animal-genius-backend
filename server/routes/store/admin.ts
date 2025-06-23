@@ -54,7 +54,13 @@ export function registerStoreAdminRoutes(app: Express) {
         .from(storeItems)
         .orderBy(desc(storeItems.createdAt));
       
-      res.json(items);
+      // Import StorageRouter to prepare items with image URLs
+      const StorageRouter = (await import('../../services/storage-router')).default;
+      
+      // Prepare items with proper image URLs
+      const preparedItems = await StorageRouter.prepareStoreItemsResponse(items);
+      
+      res.json(preparedItems);
     } catch (error) {
       console.error("Get store items error:", error);
       res.status(500).json({ message: "Failed to get store items" });

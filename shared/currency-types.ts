@@ -98,55 +98,50 @@ export const CURRENCY_CONSTANTS = {
   STARTING_BALANCE: 0,         // Starting currency balance
 } as const;
 
-// Store catalog - Now using database instead!
-// This is kept for backwards compatibility but should be empty
+// ============================================
+// DEPRECATED: Store catalog moved to database!
+// ============================================
+// The store catalog is now managed in the database (Supabase).
+// These exports are kept temporarily for backwards compatibility
+// but should NOT be used in new code.
+// 
+// Use the API endpoints instead:
+// - GET /api/store/catalog - Get all store items
+// - GET /api/island-page-data/:passportCode - Get page data including store
+// ============================================
+
+/** @deprecated Use database/API instead */
 export const STORE_CATALOG: StoreItem[] = [];
 
-// Helper function to get the correct folder for an item
-export function getItemFolder(itemId: string): string {
-  // Glasses items
-  if (itemId === 'greenblinds' || itemId === 'hearts' || itemId === 'sunglasses' || itemId === 'star_glasses') {
-    return 'glasses';
-  }
-  
-  // Check if it's in the store catalog
-  const item = STORE_CATALOG.find(i => i.id === itemId);
-  if (!item) return 'accessories';
-  
-  // Hats
-  if (item.type === 'avatar_hat') {
-    return 'hats';
-  }
-  
-  // Default to accessories
-  return 'accessories';
-}
-
-// Helper functions for store operations
+/** @deprecated This function always returns undefined. Use server data instead. */
 export function getItemById(itemId: string): StoreItem | undefined {
-  return STORE_CATALOG.find(item => item.id === itemId);
+  console.warn('getItemById is deprecated. Store items should come from the server.');
+  return undefined;
 }
 
+/** @deprecated This function always returns empty array. Use server data instead. */
 export function getItemsByType(type: ItemType): StoreItem[] {
-  return STORE_CATALOG.filter(item => item.type === type);
+  console.warn('getItemsByType is deprecated. Store items should come from the server.');
+  return [];
 }
 
+// This is still valid as it's just a utility
 export function canAffordItem(balance: number, itemCost: number): boolean {
   return balance >= itemCost;
 }
 
-// Validation helpers
-export function validatePurchaseRequest(itemId: string, studentBalance: number): { valid: boolean; error?: string } {
-  const item = getItemById(itemId);
-  
-  if (!item) {
-    return { valid: false, error: 'Item not found in store catalog' };
+// Validate purchase request
+export function validatePurchaseRequest(itemId: string, balance: number): { valid: boolean; error?: string } {
+  if (!itemId) {
+    return { valid: false, error: "Item ID is required" };
   }
   
-  if (!canAffordItem(studentBalance, item.cost)) {
-    return { valid: false, error: 'Insufficient funds' };
+  if (balance < 0) {
+    return { valid: false, error: "Invalid balance" };
   }
   
+  // Note: Since we moved to database-based items, we can't validate the item here
+  // The server will need to fetch the item from the database and validate
   return { valid: true };
 }
 

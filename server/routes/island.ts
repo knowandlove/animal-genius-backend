@@ -1,11 +1,12 @@
 // Student Island Routes - No authentication required
 import type { Express } from "express";
 import { db } from "../db";
-import { quizSubmissions, classes, purchaseRequests, currencyTransactions, storeSettings } from "@shared/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { quizSubmissions, classes, purchaseRequests, currencyTransactions, storeSettings, storeItems } from "@shared/schema";
+import { eq, and, desc, asc, inArray } from "drizzle-orm";
 import { isValidPassportCode, TRANSACTION_REASONS } from "@shared/currency-types";
 import { z } from "zod";
 import * as cache from "../lib/cache";
+import StorageRouter from "../services/storage-router";
 
 // Passport code validation schema
 const passportCodeSchema = z.string().regex(/^[A-Z]{3}-[A-Z0-9]{3}$/, "Invalid passport code format");
@@ -105,29 +106,39 @@ export function registerIslandRoutes(app: Express) {
         console.log(`✅ Cache hit for ${cacheKey}`);
       }
 
-      // 3. Get store catalog from database
-      const { storeItems } = await import("@shared/schema");
-      const { asc } = await import("drizzle-orm");
+      // 3. Get store catalog from cache or database
+      const catalogCacheKey = 'store-catalog:active';
+      let storeCatalog = cache.get<any[]>(catalogCacheKey);
       
-      const items = await db
-        .select()
-        .from(storeItems)
-        .where(eq(storeItems.isActive, true))
-        .orderBy(asc(storeItems.sortOrder), asc(storeItems.name));
-      
-      // Import StorageRouter to prepare items with image URLs
-      const { default: StorageRouter } = await import("../services/storage-router");
-      const preparedItems = await StorageRouter.prepareStoreItemsResponse(items);
-      
-      const storeCatalog = preparedItems.map(item => ({
-        id: item.id,
-        name: item.name,
-        type: item.itemType,
-        cost: item.cost,
-        description: item.description,
-        rarity: item.rarity,
-        imageUrl: item.imageUrl // Now includes the imageUrl!
-      }));
+      if (!storeCatalog) {
+        console.log(`⚡ Cache miss for ${catalogCacheKey}, fetching from DB`);
+        // Use imports from top of file
+        
+        const items = await db
+          .select()
+          .from(storeItems)
+          .where(eq(storeItems.isActive, true))
+          .orderBy(asc(storeItems.sortOrder), asc(storeItems.name));
+        
+        // Use StorageRouter to prepare items with image URLs
+        const preparedItems = await StorageRouter.prepareStoreItemsResponse(items);
+        
+        storeCatalog = preparedItems.map(item => ({
+          id: item.id,
+          name: item.name,
+          type: item.itemType,
+          cost: item.cost,
+          description: item.description,
+          rarity: item.rarity,
+          imageUrl: item.imageUrl // Now includes the imageUrl!
+        }));
+        
+        // Cache for 10 minutes
+        cache.set(catalogCacheKey, storeCatalog, 600);
+        console.log(`💾 Cached store catalog for ${catalogCacheKey}`);
+      } else {
+        console.log(`✅ Cache hit for ${catalogCacheKey}`);
+      }
 
       // 4. Get purchase requests and calculate wallet
       const studentPurchaseRequests = await db
@@ -350,10 +361,7 @@ export function registerIslandRoutes(app: Express) {
   // Get available store catalog (shared endpoint, no auth needed)
   app.get("/api/store/catalog", async (req, res) => {
     try {
-      // Import store items table and StorageRouter
-      const { storeItems } = await import("@shared/schema");
-      const { asc } = await import("drizzle-orm");
-      const { default: StorageRouter } = await import("../services/storage-router");
+      // Use imports from top of file
       
       // Fetch active store items from database
       const items = await db
@@ -412,7 +420,6 @@ export function registerIslandRoutes(app: Express) {
       const student = studentData[0];
       
       // Get item details from database
-      const { storeItems } = await import("@shared/schema");
       const itemData = await db
         .select()
         .from(storeItems)
@@ -674,6 +681,149 @@ export function registerIslandRoutes(app: Express) {
     } catch (error) {
       console.error("Equip item error:", error);
       res.status(500).json({ message: "Failed to equip item" });
+    }
+  });
+
+  // Save avatar customization endpoint
+  app.post("/api/island/:passportCode/avatar", async (req, res) => {
+    try {
+      const { passportCode } = req.params;
+      const { equipped } = req.body;
+      
+      // Validate passport code
+      if (!isValidPassportCode(passportCode)) {
+        return res.status(400).json({ message: "Invalid passport code format" });
+      }
+      
+      // Get student data
+      const studentData = await db
+        .select({
+          id: quizSubmissions.id,
+          avatarData: quizSubmissions.avatarData
+        })
+        .from(quizSubmissions)
+        .where(eq(quizSubmissions.passportCode, passportCode))
+        .limit(1);
+      
+      if (studentData.length === 0) {
+        return res.status(404).json({ message: "Student not found" });
+      }
+      
+      const student = studentData[0];
+      const currentAvatarData = student.avatarData || {};
+      const ownedItems = currentAvatarData.owned || [];
+      
+      // Validate all equipped items are owned
+      const equippedItemIds = Object.values(equipped || {}).filter(Boolean) as string[];
+      const unownedItems = equippedItemIds.filter(itemId => !ownedItems.includes(itemId));
+      
+      if (unownedItems.length > 0) {
+        return res.status(400).json({ 
+          message: "You don't own some of the items you're trying to equip",
+          unownedItems 
+        });
+      }
+      
+      // Update avatar data with new equipped items
+      const updatedAvatarData = {
+        ...currentAvatarData,
+        equipped: equipped || {}
+      };
+      
+      // Update database
+      await db
+        .update(quizSubmissions)
+        .set({
+          avatarData: updatedAvatarData
+        })
+        .where(eq(quizSubmissions.id, student.id));
+      
+      res.json({
+        message: "Avatar customization saved!",
+        avatarData: updatedAvatarData
+      });
+    } catch (error) {
+      console.error("Save avatar error:", error);
+      res.status(500).json({ message: "Failed to save avatar customization" });
+    }
+  });
+
+  // Save room decoration endpoint
+  app.post("/api/island/:passportCode/room", async (req, res) => {
+    try {
+      const { passportCode } = req.params;
+      const { theme, wallColor, floorColor, wallPattern, floorPattern, furniture } = req.body;
+      
+      // Validate passport code
+      if (!isValidPassportCode(passportCode)) {
+        return res.status(400).json({ message: "Invalid passport code format" });
+      }
+      
+      // Validate room item limit (50 items max)
+      const ROOM_ITEM_LIMIT = 50;
+      if (furniture && furniture.length > ROOM_ITEM_LIMIT) {
+        return res.status(400).json({ 
+          message: `Room cannot have more than ${ROOM_ITEM_LIMIT} items. You have ${furniture.length} items.` 
+        });
+      }
+      
+      // Get student data
+      const studentData = await db
+        .select({
+          id: quizSubmissions.id,
+          roomData: quizSubmissions.roomData,
+          avatarData: quizSubmissions.avatarData
+        })
+        .from(quizSubmissions)
+        .where(eq(quizSubmissions.passportCode, passportCode))
+        .limit(1);
+      
+      if (studentData.length === 0) {
+        return res.status(404).json({ message: "Student not found" });
+      }
+      
+      const student = studentData[0];
+      const ownedItems = student.avatarData?.owned || [];
+      
+      // Validate all furniture items are owned
+      if (furniture && furniture.length > 0) {
+        const furnishingItemIds = furniture.map((item: any) => item.itemId);
+        const unownedItems = furnishingItemIds.filter((itemId: string) => !ownedItems.includes(itemId));
+        
+        if (unownedItems.length > 0) {
+          return res.status(400).json({ 
+            message: "You don't own some of the items you're trying to place",
+            unownedItems 
+          });
+        }
+      }
+      
+      // Update room data
+      const updatedRoomData = {
+        ...student.roomData,
+        theme: theme || student.roomData?.theme || 'wood',
+        wallColor: wallColor || student.roomData?.wallColor,
+        floorColor: floorColor || student.roomData?.floorColor,
+        wallPattern: wallPattern !== undefined ? wallPattern : student.roomData?.wallPattern,
+        floorPattern: floorPattern !== undefined ? floorPattern : student.roomData?.floorPattern,
+        furniture: furniture || []
+      };
+      
+      // Update database
+      await db
+        .update(quizSubmissions)
+        .set({
+          roomData: updatedRoomData
+        })
+        .where(eq(quizSubmissions.id, student.id));
+      
+      res.json({
+        message: "Room decoration saved!",
+        roomData: updatedRoomData
+      });
+    } catch (error) {
+      console.error("Save room error:", error);
+      res.status(500).json({ message: "Failed to save room decoration" });
     }
   });
 

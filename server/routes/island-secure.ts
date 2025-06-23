@@ -1,9 +1,9 @@
 // Secure Student Island Routes - Using session tokens
 import type { Express } from "express";
 import { db } from "../db";
-import { quizSubmissions, classes, purchaseRequests, currencyTransactions, storeSettings } from "@shared/schema";
+import { quizSubmissions, classes, purchaseRequests, currencyTransactions, storeSettings, storeItems } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
-import { isValidPassportCode, validatePurchaseRequest, getItemById, TRANSACTION_REASONS } from "@shared/currency-types";
+import { isValidPassportCode, validatePurchaseRequest, TRANSACTION_REASONS } from "@shared/currency-types";
 import { z } from "zod";
 import { requireStudentSession, generateStudentSession } from "../middleware/student-auth";
 import { authLimiter } from "../middleware/rateLimiter";
@@ -251,11 +251,21 @@ export function registerSecureIslandRoutes(app: Express) {
         return res.status(400).json({ error: validation.error });
       }
 
-      // Get item details
-      const item = getItemById(itemId);
-      if (!item) {
-        return res.status(400).json({ error: "Item not found" });
+      // Get item details from database
+      const itemData = await db
+        .select()
+        .from(storeItems)
+        .where(and(
+          eq(storeItems.id, itemId),
+          eq(storeItems.isActive, true)
+        ))
+        .limit(1);
+      
+      if (itemData.length === 0) {
+        return res.status(400).json({ error: "Item not found in store" });
       }
+      
+      const item = itemData[0];
 
       // Check if store is open for the class
       const storeStatus = await db
@@ -313,7 +323,7 @@ export function registerSecureIslandRoutes(app: Express) {
         .insert(purchaseRequests)
         .values({
           studentId: student.id,
-          itemType: item.type,
+          itemType: item.itemType,
           itemId: item.id,
           cost: item.cost,
           status: 'pending'
