@@ -30,6 +30,7 @@ import { randomBytes } from "crypto";
 import { eq, desc, count, and, sql } from "drizzle-orm";
 import bcrypt from "bcrypt";
 import { FEATURE_FLAGS } from "./feature-flags";
+import { createQuizSubmissionFast } from "./services/quizSubmissionService";
 
 export interface IStorage {
   // User operations
@@ -50,8 +51,9 @@ export interface IStorage {
   
   // Quiz submission operations
   createQuizSubmission(submission: InsertQuizSubmission): Promise<QuizSubmission>;
-  getSubmissionsByClassId(classId: number): Promise<QuizSubmission[]>;
-  getSubmissionById(id: number): Promise<QuizSubmission | undefined>;
+  createQuizSubmissionOptimized(submission: InsertQuizSubmission): Promise<QuizSubmission>;
+  getSubmissionsByClassId(classId: number): Promise<(QuizSubmission & { passportCode?: string; currencyBalance?: number })[]>;
+  getSubmissionById(id: number): Promise<QuizSubmission & { passportCode?: string; currencyBalance?: number } | undefined>;
   deleteSubmission(id: number): Promise<void>;
   getClassStats(classId: number): Promise<{
     totalSubmissions: number;
@@ -200,41 +202,45 @@ export class DatabaseStorage implements IStorage {
   async deleteClass(id: number): Promise<void> {
     // Delete all related data in proper order to avoid foreign key constraints
     
-    // 1. Delete purchase requests for students in this class
-    // First get all student IDs from quiz_submissions for this class
-    const submissions = await db
-      .select({ id: quizSubmissions.id })
-      .from(quizSubmissions)
-      .where(eq(quizSubmissions.classId, id));
+    // 1. Get all student UUIDs for this class
+    const classStudents = await db
+      .select({ id: students.id })
+      .from(students)
+      .where(eq(students.classId, id));
     
-    const submissionIds = submissions.map(s => s.id);
+    const studentIds = classStudents.map(s => s.id);
     
-    if (submissionIds.length > 0) {
-      // Delete purchase requests for these submissions
+    if (studentIds.length > 0) {
+      // 2. Delete purchase requests and currency transactions for these students
       await db.delete(purchaseRequests)
-        .where(sql`${purchaseRequests.studentId} = ANY(${submissionIds})`);
+        .where(sql`${purchaseRequests.studentId} = ANY(${studentIds})`);
       
-      // Delete currency transactions for these submissions
       await db.delete(currencyTransactions)
-        .where(sql`${currencyTransactions.studentId} = ANY(${submissionIds})`);
+        .where(sql`${currencyTransactions.studentId} = ANY(${studentIds})`);
     }
     
-    // 2. Delete store settings for this class
+    // 3. Delete store settings for this class
     await db.delete(storeSettings).where(eq(storeSettings.classId, id));
     
-    // 3. Delete all quiz submissions for this class
+    // 4. Delete all quiz submissions for this class
     await db.delete(quizSubmissions).where(eq(quizSubmissions.classId, id));
     
-    // 4. Delete all students in this class
+    // 5. Delete all students in this class
     await db.delete(students).where(eq(students.classId, id));
     
-    // 5. Delete all lesson progress for this class
+    // 6. Delete all lesson progress for this class
     await db.delete(lessonProgress).where(eq(lessonProgress.classId, id));
     
-    // 6. Finally delete the class itself
+    // 7. Finally delete the class itself
     await db.delete(classes).where(eq(classes.id, id));
   }
 
+  // New optimized method - fast submission with async rewards
+  async createQuizSubmissionOptimized(submission: InsertQuizSubmission): Promise<QuizSubmission> {
+    return await createQuizSubmissionFast(submission);
+  }
+
+  // Original method - kept for backward compatibility
   async createQuizSubmission(submission: InsertQuizSubmission): Promise<QuizSubmission> {
     // Use transaction to ensure both submission and currency reward are atomic
     return await db.transaction(async (tx) => {
@@ -253,18 +259,43 @@ export class DatabaseStorage implements IStorage {
           .limit(1);
         
         if (existingStudent) {
-          // Student exists, use their ID
+          // Student exists, update their data with quiz results
+          const [updatedStudent] = await tx
+            .update(students)
+            .set({
+              gradeLevel: submission.gradeLevel,
+              animalType: submission.animalType,
+              animalGenius: submission.animalGenius || 'Feeler',
+              personalityType: submission.personalityType,
+              learningStyle: submission.learningStyle,
+              learningScores: submission.learningScores,
+              currencyBalance: (existingStudent.currencyBalance || 0) + CURRENCY_CONSTANTS.QUIZ_COMPLETION_REWARD
+            })
+            .where(eq(students.id, existingStudent.id))
+            .returning();
+          
           studentId = existingStudent.id;
+          console.log(`✅ Updated existing student record: ${submission.studentName} (${passportCode})`);
         } else {
-          // Create new student
+          // Create new student with full profile from quiz
           const [newStudent] = await tx
             .insert(students)
             .values({
               classId: submission.classId,
               displayName: submission.studentName,
+              studentName: submission.studentName,
               passportCode: passportCode,
               walletBalance: CURRENCY_CONSTANTS.QUIZ_COMPLETION_REWARD, // 50 coins
-              pendingBalance: 0
+              pendingBalance: 0,
+              currencyBalance: CURRENCY_CONSTANTS.QUIZ_COMPLETION_REWARD,
+              gradeLevel: submission.gradeLevel,
+              animalType: submission.animalType,
+              animalGenius: submission.animalGenius || 'Feeler',
+              personalityType: submission.personalityType,
+              learningStyle: submission.learningStyle,
+              learningScores: submission.learningScores,
+              avatarData: {},
+              roomData: {}
             })
             .returning();
           
@@ -296,10 +327,10 @@ export class DatabaseStorage implements IStorage {
         .where(eq(classes.id, submission.classId))
         .limit(1);
       
-      if (classRecord) {
-        // Log the quiz completion currency reward
+      if (classRecord && studentId) {
+        // Log the quiz completion currency reward with the new student ID
         const currencyTransaction: InsertCurrencyTransaction = {
-          studentId: submissionRecord.id,
+          studentId: studentId, // Use the student UUID instead of submission ID
           teacherId: classRecord.teacherId,
           amount: CURRENCY_CONSTANTS.QUIZ_COMPLETION_REWARD,
           reason: 'Quiz completion reward',
@@ -308,23 +339,44 @@ export class DatabaseStorage implements IStorage {
 
         await tx.insert(currencyTransactions).values(currencyTransaction);
         console.log(`✅ Awarded ${CURRENCY_CONSTANTS.QUIZ_COMPLETION_REWARD} coins to student ${submissionRecord.studentName} (${passportCode})`);
+      } else if (!classRecord) {
+        console.warn(`⚠️ Could not award coins - class record not found for class ID ${submission.classId}`);
       }
 
       return submissionRecord;
     });
   }
 
-  async getSubmissionsByClassId(classId: number): Promise<QuizSubmission[]> {
-    // Get only the most recent submission for each student in the class
-    const allSubmissions = await db
-      .select()
+  async getSubmissionsByClassId(classId: number): Promise<(QuizSubmission & { passportCode?: string; currencyBalance?: number })[]> {
+    // Get all submissions with student data joined
+    const allSubmissionsWithStudentData = await db
+      .select({
+        // All quiz submission fields
+        id: quizSubmissions.id,
+        studentId: quizSubmissions.studentId,
+        classId: quizSubmissions.classId,
+        studentName: quizSubmissions.studentName,
+        gradeLevel: quizSubmissions.gradeLevel,
+        answers: quizSubmissions.answers,
+        personalityType: quizSubmissions.personalityType,
+        animalType: quizSubmissions.animalType,
+        animalGenius: quizSubmissions.animalGenius,
+        scores: quizSubmissions.scores,
+        learningStyle: quizSubmissions.learningStyle,
+        learningScores: quizSubmissions.learningScores,
+        completedAt: quizSubmissions.completedAt,
+        // Student fields
+        passportCode: students.passportCode,
+        currencyBalance: students.currencyBalance
+      })
       .from(quizSubmissions)
+      .leftJoin(students, eq(quizSubmissions.studentId, students.id))
       .where(eq(quizSubmissions.classId, classId))
       .orderBy(desc(quizSubmissions.completedAt));
     
     // Filter to keep only the most recent submission per student
-    const uniqueSubmissions = new Map<string, QuizSubmission>();
-    allSubmissions.forEach(submission => {
+    const uniqueSubmissions = new Map<string, QuizSubmission & { passportCode?: string; currencyBalance?: number }>();
+    allSubmissionsWithStudentData.forEach(submission => {
       const studentKey = submission.studentName.toLowerCase().trim();
       const existing = uniqueSubmissions.get(studentKey);
       
@@ -339,9 +391,33 @@ export class DatabaseStorage implements IStorage {
       .sort((a, b) => a.studentName.localeCompare(b.studentName));
   }
 
-  async getSubmissionById(id: number): Promise<QuizSubmission | undefined> {
-    const [submission] = await db.select().from(quizSubmissions).where(eq(quizSubmissions.id, id));
-    return submission;
+  async getSubmissionById(id: number): Promise<QuizSubmission & { passportCode?: string; currencyBalance?: number } | undefined> {
+    const result = await db
+      .select({
+        // All quiz submission fields
+        id: quizSubmissions.id,
+        studentId: quizSubmissions.studentId,
+        classId: quizSubmissions.classId,
+        studentName: quizSubmissions.studentName,
+        gradeLevel: quizSubmissions.gradeLevel,
+        answers: quizSubmissions.answers,
+        personalityType: quizSubmissions.personalityType,
+        animalType: quizSubmissions.animalType,
+        animalGenius: quizSubmissions.animalGenius,
+        scores: quizSubmissions.scores,
+        learningStyle: quizSubmissions.learningStyle,
+        learningScores: quizSubmissions.learningScores,
+        completedAt: quizSubmissions.completedAt,
+        // Student fields
+        passportCode: students.passportCode,
+        currencyBalance: students.currencyBalance
+      })
+      .from(quizSubmissions)
+      .leftJoin(students, eq(quizSubmissions.studentId, students.id))
+      .where(eq(quizSubmissions.id, id))
+      .limit(1);
+    
+    return result[0];
   }
 
   async deleteSubmission(id: number): Promise<void> {
@@ -662,25 +738,38 @@ export class DatabaseStorage implements IStorage {
 
   async giveCurrencyWithTransaction(submissionId: number, amount: number, teacherId: number, reason: string): Promise<{ newBalance: number; transaction: CurrencyTransaction }> {
     return await db.transaction(async (tx) => {
-      // Get current balance
+      // New logic: always work with students table
       const [submission] = await tx
-        .select({ currencyBalance: quizSubmissions.currencyBalance })
+        .select({ studentId: quizSubmissions.studentId })
         .from(quizSubmissions)
         .where(eq(quizSubmissions.id, submissionId))
         .limit(1);
       
-      if (!submission) {
-        throw new Error("Student submission not found");
+      if (!submission || !submission.studentId) {
+        throw new Error("Student not found");
       }
       
-      const newBalance = (submission.currencyBalance || 0) + amount;
+      const [student] = await tx
+        .select({ currencyBalance: students.currencyBalance })
+        .from(students)
+        .where(eq(students.id, submission.studentId))
+        .limit(1);
       
-      // Update balance
-      await this.updateCurrencyBalance(submissionId, newBalance, tx);
+      if (!student) {
+        throw new Error("Student record not found");
+      }
       
-      // Create transaction record
+      const newBalance = (student.currencyBalance || 0) + amount;
+      
+      // Update balance in students table
+      await tx
+        .update(students)
+        .set({ currencyBalance: newBalance })
+        .where(eq(students.id, submission.studentId));
+      
+      // Create transaction record with student ID
       const transaction = await this.createCurrencyTransaction({
-        studentId: submissionId,
+        studentId: submission.studentId,
         teacherId,
         amount,
         reason: reason || 'Teacher bonus',
@@ -693,18 +782,28 @@ export class DatabaseStorage implements IStorage {
 
   async takeCurrencyWithTransaction(submissionId: number, amount: number, teacherId: number, reason: string): Promise<{ newBalance: number; actualAmount: number; transaction: CurrencyTransaction }> {
     return await db.transaction(async (tx) => {
-      // Get current balance
+      // New logic: always work with students table
       const [submission] = await tx
-        .select({ currencyBalance: quizSubmissions.currencyBalance })
+        .select({ studentId: quizSubmissions.studentId })
         .from(quizSubmissions)
         .where(eq(quizSubmissions.id, submissionId))
         .limit(1);
       
-      if (!submission) {
-        throw new Error("Student submission not found");
+      if (!submission || !submission.studentId) {
+        throw new Error("Student not found");
       }
       
-      const currentBalance = submission.currencyBalance || 0;
+      const [student] = await tx
+        .select({ currencyBalance: students.currencyBalance })
+        .from(students)
+        .where(eq(students.id, submission.studentId))
+        .limit(1);
+      
+      if (!student) {
+        throw new Error("Student record not found");
+      }
+      
+      const currentBalance = student.currencyBalance || 0;
       const newBalance = Math.max(0, currentBalance - amount);
       const actualAmount = currentBalance - newBalance;
       
@@ -712,12 +811,15 @@ export class DatabaseStorage implements IStorage {
         throw new Error("Student has no coins to take");
       }
       
-      // Update balance
-      await this.updateCurrencyBalance(submissionId, newBalance, tx);
+      // Update balance in students table
+      await tx
+        .update(students)
+        .set({ currencyBalance: newBalance })
+        .where(eq(students.id, submission.studentId));
       
-      // Create transaction record (negative amount)
+      // Create transaction record with student ID (negative amount)
       const transaction = await this.createCurrencyTransaction({
-        studentId: submissionId,
+        studentId: submission.studentId,
         teacherId,
         amount: -actualAmount,
         reason: reason || 'Teacher adjustment',
@@ -786,13 +888,13 @@ export class DatabaseStorage implements IStorage {
         reason: currencyTransactions.reason,
         transactionType: currencyTransactions.transactionType,
         createdAt: currencyTransactions.createdAt,
-        studentName: quizSubmissions.studentName,
+        studentName: students.studentName,
         teacherName: sql<string>`${users.firstName} || ' ' || ${users.lastName}`.as('teacherName')
       })
       .from(currencyTransactions)
-      .innerJoin(quizSubmissions, eq(currencyTransactions.studentId, quizSubmissions.id))
-      .innerJoin(users, eq(currencyTransactions.teacherId, users.id))
-      .where(eq(quizSubmissions.classId, classId))
+      .innerJoin(students, eq(currencyTransactions.studentId, students.id))
+      .leftJoin(users, eq(currencyTransactions.teacherId, users.id)) // leftJoin for system transactions
+      .where(eq(students.classId, classId))
       .orderBy(desc(currencyTransactions.createdAt))
       .limit(100); // Limit to recent 100 transactions
 
@@ -823,3 +925,6 @@ export class DatabaseStorage implements IStorage {
 }
 
 export const storage = new DatabaseStorage();
+
+// Export Supabase-specific methods from storage-supabase.ts
+export { getProfileById, updateLastLoginSupabase as updateLastLogin } from './storage-supabase';

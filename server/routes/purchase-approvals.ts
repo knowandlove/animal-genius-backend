@@ -1,7 +1,7 @@
 // Teacher Purchase Approval Routes
 import type { Express } from "express";
 import { db } from "../db";
-import { purchaseRequests, quizSubmissions, currencyTransactions, classes, storeItems } from "@shared/schema";
+import { purchaseRequests, quizSubmissions, currencyTransactions, classes, storeItems, students } from "@shared/schema";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth";
 import { z } from "zod";
@@ -42,11 +42,11 @@ export function registerPurchaseApprovalRoutes(app: Express) {
         .select({
           id: purchaseRequests.id,
           studentId: purchaseRequests.studentId,
-          studentName: quizSubmissions.studentName,
-          studentBalance: quizSubmissions.currencyBalance,
-          passportCode: quizSubmissions.passportCode,
-          animalType: quizSubmissions.animalType,
-          avatarData: quizSubmissions.avatarData,
+          studentName: students.studentName,
+          studentBalance: students.currencyBalance,
+          passportCode: students.passportCode,
+          animalType: students.animalType,
+          avatarData: students.avatarData,
           itemType: purchaseRequests.itemType,
           itemId: purchaseRequests.itemId,
           cost: purchaseRequests.cost,
@@ -55,10 +55,10 @@ export function registerPurchaseApprovalRoutes(app: Express) {
           processedAt: purchaseRequests.processedAt
         })
         .from(purchaseRequests)
-        .innerJoin(quizSubmissions, eq(purchaseRequests.studentId, quizSubmissions.id))
+        .innerJoin(students, eq(purchaseRequests.studentId, students.id))
         .where(
           and(
-            eq(quizSubmissions.classId, parseInt(classId)),
+            eq(students.classId, parseInt(classId)),
             eq(purchaseRequests.status, 'pending')
           )
         )
@@ -110,13 +110,13 @@ export function registerPurchaseApprovalRoutes(app: Express) {
         .select({
           request: purchaseRequests,
           studentId: purchaseRequests.studentId,
-          studentBalance: quizSubmissions.currencyBalance,
-          classId: quizSubmissions.classId,
-          studentName: quizSubmissions.studentName
+          studentBalance: students.currencyBalance,
+          classId: students.classId,
+          studentName: students.studentName
         })
         .from(purchaseRequests)
-        .innerJoin(quizSubmissions, eq(purchaseRequests.studentId, quizSubmissions.id))
-        .innerJoin(classes, eq(quizSubmissions.classId, classes.id))
+        .innerJoin(students, eq(purchaseRequests.studentId, students.id))
+        .innerJoin(classes, eq(students.classId, classes.id))
         .where(
           and(
             eq(purchaseRequests.id, requestId),
@@ -153,9 +153,9 @@ export function registerPurchaseApprovalRoutes(app: Express) {
 
           // Update student balance and add item to avatarData
           const currentStudent = await tx
-            .select({ avatarData: quizSubmissions.avatarData })
-            .from(quizSubmissions)
-            .where(eq(quizSubmissions.id, studentId))
+            .select({ avatarData: students.avatarData })
+            .from(students)
+            .where(eq(students.id, studentId))
             .limit(1);
           
           const currentAvatarData = currentStudent[0]?.avatarData || {};
@@ -184,9 +184,9 @@ export function registerPurchaseApprovalRoutes(app: Express) {
           console.log('  - Update data:', JSON.stringify(updateData));
           
           const updateResult = await tx
-            .update(quizSubmissions)
+            .update(students)
             .set(updateData)
-            .where(eq(quizSubmissions.id, studentId))
+            .where(eq(students.id, studentId))
             .returning();
             
           console.log('  - Update result:', updateResult?.[0]?.avatarData);
@@ -245,13 +245,13 @@ export function registerPurchaseApprovalRoutes(app: Express) {
             .select({
               request: purchaseRequests,
               studentId: purchaseRequests.studentId,
-              studentBalance: quizSubmissions.currencyBalance,
-              classId: quizSubmissions.classId,
-              studentName: quizSubmissions.studentName
+              studentBalance: students.currencyBalance,
+              classId: students.classId,
+              studentName: students.studentName
             })
             .from(purchaseRequests)
-            .innerJoin(quizSubmissions, eq(purchaseRequests.studentId, quizSubmissions.id))
-            .innerJoin(classes, eq(quizSubmissions.classId, classes.id))
+            .innerJoin(students, eq(purchaseRequests.studentId, students.id))
+            .innerJoin(classes, eq(students.classId, classes.id))
             .where(
               and(
                 eq(purchaseRequests.id, requestId),
@@ -284,9 +284,9 @@ export function registerPurchaseApprovalRoutes(app: Express) {
 
               // Update balance and add item to avatarData
               const currentStudent = await tx
-                .select({ avatarData: quizSubmissions.avatarData })
-                .from(quizSubmissions)
-                .where(eq(quizSubmissions.id, studentId))
+                .select({ avatarData: students.avatarData })
+                .from(students)
+                .where(eq(students.id, studentId))
                 .limit(1);
               
               const currentAvatarData = currentStudent[0]?.avatarData || {};
@@ -298,7 +298,7 @@ export function registerPurchaseApprovalRoutes(app: Express) {
                 : [...currentOwnedItems, request.itemId];
               
               await tx
-                .update(quizSubmissions)
+                .update(students)
                 .set({
                   currencyBalance: (studentBalance || 0) - request.cost,
                   avatarData: {
@@ -306,7 +306,7 @@ export function registerPurchaseApprovalRoutes(app: Express) {
                     owned: newOwnedItems
                   }
                 })
-                .where(eq(quizSubmissions.id, studentId));
+                .where(eq(students.id, studentId));
 
               // Get item name from database for transaction record
               const itemData = await tx

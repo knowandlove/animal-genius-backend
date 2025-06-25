@@ -1,7 +1,7 @@
 // Student Island Routes - No authentication required
 import type { Express } from "express";
 import { db } from "../db";
-import { quizSubmissions, classes, purchaseRequests, currencyTransactions, storeSettings, storeItems } from "@shared/schema";
+import { students, classes, purchaseRequests, currencyTransactions, storeSettings, storeItems, quizSubmissions } from "@shared/schema";
 import { eq, and, desc, asc, inArray } from "drizzle-orm";
 import { isValidPassportCode, TRANSACTION_REASONS } from "@shared/currency-types";
 import { z } from "zod";
@@ -26,24 +26,24 @@ export function registerIslandRoutes(app: Express) {
       // 1. Get student island data with class info
       const studentData = await db
         .select({
-          id: quizSubmissions.id,
-          studentName: quizSubmissions.studentName,
-          gradeLevel: quizSubmissions.gradeLevel,
-          personalityType: quizSubmissions.personalityType,
-          animalType: quizSubmissions.animalType,
-          animalGenius: quizSubmissions.animalGenius,
-          learningStyle: quizSubmissions.learningStyle,
-          currencyBalance: quizSubmissions.currencyBalance,
-          avatarData: quizSubmissions.avatarData,
-          roomData: quizSubmissions.roomData,
-          completedAt: quizSubmissions.completedAt,
-          passportCode: quizSubmissions.passportCode,
+          id: students.id,
+          studentName: students.studentName,
+          gradeLevel: students.gradeLevel,
+          personalityType: students.personalityType,
+          animalType: students.animalType,
+          animalGenius: students.animalGenius,
+          learningStyle: students.learningStyle,
+          currencyBalance: students.currencyBalance,
+          avatarData: students.avatarData,
+          roomData: students.roomData,
+          createdAt: students.createdAt,
+          passportCode: students.passportCode,
           className: classes.name,
           classId: classes.id
         })
-        .from(quizSubmissions)
-        .innerJoin(classes, eq(quizSubmissions.classId, classes.id))
-        .where(eq(quizSubmissions.passportCode, passportCode))
+        .from(students)
+        .innerJoin(classes, eq(students.classId, classes.id))
+        .where(eq(students.passportCode, passportCode))
         .limit(1);
 
       if (studentData.length === 0) {
@@ -106,38 +106,43 @@ export function registerIslandRoutes(app: Express) {
         console.log(`✅ Cache hit for ${cacheKey}`);
       }
 
-      // 3. Get store catalog from cache or database
-      const catalogCacheKey = 'store-catalog:active';
-      let storeCatalog = cache.get<any[]>(catalogCacheKey);
+      // 3. Get store catalog ONLY if store is open
+      let storeCatalog = [];
       
-      if (!storeCatalog) {
-        console.log(`⚡ Cache miss for ${catalogCacheKey}, fetching from DB`);
-        // Use imports from top of file
+      if (storeStatus.isOpen) {
+        const catalogCacheKey = 'store-catalog:active';
+        storeCatalog = cache.get<any[]>(catalogCacheKey);
         
-        const items = await db
-          .select()
-          .from(storeItems)
-          .where(eq(storeItems.isActive, true))
-          .orderBy(asc(storeItems.sortOrder), asc(storeItems.name));
-        
-        // Use StorageRouter to prepare items with image URLs
-        const preparedItems = await StorageRouter.prepareStoreItemsResponse(items);
-        
-        storeCatalog = preparedItems.map(item => ({
-          id: item.id,
-          name: item.name,
-          type: item.itemType,
-          cost: item.cost,
-          description: item.description,
-          rarity: item.rarity,
-          imageUrl: item.imageUrl // Now includes the imageUrl!
-        }));
-        
-        // Cache for 10 minutes
-        cache.set(catalogCacheKey, storeCatalog, 600);
-        console.log(`💾 Cached store catalog for ${catalogCacheKey}`);
+        if (!storeCatalog) {
+          console.log(`⚡ Cache miss for ${catalogCacheKey}, fetching from DB`);
+          
+          const items = await db
+            .select()
+            .from(storeItems)
+            .where(eq(storeItems.isActive, true))
+            .orderBy(asc(storeItems.sortOrder), asc(storeItems.name));
+          
+          // Use StorageRouter to prepare items with image URLs
+          const preparedItems = await StorageRouter.prepareStoreItemsResponse(items);
+          
+          storeCatalog = preparedItems.map(item => ({
+            id: item.id,
+            name: item.name,
+            type: item.itemType,
+            cost: item.cost,
+            description: item.description,
+            rarity: item.rarity,
+            imageUrl: item.imageUrl
+          }));
+          
+          // Cache for 10 minutes
+          cache.set(catalogCacheKey, storeCatalog, 600);
+          console.log(`💾 Cached store catalog for ${catalogCacheKey}`);
+        } else {
+          console.log(`✅ Cache hit for ${catalogCacheKey}`);
+        }
       } else {
-        console.log(`✅ Cache hit for ${catalogCacheKey}`);
+        console.log(`🚫 Store is closed, skipping catalog load`);
       }
 
       // 4. Get purchase requests and calculate wallet
@@ -202,7 +207,7 @@ export function registerIslandRoutes(app: Express) {
           roomData: student.roomData || { furniture: [] },
           className: student.className,
           classId: student.classId,
-          completedAt: student.completedAt,
+          createdAt: student.createdAt,
           inventoryItems // Add this field that the frontend expects
         },
         wallet,
@@ -231,25 +236,25 @@ export function registerIslandRoutes(app: Express) {
       // Find student by passport code
       const studentData = await db
         .select({
-          id: quizSubmissions.id,
-          studentName: quizSubmissions.studentName,
-          gradeLevel: quizSubmissions.gradeLevel,
-          personalityType: quizSubmissions.personalityType,
-          animalType: quizSubmissions.animalType,
-          animalGenius: quizSubmissions.animalGenius,
-          learningStyle: quizSubmissions.learningStyle,
-          currencyBalance: quizSubmissions.currencyBalance,
-          avatarData: quizSubmissions.avatarData,
-          roomData: quizSubmissions.roomData,
-          completedAt: quizSubmissions.completedAt,
-          passportCode: quizSubmissions.passportCode,
+          id: students.id,
+          studentName: students.studentName,
+          gradeLevel: students.gradeLevel,
+          personalityType: students.personalityType,
+          animalType: students.animalType,
+          animalGenius: students.animalGenius,
+          learningStyle: students.learningStyle,
+          currencyBalance: students.currencyBalance,
+          avatarData: students.avatarData,
+          roomData: students.roomData,
+          createdAt: students.createdAt,
+          passportCode: students.passportCode,
           // Class info
           className: classes.name,
           classId: classes.id
         })
-        .from(quizSubmissions)
-        .innerJoin(classes, eq(quizSubmissions.classId, classes.id))
-        .where(eq(quizSubmissions.passportCode, passportCode))
+        .from(students)
+        .innerJoin(classes, eq(students.classId, classes.id))
+        .where(eq(students.passportCode, passportCode))
         .limit(1);
 
       if (studentData.length === 0) {
@@ -273,7 +278,7 @@ export function registerIslandRoutes(app: Express) {
         roomData: student.roomData || { furniture: [] },
         className: student.className,
         classId: student.classId,
-        completedAt: student.completedAt
+        createdAt: student.createdAt
       };
 
       res.json(islandData);
@@ -298,9 +303,9 @@ export function registerIslandRoutes(app: Express) {
           classId: classes.id,
           className: classes.name
         })
-        .from(quizSubmissions)
-        .innerJoin(classes, eq(quizSubmissions.classId, classes.id))
-        .where(eq(quizSubmissions.passportCode, passportCode))
+        .from(students)
+        .innerJoin(classes, eq(students.classId, classes.id))
+        .where(eq(students.passportCode, passportCode))
         .limit(1);
 
       if (studentClass.length === 0) {
@@ -405,12 +410,12 @@ export function registerIslandRoutes(app: Express) {
       // Get student data
       const studentData = await db
         .select({
-          id: quizSubmissions.id,
-          currencyBalance: quizSubmissions.currencyBalance,
-          classId: quizSubmissions.classId
+          id: students.id,
+          currencyBalance: students.currencyBalance,
+          classId: students.classId
         })
-        .from(quizSubmissions)
-        .where(eq(quizSubmissions.passportCode, passportCode))
+        .from(students)
+        .where(eq(students.passportCode, passportCode))
         .limit(1);
 
       if (studentData.length === 0) {
@@ -449,6 +454,20 @@ export function registerIslandRoutes(app: Express) {
 
       if (storeStatus.length === 0 || !storeStatus[0].isOpen) {
         return res.status(400).json({ message: "Store is currently closed" });
+      }
+      
+      const storeSettingsData = storeStatus[0];
+      
+      // Get class info for teacher ID
+      const [classInfo] = await db
+        .select()
+        .from(classes)
+        .where(eq(classes.id, student.classId))
+        .limit(1);
+      
+      if (!classInfo) {
+        console.error(`Class not found for student ${student.id} with classId ${student.classId}`);
+        return res.status(500).json({ message: "Class configuration error" });
       }
 
       // Check for existing pending request for same item
@@ -491,6 +510,10 @@ export function registerIslandRoutes(app: Express) {
         });
       }
 
+      // Check if item qualifies for auto-approval
+      const autoApprovalThreshold = storeSettingsData.autoApprovalThreshold;
+      const shouldAutoApprove = autoApprovalThreshold !== null && item.cost <= autoApprovalThreshold;
+      
       // Create purchase request
       const [purchaseRequest] = await db
         .insert(purchaseRequests)
@@ -499,14 +522,80 @@ export function registerIslandRoutes(app: Express) {
           itemType: item.itemType,
           itemId: itemId,
           cost: item.cost,
-          status: 'pending'
+          status: shouldAutoApprove ? 'approved' : 'pending',
+          processedAt: shouldAutoApprove ? new Date() : null,
+          processedBy: shouldAutoApprove ? classInfo.teacherId : null // Use teacher ID instead of -1
         })
         .returning();
 
-      res.json({
-        message: "Purchase request submitted! Waiting for teacher approval.",
-        request: purchaseRequest
-      });
+      // If auto-approved, process the purchase immediately
+      if (shouldAutoApprove) {
+        // Start transaction to update balance and add item
+        await db.transaction(async (tx) => {
+          // Get current avatar data
+          const currentStudent = await tx
+            .select({ avatarData: students.avatarData })
+            .from(students)
+            .where(eq(students.id, student.id))
+            .limit(1);
+          
+          const currentAvatarData = currentStudent[0]?.avatarData || {};
+          const currentOwnedItems = currentAvatarData.owned || [];
+          
+          // Add item to owned items if not already owned
+          const newOwnedItems = currentOwnedItems.includes(itemId)
+            ? currentOwnedItems
+            : [...currentOwnedItems, itemId];
+          
+          // Update student balance and avatar data atomically
+          const result = await tx
+            .update(students)
+            .set({
+              currencyBalance: sql`${students.currencyBalance} - ${item.cost}`,
+              avatarData: {
+                ...currentAvatarData,
+                owned: newOwnedItems
+              }
+            })
+            .where(and(
+              eq(students.id, student.id),
+              sql`${students.currencyBalance} >= ${item.cost}` // Ensure balance is sufficient AT THE TIME of update
+            ))
+            .returning();
+          
+          // If the update affected 0 rows, it means the balance was insufficient
+          if (result.length === 0) {
+            throw new Error("Insufficient funds");
+          }
+
+          // Create currency transaction record
+          await tx
+            .insert(currencyTransactions)
+            .values({
+              studentId: student.id,
+              teacherId: classInfo.teacherId, // Use the actual teacher ID from class
+              amount: -item.cost,
+              reason: `Auto-approved purchase: ${item.name}`,
+              transactionType: 'purchase'
+            });
+        });
+        
+        // Clear caches to reflect the changes
+        const cacheKey = `island-page-data:${passportCode}`;
+        cache.del(cacheKey);
+        
+        res.json({
+          message: `Purchase auto-approved! ${item.name} has been added to your inventory.`,
+          request: purchaseRequest,
+          autoApproved: true
+        });
+      } else {
+        res.json({
+          message: "Purchase request submitted! Waiting for teacher approval.",
+          request: purchaseRequest,
+          autoApproved: false
+        });
+      }
     } catch (error) {
       console.error("Purchase request error:", error);
       res.status(500).json({ message: "Failed to create purchase request" });
@@ -524,9 +613,9 @@ export function registerIslandRoutes(app: Express) {
 
       // Get student ID
       const studentData = await db
-        .select({ id: quizSubmissions.id })
-        .from(quizSubmissions)
-        .where(eq(quizSubmissions.passportCode, passportCode))
+        .select({ id: students.id })
+        .from(students)
+        .where(eq(students.passportCode, passportCode))
         .limit(1);
 
       if (studentData.length === 0) {
@@ -569,12 +658,12 @@ export function registerIslandRoutes(app: Express) {
       // Get student data
       const studentData = await db
         .select({
-          id: quizSubmissions.id,
-          avatarData: quizSubmissions.avatarData,
-          roomData: quizSubmissions.roomData
+          id: students.id,
+          avatarData: students.avatarData,
+          roomData: students.roomData
         })
-        .from(quizSubmissions)
-        .where(eq(quizSubmissions.passportCode, passportCode))
+        .from(students)
+        .where(eq(students.passportCode, passportCode))
         .limit(1);
       
       if (studentData.length === 0) {
@@ -596,12 +685,12 @@ export function registerIslandRoutes(app: Express) {
       
       // Update database
       await db
-        .update(quizSubmissions)
+        .update(students)
         .set({
           avatarData: updatedAvatarData,
           roomData: updatedRoomData
         })
-        .where(eq(quizSubmissions.id, student.id));
+        .where(eq(students.id, student.id));
       
       res.json({
         message: "Island state saved successfully!",
@@ -633,11 +722,11 @@ export function registerIslandRoutes(app: Express) {
       // Get student data
       const studentData = await db
         .select({
-          id: quizSubmissions.id,
-          avatarData: quizSubmissions.avatarData
+          id: students.id,
+          avatarData: students.avatarData
         })
-        .from(quizSubmissions)
-        .where(eq(quizSubmissions.passportCode, passportCode))
+        .from(students)
+        .where(eq(students.passportCode, passportCode))
         .limit(1);
       
       if (studentData.length === 0) {
@@ -665,14 +754,14 @@ export function registerIslandRoutes(app: Express) {
       
       // Update database
       await db
-        .update(quizSubmissions)
+        .update(students)
         .set({
           avatarData: {
             ...currentAvatarData,
             equipped: newEquipped
           }
         })
-        .where(eq(quizSubmissions.id, student.id));
+        .where(eq(students.id, student.id));
       
       res.json({
         message: itemId ? "Item equipped!" : "Item unequipped!",
@@ -698,11 +787,11 @@ export function registerIslandRoutes(app: Express) {
       // Get student data
       const studentData = await db
         .select({
-          id: quizSubmissions.id,
-          avatarData: quizSubmissions.avatarData
+          id: students.id,
+          avatarData: students.avatarData
         })
-        .from(quizSubmissions)
-        .where(eq(quizSubmissions.passportCode, passportCode))
+        .from(students)
+        .where(eq(students.passportCode, passportCode))
         .limit(1);
       
       if (studentData.length === 0) {
@@ -732,11 +821,11 @@ export function registerIslandRoutes(app: Express) {
       
       // Update database
       await db
-        .update(quizSubmissions)
+        .update(students)
         .set({
           avatarData: updatedAvatarData
         })
-        .where(eq(quizSubmissions.id, student.id));
+        .where(eq(students.id, student.id));
       
       res.json({
         message: "Avatar customization saved!",
@@ -770,12 +859,12 @@ export function registerIslandRoutes(app: Express) {
       // Get student data
       const studentData = await db
         .select({
-          id: quizSubmissions.id,
-          roomData: quizSubmissions.roomData,
-          avatarData: quizSubmissions.avatarData
+          id: students.id,
+          roomData: students.roomData,
+          avatarData: students.avatarData
         })
-        .from(quizSubmissions)
-        .where(eq(quizSubmissions.passportCode, passportCode))
+        .from(students)
+        .where(eq(students.passportCode, passportCode))
         .limit(1);
       
       if (studentData.length === 0) {
@@ -811,11 +900,11 @@ export function registerIslandRoutes(app: Express) {
       
       // Update database
       await db
-        .update(quizSubmissions)
+        .update(students)
         .set({
           roomData: updatedRoomData
         })
-        .where(eq(quizSubmissions.id, student.id));
+        .where(eq(students.id, student.id));
       
       res.json({
         message: "Room decoration saved!",

@@ -13,6 +13,12 @@ const storeToggleSchema = z.object({
   isOpen: z.boolean()
 });
 
+// Auto-approval threshold schema
+const autoApprovalSchema = z.object({
+  classId: z.number().positive(),
+  threshold: z.number().min(0).max(1000).nullable() // null means no auto-approval
+});
+
 // Store hours schema
 const storeHoursSchema = z.object({
   classId: z.number().positive(),
@@ -159,6 +165,7 @@ export function registerStoreManagementRoutes(app: Express) {
         settings: {
           openedAt: storeData.openedAt,
           closesAt: storeData.closesAt,
+          autoApprovalThreshold: storeData.autoApprovalThreshold,
           lastUpdated: storeData.updatedAt,
           updatedBy: storeData.updatedBy
         }
@@ -166,6 +173,74 @@ export function registerStoreManagementRoutes(app: Express) {
     } catch (error) {
       console.error("Get store status error:", error);
       res.status(500).json({ message: "Failed to get store status" });
+    }
+  });
+
+  // Set auto-approval threshold
+  app.post("/api/currency/store/auto-approval", requireAuth, async (req: any, res) => {
+    try {
+      const { classId, threshold } = autoApprovalSchema.parse(req.body);
+      const teacherId = req.user?.userId || req.user?.id;
+      
+      // Verify teacher owns this class
+      const classData = await db
+        .select()
+        .from(classes)
+        .where(
+          and(
+            eq(classes.id, classId),
+            eq(classes.teacherId, teacherId!)
+          )
+        )
+        .limit(1);
+
+      if (classData.length === 0) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // Check if store settings exist
+      const existingSettings = await db
+        .select()
+        .from(storeSettings)
+        .where(eq(storeSettings.classId, classId))
+        .limit(1);
+
+      if (existingSettings.length === 0) {
+        // Create new store settings with auto-approval threshold
+        await db
+          .insert(storeSettings)
+          .values({
+            classId,
+            isOpen: false,
+            autoApprovalThreshold: threshold,
+            createdAt: new Date()
+          });
+      } else {
+        // Update existing settings
+        await db
+          .update(storeSettings)
+          .set({
+            autoApprovalThreshold: threshold,
+            updatedAt: new Date()
+          })
+          .where(eq(storeSettings.classId, classId));
+      }
+
+      const message = threshold === null 
+        ? "Auto-approval disabled. All purchases will require manual approval."
+        : `Auto-approval enabled for items ${threshold} coins or less.`;
+
+      res.json({ 
+        success: true, 
+        message,
+        threshold
+      });
+    } catch (error) {
+      console.error("Set auto-approval threshold error:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid request data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to set auto-approval threshold" });
     }
   });
 
