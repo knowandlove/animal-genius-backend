@@ -4,6 +4,26 @@ import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
 
 // ============================================
+// SUPABASE AUTH INTEGRATION
+// ============================================
+
+// Profiles table - links to Supabase auth.users
+export const profiles = pgTable("profiles", {
+  id: text("id").primaryKey(), // UUID from auth.users
+  firstName: text("first_name").notNull(),
+  lastName: text("last_name").notNull(),
+  email: text("email").notNull().unique(),
+  schoolOrganization: text("school_organization").notNull(),
+  roleTitle: text("role_title"),
+  howHeardAbout: text("how_heard_about"),
+  personalityAnimal: varchar("personality_animal", { length: 50 }),
+  isAdmin: boolean("is_admin").default(false).notNull(),
+  lastLoginAt: timestamp("last_login_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// ============================================
 // EXISTING TABLES (unchanged)
 // ============================================
 
@@ -34,20 +54,31 @@ export const classes = pgTable("classes", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// Students table
+// Students table - Primary table for student profiles
 export const students = pgTable("students", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   classId: integer("class_id").references(() => classes.id),
   displayName: text("display_name").notNull(),
+  studentName: text("student_name").notNull(),
   passportCode: varchar("passport_code", { length: 8 }).notNull().unique(),
   walletBalance: integer("wallet_balance").default(0).notNull(),
   pendingBalance: integer("pending_balance").default(0).notNull(),
+  currencyBalance: integer("currency_balance").default(0).notNull(),
+  gradeLevel: text("grade_level"),
+  animalType: text("animal_type").notNull().default('meerkat'),
+  animalGenius: text("animal_genius").notNull().default('Feeler'),
+  personalityType: varchar("personality_type", { length: 4 }),
+  learningStyle: text("learning_style"),
+  learningScores: jsonb("learning_scores").default('{}').notNull(),
+  avatarData: jsonb("avatar_data").default('{}').notNull(),
+  roomData: jsonb("room_data").default('{}').notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-// Quiz submissions table
+// Quiz submissions table - Only for quiz attempts, not student profiles
 export const quizSubmissions = pgTable("quiz_submissions", {
   id: serial("id").primaryKey(),
+  studentId: text("student_id").references(() => students.id),
   classId: integer("class_id").notNull(),
   studentName: text("student_name").notNull(),
   gradeLevel: text("grade_level"),
@@ -59,11 +90,6 @@ export const quizSubmissions = pgTable("quiz_submissions", {
   learningStyle: text("learning_style").notNull(),
   learningScores: jsonb("learning_scores").notNull(),
   completedAt: timestamp("completed_at").defaultNow(),
-  passportCode: varchar("passport_code", { length: 8 }).unique(),
-  currencyBalance: integer("currency_balance").default(0).notNull(),
-  avatarData: jsonb("avatar_data").default('{}').notNull(),
-  roomData: jsonb("room_data").default('{}').notNull(),
-  studentId: text("student_id").references(() => students.id),
 });
 
 // Lesson progress tracking
@@ -90,7 +116,7 @@ export const adminLogs = pgTable("admin_logs", {
 // Currency system tables
 export const currencyTransactions = pgTable("currency_transactions", {
   id: serial("id").primaryKey(),
-  studentId: integer("student_id").references(() => quizSubmissions.id).notNull(),
+  studentId: text("student_id").references(() => students.id).notNull(),
   teacherId: integer("teacher_id").references(() => users.id).notNull(),
   amount: integer("amount").notNull(),
   reason: varchar("reason", { length: 255 }),
@@ -104,12 +130,13 @@ export const storeSettings = pgTable("store_settings", {
   isOpen: boolean("is_open").default(false).notNull(),
   openedAt: timestamp("opened_at"),
   closesAt: timestamp("closes_at"),
+  autoApprovalThreshold: integer("auto_approval_threshold"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const purchaseRequests = pgTable("purchase_requests", {
   id: serial("id").primaryKey(),
-  studentId: integer("student_id").references(() => quizSubmissions.id).notNull(),
+  studentId: text("student_id").references(() => students.id).notNull(),
   itemType: varchar("item_type", { length: 50 }).notNull(),
   itemId: varchar("item_id", { length: 50 }).notNull(),
   cost: integer("cost").notNull(),
@@ -203,7 +230,7 @@ export const studentsRelations = relations(students, ({ one, many }) => ({
   purchaseRequests: many(purchaseRequests),
 }));
 
-export const quizSubmissionsRelations = relations(quizSubmissions, ({ one, many }) => ({
+export const quizSubmissionsRelations = relations(quizSubmissions, ({ one }) => ({
   class: one(classes, {
     fields: [quizSubmissions.classId],
     references: [classes.id],
@@ -212,8 +239,6 @@ export const quizSubmissionsRelations = relations(quizSubmissions, ({ one, many 
     fields: [quizSubmissions.studentId],
     references: [students.id],
   }),
-  currencyTransactions: many(currencyTransactions),
-  purchaseRequests: many(purchaseRequests),
 }));
 
 export const lessonProgressRelations = relations(lessonProgress, ({ one }) => ({
@@ -228,9 +253,9 @@ export const lessonProgressRelations = relations(lessonProgress, ({ one }) => ({
 }));
 
 export const currencyTransactionsRelations = relations(currencyTransactions, ({ one }) => ({
-  student: one(quizSubmissions, {
+  student: one(students, {
     fields: [currencyTransactions.studentId],
-    references: [quizSubmissions.id],
+    references: [students.id],
   }),
   teacher: one(users, {
     fields: [currencyTransactions.teacherId],
@@ -246,9 +271,9 @@ export const storeSettingsRelations = relations(storeSettings, ({ one }) => ({
 }));
 
 export const purchaseRequestsRelations = relations(purchaseRequests, ({ one }) => ({
-  student: one(quizSubmissions, {
+  student: one(students, {
     fields: [purchaseRequests.studentId],
-    references: [quizSubmissions.id],
+    references: [students.id],
   }),
   processedByUser: one(users, {
     fields: [purchaseRequests.processedBy],
@@ -441,6 +466,7 @@ export const updateItemPositionSchema = createItemPositionSchema.partial().omit(
 // ============================================
 
 // Existing types
+export type Profile = typeof profiles.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type UpdateUserProfile = z.infer<typeof updateUserProfileSchema>;

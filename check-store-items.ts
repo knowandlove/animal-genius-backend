@@ -1,78 +1,91 @@
-// Run this with: npx tsx check-store-items.ts
+// Check all store items that need positioning
 import { config } from 'dotenv';
-import { drizzle } from 'drizzle-orm/node-postgres';
-import { Pool } from 'pg';
-import { storeItems, assets } from './shared/schema';
-import { eq } from 'drizzle-orm';
-
-// Load environment variables
 config();
 
-// Create database connection
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: 1
-});
-
-const db = drizzle(pool);
-
 async function checkStoreItems() {
-  console.log('\n=== CHECKING STORE ITEMS ===\n');
-  console.log('Cloud storage enabled:', process.env.USE_CLOUD_STORAGE);
-  console.log('Database URL:', process.env.DATABASE_URL?.substring(0, 30) + '...');
+  console.log('🔍 Checking Store Items and Positioning Status\n');
   
   try {
-    // Get all store items
-    const items = await db.select().from(storeItems).orderBy(storeItems.createdAt);
+    const { db } = await import('./server/db.js');
+    const { sql } = await import('drizzle-orm');
     
-    console.log(`\nFound ${items.length} store items:\n`);
+    // Get all avatar items from store
+    const storeResult = await db.execute(sql`
+      SELECT 
+        s.id, 
+        s.name, 
+        s.item_type,
+        s.cost,
+        COUNT(p.id) as position_count
+      FROM store_items s
+      LEFT JOIN item_animal_positions p ON s.id = p.item_id
+      WHERE s.item_type LIKE 'avatar%'
+      GROUP BY s.id, s.name, s.item_type, s.cost
+      ORDER BY s.item_type, s.name
+    `);
     
-    for (const item of items) {
-      console.log(`\n--- ${item.name} ---`);
-      console.log(`ID: ${item.id}`);
-      console.log(`Type: ${item.itemType}`);
-      console.log(`Cost: ${item.cost}`);
-      console.log(`Active: ${item.isActive}`);
-      console.log(`Image URL: ${item.imageUrl || 'NONE'}`);
-      console.log(`Asset ID: ${item.assetId || 'NONE'}`);
-      console.log(`Legacy Image URL: ${item.legacyImageUrl || 'NONE'}`);
-      console.log(`Created: ${item.createdAt}`);
+    console.log(`Found ${storeResult.rows.length} avatar items in store:\n`);
+    
+    const animals = ['meerkat', 'panda', 'owl', 'beaver', 'elephant', 'otter', 'parrot', 'border-collie'];
+    const totalAnimals = animals.length;
+    
+    storeResult.rows.forEach((item: any) => {
+      const completion = (item.position_count / totalAnimals * 100).toFixed(0);
+      const status = item.position_count === 0 ? '❌ Not positioned' : 
+                     item.position_count < totalAnimals ? `⚠️  ${item.position_count}/${totalAnimals} positioned` :
+                     '✅ Fully positioned';
       
-      // If has assetId, fetch the asset
-      if (item.assetId) {
-        const [asset] = await db.select().from(assets).where(eq(assets.id, item.assetId));
-        if (asset) {
-          console.log(`\n  Asset Details:`);
-          console.log(`  - Bucket: ${asset.bucket}`);
-          console.log(`  - Path: ${asset.path}`);
-          console.log(`  - Type: ${asset.type}`);
-          console.log(`  - Full URL: https://zqyvfnbwpagguutzdvpy.supabase.co/storage/v1/object/public/${asset.bucket}/${asset.path}`);
-        } else {
-          console.log(`\n  ⚠️  Asset ID ${item.assetId} NOT FOUND in assets table!`);
-        }
-      } else {
-        console.log(`\n  ❌ No asset ID - using legacy storage`);
+      console.log(`\n${item.name} (${item.item_type})`);
+      console.log(`  ID: ${item.id}`);
+      console.log(`  Cost: ${item.cost} coins`);
+      console.log(`  Status: ${status} (${completion}% complete)`);
+      
+      if (item.position_count > 0 && item.position_count < totalAnimals) {
+        // Show which animals are missing
+        checkMissingAnimals(item.id, item.name);
+      }
+    });
+    
+    // Summary
+    const totalItems = storeResult.rows.length;
+    const fullyPositioned = storeResult.rows.filter((item: any) => item.position_count === totalAnimals).length;
+    const notPositioned = storeResult.rows.filter((item: any) => item.position_count === 0).length;
+    const partiallyPositioned = totalItems - fullyPositioned - notPositioned;
+    
+    console.log('\n\n📊 SUMMARY');
+    console.log('=' .repeat(50));
+    console.log(`Total avatar items: ${totalItems}`);
+    console.log(`✅ Fully positioned: ${fullyPositioned}`);
+    console.log(`⚠️  Partially positioned: ${partiallyPositioned}`);
+    console.log(`❌ Not positioned: ${notPositioned}`);
+    console.log(`\nTotal positions needed: ${totalItems * totalAnimals}`);
+    console.log(`Total positions set: ${storeResult.rows.reduce((sum: number, item: any) => sum + parseInt(item.position_count), 0)}`);
+    
+    async function checkMissingAnimals(itemId: string, itemName: string) {
+      const posResult = await db.execute(sql`
+        SELECT animal_type 
+        FROM item_animal_positions 
+        WHERE item_id = ${itemId}
+      `);
+      
+      const positionedAnimals = posResult.rows.map((row: any) => row.animal_type);
+      const missing = animals.filter(animal => !positionedAnimals.includes(animal));
+      
+      if (missing.length > 0) {
+        console.log(`  Missing: ${missing.join(', ')}`);
       }
     }
     
-    // Summary
-    const withAssetId = items.filter(i => i.assetId).length;
-    const withoutAssetId = items.filter(i => !i.assetId).length;
+    console.log('\n\n💡 Next Steps:');
+    console.log('1. Go to /admin/item-positioner');
+    console.log('2. Select items that are not fully positioned');
+    console.log('3. Position them for each animal');
+    console.log('4. Use "Copy to All Animals" for items that work the same on all animals');
     
-    console.log('\n=== SUMMARY ===');
-    console.log(`Total items: ${items.length}`);
-    console.log(`With cloud storage (assetId): ${withAssetId}`);
-    console.log(`Without cloud storage: ${withoutAssetId}`);
-    
-    if (withoutAssetId > 0 && process.env.USE_CLOUD_STORAGE === 'true') {
-      console.log(`\n⚠️  WARNING: Cloud storage is enabled but ${withoutAssetId} items don't have assetId!`);
-      console.log('These items will show broken images when students try to equip them.');
-    }
-    
+    process.exit(0);
   } catch (error) {
     console.error('Error:', error);
-  } finally {
-    await pool.end();
+    process.exit(1);
   }
 }
 
