@@ -37,11 +37,21 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: (origin, callback) => {
+    // Log the origin for debugging
+    console.log('CORS check - Origin:', origin);
+    console.log('CORS check - Allowed origins:', allowedOrigins);
+    
     // Allow requests with no origin (like mobile apps or Postman)
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      // For local development, allow file:// protocol
+      if (origin && origin.startsWith('file://')) {
+        callback(null, true);
+      } else {
+        console.log('CORS BLOCKED:', origin);
+        callback(new Error('Not allowed by CORS'));
+      }
     }
   },
   credentials: true,
@@ -116,8 +126,8 @@ app.use((req, res, next) => {
     // Frontend is now served separately via Vite dev server or Vercel
     // No need to serve static files from backend
 
-    // Use PORT from environment or default to 5000
-    const port = process.env.PORT || 5000;
+    // Use PORT from environment or default to 5001
+    const port = process.env.PORT || 5001;
     
     // Handle WebSocket upgrade - let Vite handle its own WebSocket connections
     server.on('upgrade', (request, socket, head) => {

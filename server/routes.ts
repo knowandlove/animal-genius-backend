@@ -20,7 +20,9 @@ import { registerPurchaseApprovalRoutes } from "./routes/purchase-approvals";
 import { registerStoreManagementRoutes } from "./routes/store-management";
 import { registerItemPositionRoutes } from "./routes/item-positions";
 import { registerStoreAdminRoutes } from "./routes/store/admin";
-import { requireAuth } from "./middleware/auth";
+import { requireAuth, authenticateAdmin } from "./middleware/auth";
+import authRoutes from "./routes/auth";
+import meRoutes from './routes/me';
 // import storeRoutes from "./routes/store"; // OLD SYSTEM - commented out
 import assetsRouter from './routes/admin/assets-direct';
 import storeRouter from './routes/store';
@@ -28,6 +30,7 @@ import adminUploadRoutes from "./routes/admin/upload-asset";
 import monitoringRoutes from "./routes/admin/monitoring";
 import quickStatsRoutes from "./routes/admin/quick-stats";
 import debugStoreRouter from './routes/debug-store';
+import emergencyLoginRouter from './routes/emergency-login';
 
 // Feature flags to disable unused features
 const FEATURE_FLAGS = {
@@ -80,32 +83,7 @@ function tryParseInt(value: string): number | null {
  * 3. For optional parameters, use tryParseInt() and check for null
  */
 
-// Middleware to verify admin access
-async function authenticateAdmin(req: any, res: any, next: any) {
-  const token = req.headers.authorization?.split(' ')[1];
-  
-  if (!token) {
-    return res.status(401).json({ message: "Access token required" });
-  }
-  
-  jwt.verify(token, jwtSecret, async (err: any, decoded: any) => {
-    if (err) {
-      return res.status(403).json({ message: "Invalid token" });
-    }
-    
-    try {
-      const user = await storage.getUserById(decoded.userId);
-      if (!user || !user.isAdmin) {
-        return res.status(403).json({ message: "Admin access required" });
-      }
-      req.user = decoded;
-      req.adminUser = user;
-      next();
-    } catch (error) {
-      return res.status(403).json({ message: "Admin verification failed" });
-    }
-  });
-}
+// Admin middleware is now imported from ./middleware/auth
 
 export async function registerRoutes(app: Express): Promise<Server> {
 
@@ -119,8 +97,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Register secure student island routes (session-based auth)
   registerSecureIslandRoutes(app);
+  
+  // Register the new /api/me endpoint
+  app.use('/api', meRoutes);
+  
+  // Use new Supabase auth routes
+  app.use('/api/auth', authRoutes);
+  
+  // TEMPORARY: Emergency login for migration period
+  app.use('/api', emergencyLoginRouter);
 
-  // Teacher registration
+  // Teacher registration (OLD - TO BE REMOVED)
   app.post("/api/register", authLimiter, async (req, res) => {
     try {
       const userData = insertUserSchema.parse(req.body);
@@ -412,11 +399,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Submit quiz
+  // Submit quiz - OPTIMIZED VERSION
   app.post("/api/quiz/submit", async (req, res) => {
     try {
       const submission = insertQuizSubmissionSchema.parse(req.body);
-      const result = await storage.createQuizSubmission(submission);
+      
+      // Use the optimized method for fast submission
+      const result = await storage.createQuizSubmissionOptimized(submission);
+      
+      // Return immediately - rewards will be processed async
       res.json(result);
     } catch (error) {
       console.error("Submit quiz error:", error);
@@ -424,7 +415,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Submit quiz submissions (alternative endpoint)
+  // Submit quiz submissions (alternative endpoint) - OPTIMIZED VERSION
   app.post("/api/quiz-submissions", async (req, res) => {
     try {
       // Validate required fields
@@ -445,7 +436,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const submission = insertQuizSubmissionSchema.parse(req.body);
-      const result = await storage.createQuizSubmission(submission);
+      
+      // Use the optimized method for fast submission
+      const result = await storage.createQuizSubmissionOptimized(submission);
+      
+      // Return immediately - rewards will be processed async
       res.json(result);
     } catch (error: any) {
       console.error("Submit quiz submission error:", error);
