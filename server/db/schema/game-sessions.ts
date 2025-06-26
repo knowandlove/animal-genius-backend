@@ -1,12 +1,12 @@
-import { pgTable, text, serial, integer, boolean, timestamp, varchar, jsonb, index } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, varchar, jsonb, index, uuid } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
-import { users } from "../../../shared/schema";
+import { profiles } from "../../../shared/schema";
 
 // Game sessions table
 export const gameSessions = pgTable("game_sessions", {
   id: varchar("id", { length: 50 }).primaryKey(),
   code: varchar("code", { length: 6 }).notNull().unique(),
-  teacherId: integer("teacher_id").notNull().references(() => users.id),
+  teacherId: uuid("teacher_id").notNull().references(() => profiles.id),
   teacherSocketId: varchar("teacher_socket_id", { length: 50 }),
   mode: varchar("mode", { length: 20 }).notNull(), // 'team' or 'individual'
   questionCount: integer("question_count").notNull(),
@@ -70,9 +70,9 @@ export const playerAnswers = pgTable("player_answers", {
 
 // Relations
 export const gameSessionsRelations = relations(gameSessions, ({ one, many }) => ({
-  teacher: one(users, {
+  teacher: one(profiles, {
     fields: [gameSessions.teacherId],
-    references: [users.id],
+    references: [profiles.id],
   }),
   players: many(gamePlayers),
   questions: many(gameQuestions),

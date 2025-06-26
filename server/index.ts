@@ -1,6 +1,6 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { config } from "dotenv";
-import { registerRoutes } from "./routes";
+import { registerRoutes } from "./routes-uuid";
 import path from "path";
 import { fileURLToPath } from "url";
 // Vite imports removed - frontend is now separate

@@ -2,12 +2,13 @@ import { Router } from 'express';
 import { authenticateAdmin } from '../../middleware/auth';
 import { db } from '../../db';
 import { 
-  users, 
+  profiles, 
   classes, 
   quizSubmissions, 
   storeItems, 
   purchaseRequests,
-  currencyTransactions 
+  currencyTransactions,
+  students 
 } from '@shared/schema';
 import { sql, count, avg, desc, and, gte, eq } from 'drizzle-orm';
 
@@ -28,12 +29,12 @@ router.get('/quick-stats', authenticateAdmin, async (req, res) => {
     const teacherStats = await db.select({
       total: count(),
       // Note: We'd need a lastLoginAt column to track active teachers
-    }).from(users);
+    }).from(profiles);
 
     const newTeachersThisWeek = await db.select({
       count: count()
-    }).from(users)
-    .where(gte(users.createdAt, weekAgo));
+    }).from(profiles)
+    .where(gte(profiles.createdAt, weekAgo));
 
     // Student stats
     const studentStats = await db.select({
@@ -41,10 +42,10 @@ router.get('/quick-stats', authenticateAdmin, async (req, res) => {
       quizzesCompleted: count()
     }).from(quizSubmissions);
 
-    // Get average coins per student
+    // Get average coins per student - now from students table
     const balanceStats = await db.select({
-      avgBalance: avg(quizSubmissions.walletBalance)
-    }).from(quizSubmissions);
+      avgBalance: avg(students.currencyBalance)
+    }).from(students);
 
     // Most common animal
     const animalDistribution = await db.select({
@@ -71,7 +72,7 @@ router.get('/quick-stats', authenticateAdmin, async (req, res) => {
       name: storeItems.name,
       purchases: count()
     }).from(purchaseRequests)
-    .innerJoin(storeItems, eq(purchaseRequests.itemId, storeItems.id))
+    .innerJoin(storeItems, eq(purchaseRequests.storeItemId, storeItems.id))
     .where(
       and(
         eq(purchaseRequests.status, 'approved'),
@@ -105,11 +106,11 @@ router.get('/quick-stats', authenticateAdmin, async (req, res) => {
     // Determine trend
     const previousWeekTeachers = await db.select({
       count: count()
-    }).from(users)
+    }).from(profiles)
     .where(
       and(
-        gte(users.createdAt, new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000)),
-        sql`${users.createdAt} < ${weekAgo}`
+        gte(profiles.createdAt, new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000)),
+        sql`${profiles.createdAt} < ${weekAgo}`
       )
     );
 

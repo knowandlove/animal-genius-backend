@@ -8,7 +8,7 @@ import { z } from "zod";
 
 // Approval schema
 const approvalSchema = z.object({
-  requestId: z.number().positive(),
+  requestId: z.string().uuid(),
   action: z.enum(['approve', 'deny']),
   reason: z.string().optional()
 });
@@ -27,7 +27,7 @@ export function registerPurchaseApprovalRoutes(app: Express) {
         .from(classes)
         .where(
           and(
-            eq(classes.id, parseInt(classId)),
+            eq(classes.id, classId),
             eq(classes.teacherId, userId!)
           )
         )
@@ -58,7 +58,7 @@ export function registerPurchaseApprovalRoutes(app: Express) {
         .innerJoin(students, eq(purchaseRequests.studentId, students.id))
         .where(
           and(
-            eq(students.classId, parseInt(classId)),
+            eq(students.classId, classId),
             eq(purchaseRequests.status, 'pending')
           )
         )
@@ -231,7 +231,7 @@ export function registerPurchaseApprovalRoutes(app: Express) {
   app.post("/api/purchase-requests/bulk-process", requireAuth, async (req, res) => {
     try {
       const { requestIds, action } = z.object({
-        requestIds: z.array(z.number().positive()),
+        requestIds: z.array(z.string().uuid()),
         action: z.enum(['approve', 'deny'])
       }).parse(req.body);
       

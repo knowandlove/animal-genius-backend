@@ -2,7 +2,7 @@
 import type { Express } from "express";
 import { db } from "../db";
 import { students, classes, purchaseRequests, currencyTransactions, storeSettings, storeItems, quizSubmissions } from "@shared/schema";
-import { eq, and, desc, asc, inArray } from "drizzle-orm";
+import { eq, and, desc, asc, inArray, sql } from "drizzle-orm";
 import { isValidPassportCode, TRANSACTION_REASONS } from "@shared/currency-types";
 import { z } from "zod";
 import * as cache from "../lib/cache";
@@ -196,7 +196,7 @@ export function registerIslandRoutes(app: Express) {
         island: {
           id: student.id,
           passportCode: student.passportCode,
-          studentName: student.studentName,
+          studentName: student.studentName || student.name, // Fallback to name if studentName is null
           gradeLevel: student.gradeLevel,
           animalType: student.animalType,
           personalityType: student.personalityType,
@@ -267,7 +267,7 @@ export function registerIslandRoutes(app: Express) {
       const islandData = {
         id: student.id,
         passportCode: student.passportCode,
-        studentName: student.studentName,
+        studentName: student.studentName || student.name, // Fallback to name if studentName is null
         gradeLevel: student.gradeLevel,
         animalType: student.animalType,
         personalityType: student.personalityType,
@@ -513,25 +513,26 @@ export function registerIslandRoutes(app: Express) {
       // Check if item qualifies for auto-approval
       const autoApprovalThreshold = storeSettingsData.autoApprovalThreshold;
       const shouldAutoApprove = autoApprovalThreshold !== null && item.cost <= autoApprovalThreshold;
-      
-      // Create purchase request
-      const [purchaseRequest] = await db
-        .insert(purchaseRequests)
-        .values({
-          studentId: student.id,
-          itemType: item.itemType,
-          itemId: itemId,
-          cost: item.cost,
-          status: shouldAutoApprove ? 'approved' : 'pending',
-          processedAt: shouldAutoApprove ? new Date() : null,
-          processedBy: shouldAutoApprove ? classInfo.teacherId : null // Use teacher ID instead of -1
-        })
-        .returning();
 
       // If auto-approved, process the purchase immediately
       if (shouldAutoApprove) {
-        // Start transaction to update balance and add item
-        await db.transaction(async (tx) => {
+        // Start transaction to create request AND update balance/add item
+        const result = await db.transaction(async (tx) => {
+          // Create purchase request INSIDE the transaction
+          const [purchaseRequest] = await tx
+            .insert(purchaseRequests)
+            .values({
+              studentId: student.id,
+              storeItemId: itemId,
+              itemType: item.itemType,
+              itemId: itemId,
+              cost: item.cost,
+              status: 'approved',
+              processedAt: new Date(),
+              processedBy: classInfo.teacherId
+            })
+            .returning();
+
           // Get current avatar data
           const currentStudent = await tx
             .select({ avatarData: students.avatarData })
@@ -548,7 +549,7 @@ export function registerIslandRoutes(app: Express) {
             : [...currentOwnedItems, itemId];
           
           // Update student balance and avatar data atomically
-          const result = await tx
+          const updateResult = await tx
             .update(students)
             .set({
               currencyBalance: sql`${students.currencyBalance} - ${item.cost}`,
@@ -564,7 +565,7 @@ export function registerIslandRoutes(app: Express) {
             .returning();
           
           // If the update affected 0 rows, it means the balance was insufficient
-          if (result.length === 0) {
+          if (updateResult.length === 0) {
             throw new Error("Insufficient funds");
           }
 
@@ -573,11 +574,13 @@ export function registerIslandRoutes(app: Express) {
             .insert(currencyTransactions)
             .values({
               studentId: student.id,
-              teacherId: classInfo.teacherId, // Use the actual teacher ID from class
+              teacherId: classInfo.teacherId,
               amount: -item.cost,
               reason: `Auto-approved purchase: ${item.name}`,
               transactionType: 'purchase'
             });
+
+          return purchaseRequest;
         });
         
         // Clear caches to reflect the changes
@@ -586,10 +589,25 @@ export function registerIslandRoutes(app: Express) {
         
         res.json({
           message: `Purchase auto-approved! ${item.name} has been added to your inventory.`,
-          request: purchaseRequest,
+          request: result,
           autoApproved: true
         });
       } else {
+        // For pending requests, create outside transaction as before
+        const [purchaseRequest] = await db
+          .insert(purchaseRequests)
+          .values({
+            studentId: student.id,
+            storeItemId: itemId,
+            itemType: item.itemType,
+            itemId: itemId,
+            cost: item.cost,
+            status: 'pending',
+            processedAt: null,
+            processedBy: null
+          })
+          .returning();
+
         res.json({
           message: "Purchase request submitted! Waiting for teacher approval.",
           request: purchaseRequest,
@@ -692,6 +710,10 @@ export function registerIslandRoutes(app: Express) {
         })
         .where(eq(students.id, student.id));
       
+      // Clear cache for the main island data endpoint
+      const cacheKey = `island-page-data:${passportCode}`;
+      cache.del(cacheKey);
+      
       res.json({
         message: "Island state saved successfully!",
         avatarData: updatedAvatarData,
@@ -763,6 +785,10 @@ export function registerIslandRoutes(app: Express) {
         })
         .where(eq(students.id, student.id));
       
+      // Clear cache for the main island data endpoint
+      const cacheKey = `island-page-data:${passportCode}`;
+      cache.del(cacheKey);
+      
       res.json({
         message: itemId ? "Item equipped!" : "Item unequipped!",
         equipped: newEquipped
@@ -826,6 +852,10 @@ export function registerIslandRoutes(app: Express) {
           avatarData: updatedAvatarData
         })
         .where(eq(students.id, student.id));
+      
+      // Clear cache for the main island data endpoint
+      const cacheKey = `island-page-data:${passportCode}`;
+      cache.del(cacheKey);
       
       res.json({
         message: "Avatar customization saved!",
@@ -905,6 +935,10 @@ export function registerIslandRoutes(app: Express) {
           roomData: updatedRoomData
         })
         .where(eq(students.id, student.id));
+      
+      // Clear cache for the main island data endpoint
+      const cacheKey = `island-page-data:${passportCode}`;
+      cache.del(cacheKey);
       
       res.json({
         message: "Room decoration saved!",

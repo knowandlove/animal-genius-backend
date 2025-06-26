@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { db } from "../db";
-import { itemAnimalPositions, users } from "@shared/schema";
+import { itemAnimalPositions, profiles } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth";
 
@@ -10,10 +10,10 @@ export function registerItemPositionRoutes(app: Express) {
     try {
       const positions = await db
         .select({
-          item_id: itemAnimalPositions.itemId,
+          item_type: itemAnimalPositions.itemType,
           animal_type: itemAnimalPositions.animalType,
-          position_x: itemAnimalPositions.positionX,
-          position_y: itemAnimalPositions.positionY,
+          x_position: itemAnimalPositions.xPosition,
+          y_position: itemAnimalPositions.yPosition,
           scale: itemAnimalPositions.scale,
           rotation: itemAnimalPositions.rotation
         })
@@ -32,8 +32,8 @@ export function registerItemPositionRoutes(app: Express) {
       // Get user details to verify admin access
       const [user] = await db
         .select()
-        .from(users)
-        .where(eq(users.id, req.user.userId))
+        .from(profiles)
+        .where(eq(profiles.id, req.user.userId))
         .limit(1);
 
       if (!user || !user.isAdmin) {
@@ -54,19 +54,19 @@ export function registerItemPositionRoutes(app: Express) {
       // Get user details to verify admin access
       const [user] = await db
         .select()
-        .from(users)
-        .where(eq(users.id, req.user.userId))
+        .from(profiles)
+        .where(eq(profiles.id, req.user.userId))
         .limit(1);
 
       if (!user || !user.isAdmin) {
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      const { item_id, animal_type, position_x, position_y, scale, rotation } = req.body;
+      const { item_type, animal_type, x_position, y_position, scale, rotation } = req.body;
 
       // Validate input
-      if (!item_id || !animal_type) {
-        return res.status(400).json({ message: "Item ID and animal type are required" });
+      if (!item_type || !animal_type) {
+        return res.status(400).json({ message: "Item type and animal type are required" });
       }
 
       // Check if position exists
@@ -75,7 +75,7 @@ export function registerItemPositionRoutes(app: Express) {
         .from(itemAnimalPositions)
         .where(
           and(
-            eq(itemAnimalPositions.itemId, item_id),
+            eq(itemAnimalPositions.itemType, item_type),
             eq(itemAnimalPositions.animalType, animal_type)
           )
         )
@@ -86,9 +86,9 @@ export function registerItemPositionRoutes(app: Express) {
         const [updated] = await db
           .update(itemAnimalPositions)
           .set({
-            positionX: position_x ?? 0,
-            positionY: position_y ?? 0,
-            scale: scale ?? 1,
+            xPosition: x_position?.toString() ?? '50',
+            yPosition: y_position?.toString() ?? '50',
+            scale: scale?.toString() ?? '1.0',
             rotation: rotation ?? 0,
             updatedAt: new Date()
           })
@@ -101,11 +101,11 @@ export function registerItemPositionRoutes(app: Express) {
         const [created] = await db
           .insert(itemAnimalPositions)
           .values({
-            itemId: item_id,
+            itemType: item_type,
             animalType: animal_type,
-            positionX: position_x ?? 0,
-            positionY: position_y ?? 0,
-            scale: scale ?? 1,
+            xPosition: x_position?.toString() ?? '50',
+            yPosition: y_position?.toString() ?? '50',
+            scale: scale?.toString() ?? '1.0',
             rotation: rotation ?? 0
           })
           .returning();
@@ -124,17 +124,17 @@ export function registerItemPositionRoutes(app: Express) {
       // Get user details to verify admin access
       const [user] = await db
         .select()
-        .from(users)
-        .where(eq(users.id, req.user.userId))
+        .from(profiles)
+        .where(eq(profiles.id, req.user.userId))
         .limit(1);
 
       if (!user || !user.isAdmin) {
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      const { item_id, source_animal, target_animals } = req.body;
+      const { item_type, source_animal, target_animals } = req.body;
 
-      if (!item_id || !source_animal || !Array.isArray(target_animals)) {
+      if (!item_type || !source_animal || !Array.isArray(target_animals)) {
         return res.status(400).json({ message: "Invalid request data" });
       }
 
@@ -144,7 +144,7 @@ export function registerItemPositionRoutes(app: Express) {
         .from(itemAnimalPositions)
         .where(
           and(
-            eq(itemAnimalPositions.itemId, item_id),
+            eq(itemAnimalPositions.itemType, item_type),
             eq(itemAnimalPositions.animalType, source_animal)
           )
         )
@@ -163,7 +163,7 @@ export function registerItemPositionRoutes(app: Express) {
           .from(itemAnimalPositions)
           .where(
             and(
-              eq(itemAnimalPositions.itemId, item_id),
+              eq(itemAnimalPositions.itemType, item_type),
               eq(itemAnimalPositions.animalType, targetAnimal)
             )
           )
@@ -174,8 +174,8 @@ export function registerItemPositionRoutes(app: Express) {
           const [updated] = await db
             .update(itemAnimalPositions)
             .set({
-              positionX: sourcePosition.positionX,
-              positionY: sourcePosition.positionY,
+              xPosition: sourcePosition.xPosition,
+              yPosition: sourcePosition.yPosition,
               scale: sourcePosition.scale,
               rotation: sourcePosition.rotation,
               updatedAt: new Date()
@@ -188,10 +188,10 @@ export function registerItemPositionRoutes(app: Express) {
           const [created] = await db
             .insert(itemAnimalPositions)
             .values({
-              itemId: item_id,
+              itemType: item_type,
               animalType: targetAnimal,
-              positionX: sourcePosition.positionX,
-              positionY: sourcePosition.positionY,
+              xPosition: sourcePosition.xPosition,
+              yPosition: sourcePosition.yPosition,
               scale: sourcePosition.scale,
               rotation: sourcePosition.rotation
             })
@@ -204,6 +204,89 @@ export function registerItemPositionRoutes(app: Express) {
     } catch (error) {
       console.error("Bulk copy positions error:", error);
       res.status(500).json({ message: "Failed to copy positions" });
+    }
+  });
+
+  // Batch update positions
+  app.post("/api/admin/item-positions/batch", requireAuth, async (req: any, res) => {
+    try {
+      // Get user details to verify admin access
+      const [user] = await db
+        .select()
+        .from(profiles)
+        .where(eq(profiles.id, req.user.userId))
+        .limit(1);
+
+      if (!user || !user.isAdmin) {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { positions } = req.body;
+
+      if (!positions || typeof positions !== 'object') {
+        return res.status(400).json({ message: "Invalid positions data" });
+      }
+
+      const results = [];
+
+      // Process each item type
+      for (const [itemType, animals] of Object.entries(positions)) {
+        if (typeof animals !== 'object') continue;
+
+        // Process each animal for this item
+        for (const [animalType, posData] of Object.entries(animals as any)) {
+          if (typeof posData !== 'object') continue;
+
+          const { x, y, scale, rotation } = posData as any;
+
+          // Check if position exists
+          const [existing] = await db
+            .select()
+            .from(itemAnimalPositions)
+            .where(
+              and(
+                eq(itemAnimalPositions.itemType, itemType),
+                eq(itemAnimalPositions.animalType, animalType)
+              )
+            )
+            .limit(1);
+
+          if (existing) {
+            // Update existing
+            const [updated] = await db
+              .update(itemAnimalPositions)
+              .set({
+                xPosition: x?.toString() ?? '50',
+                yPosition: y?.toString() ?? '50',
+                scale: scale?.toString() ?? '1.0',
+                rotation: rotation ?? 0,
+                updatedAt: new Date()
+              })
+              .where(eq(itemAnimalPositions.id, existing.id))
+              .returning();
+            results.push(updated);
+          } else {
+            // Create new
+            const [created] = await db
+              .insert(itemAnimalPositions)
+              .values({
+                itemType,
+                animalType,
+                xPosition: x?.toString() ?? '50',
+                yPosition: y?.toString() ?? '50',
+                scale: scale?.toString() ?? '1.0',
+                rotation: rotation ?? 0
+              })
+              .returning();
+            results.push(created);
+          }
+        }
+      }
+
+      res.json({ updated: results.length, positions: results });
+    } catch (error) {
+      console.error("Batch update positions error:", error);
+      res.status(500).json({ message: "Failed to batch update positions" });
     }
   });
 }

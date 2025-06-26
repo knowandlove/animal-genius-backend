@@ -4,6 +4,7 @@ import { db } from "../../db";
 import { storeItems } from "@shared/schema";
 import { eq, desc, asc } from "drizzle-orm";
 import { requireAuth, authenticateAdmin as requireAdmin } from "../../middleware/auth";
+import { validateUUID } from "../../middleware/validate-uuid";
 import { z } from "zod";
 import multer from "multer";
 import StorageService from "../../services/storage-service";
@@ -83,6 +84,14 @@ export function registerStoreAdminRoutes(app: Express) {
         });
       }
       
+      // Validate assetId is a UUID
+      const assetIdValidation = z.string().uuid().safeParse(assetId);
+      if (!assetIdValidation.success) {
+        return res.status(400).json({ 
+          message: "Invalid asset ID format" 
+        });
+      }
+      
       // Now create the store item with the asset ID
       const [newItem] = await db
         .insert(storeItems)
@@ -112,7 +121,7 @@ export function registerStoreAdminRoutes(app: Express) {
   });
   
   // Update store item
-  app.put("/api/store/admin/items/:id", requireAuth, requireAdmin, async (req, res) => {
+  app.put("/api/store/admin/items/:id", requireAuth, requireAdmin, validateUUID('id'), async (req, res) => {
     try {
       const { id } = req.params;
       const validatedData = updateItemSchema.parse(req.body);
@@ -145,7 +154,7 @@ export function registerStoreAdminRoutes(app: Express) {
   });
   
   // Delete store item
-  app.delete("/api/store/admin/items/:id", requireAuth, requireAdmin, async (req, res) => {
+  app.delete("/api/store/admin/items/:id", requireAuth, requireAdmin, validateUUID('id'), async (req, res) => {
     try {
       const { id } = req.params;
       

@@ -1,8 +1,8 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertClassSchema, insertQuizSubmissionSchema, updateUserProfileSchema, updatePasswordSchema, insertLessonProgressSchema } from "@shared/schema";
-import jwt from "jsonwebtoken";
+import { uuidStorage, generateUniqueClassCodeSupabase } from "./storage-uuid-fixes";
+import { insertClassSchema, insertQuizSubmissionSchema, insertLessonProgressSchema } from "@shared/schema";
 import { z } from "zod";
 import crypto from "crypto";
 import { gameSessionManager } from "./game-session-manager";
@@ -39,14 +39,7 @@ const FEATURE_FLAGS = {
   METRICS_ENABLED: process.env.METRICS_ENABLED !== 'false',
 };
 
-// Require JWT secret to be set
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) {
-  throw new Error("JWT_SECRET environment variable must be set");
-}
-
-// Type assertion to ensure JWT_SECRET is string
-const jwtSecret = JWT_SECRET as string;
+// JWT is now handled by Supabase Auth
 
 // Helper function for safe parseInt validation
 function safeParseInt(value: string, paramName: string): number {
@@ -106,235 +99,68 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // TEMPORARY: Emergency login for migration period
   app.use('/api', emergencyLoginRouter);
-
-  // Teacher registration (OLD - TO BE REMOVED)
-  app.post("/api/register", authLimiter, async (req, res) => {
-    try {
-      const userData = insertUserSchema.parse(req.body);
-      
-      // Check if user already exists
-      const existingUser = await storage.getUserByEmail(userData.email);
-      if (existingUser) {
-        return res.status(400).json({ message: "User already exists with this email" });
+  
+  // Test endpoint to verify auth is working
+  app.get("/api/test-auth", requireAuth, async (req: any, res) => {
+    console.log("[/api/test-auth] User:", req.user);
+    console.log("[/api/test-auth] Profile:", req.profile);
+    res.json({ 
+      success: true, 
+      user: req.user,
+      profile: {
+        id: req.profile?.id,
+        firstName: req.profile?.first_name,
+        lastName: req.profile?.last_name,
+        email: req.profile?.email
       }
-      
-      const user = await storage.createUser(userData);
-      const token = jwt.sign(
-        { userId: user.id, email: user.email, is_admin: user.isAdmin }, 
-        jwtSecret,
-        { expiresIn: process.env.SESSION_TIMEOUT || '24h' } as jwt.SignOptions
-      );
-      
-      const refreshToken = jwt.sign(
-        { userId: user.id, email: user.email, type: 'refresh' },
-        jwtSecret,
-        { expiresIn: process.env.REFRESH_TOKEN_EXPIRY || '7d' } as jwt.SignOptions
-      );
-      
-      res.json({ 
-        token,
-        refreshToken,
-        user: { 
-          id: user.id, 
-          firstName: user.firstName, 
-          lastName: user.lastName, 
-          email: user.email,
-          personalityAnimal: user.personalityAnimal,
-          isAdmin: user.isAdmin
-        }
-      });
-    } catch (error) {
-      console.error("Registration error:", error);
-      res.status(400).json({ message: "Invalid registration data" });
-    }
-  });
-
-
-  // Teacher login
-  app.post("/api/login", authLimiter, async (req, res) => {
-    try {
-      const { email, password } = req.body;
-      
-      if (!email || !password) {
-        return res.status(400).json({ message: "Email and password required" });
-      }
-      
-      const user = await storage.validateUserPassword(email, password);
-      if (!user) {
-        return res.status(401).json({ message: "Invalid credentials" });
-      }
-      
-      const token = jwt.sign(
-        { userId: user.id, email: user.email, is_admin: user.isAdmin }, 
-        jwtSecret,
-        { expiresIn: process.env.SESSION_TIMEOUT || '24h' } as jwt.SignOptions
-      );
-      
-      const refreshToken = jwt.sign(
-        { userId: user.id, email: user.email, type: 'refresh' },
-        jwtSecret,
-        { expiresIn: process.env.REFRESH_TOKEN_EXPIRY || '7d' } as jwt.SignOptions
-      );
-      
-      res.json({ 
-        token,
-        refreshToken,
-        user: { 
-          id: user.id, 
-          firstName: user.firstName, 
-          lastName: user.lastName, 
-          email: user.email,
-          personalityAnimal: user.personalityAnimal,
-          isAdmin: user.isAdmin
-        }
-      });
-    } catch (error) {
-      console.error("Login error:", error);
-      res.status(500).json({ message: "Login failed" });
-    }
-  });
-
-  // Refresh token endpoint
-  app.post("/api/refresh-token", async (req, res) => {
-    try {
-      const { refreshToken } = req.body;
-      
-      if (!refreshToken) {
-        return res.status(400).json({ message: "Refresh token required" });
-      }
-      
-      const decoded = jwt.verify(refreshToken, jwtSecret) as any;
-      
-      if (decoded.type !== 'refresh') {
-        return res.status(401).json({ message: "Invalid token type" });
-      }
-      
-      const user = await storage.getUserById(decoded.userId);
-      if (!user) {
-        return res.status(401).json({ message: "User not found" });
-      }
-      
-      const newToken = jwt.sign(
-        { userId: user.id, email: user.email, is_admin: user.isAdmin },
-        jwtSecret,
-        { expiresIn: process.env.SESSION_TIMEOUT || '24h' } as jwt.SignOptions
-      );
-      
-      const newRefreshToken = jwt.sign(
-        { userId: user.id, email: user.email, type: 'refresh' },
-        jwtSecret,
-        { expiresIn: process.env.REFRESH_TOKEN_EXPIRY || '7d' } as jwt.SignOptions
-      );
-      
-      res.json({ token: newToken, refreshToken: newRefreshToken });
-    } catch (error) {
-      console.error("Token refresh error:", error);
-      res.status(401).json({ message: "Invalid refresh token" });
-    }
-  });
-
-  // Get current user
-  app.get("/api/me", requireAuth, async (req: any, res) => {
-    try {
-      const user = await storage.getUserById(req.user.userId);
-      if (!user) {
-        return res.status(404).json({ message: "User not found" });
-      }
-      
-      res.json({ 
-        id: user.id, 
-        firstName: user.firstName, 
-        lastName: user.lastName, 
-        email: user.email,
-        schoolOrganization: user.schoolOrganization,
-        roleTitle: user.roleTitle,
-        howHeardAbout: user.howHeardAbout,
-        personalityAnimal: user.personalityAnimal,
-        isAdmin: user.isAdmin
-      });
-    } catch (error) {
-      console.error("Get user error:", error);
-      res.status(500).json({ message: "Failed to get user" });
-    }
-  });
-
-  // Update user profile
-  app.put("/api/me/profile", requireAuth, async (req: any, res) => {
-    try {
-      let profileData = updateUserProfileSchema.parse(req.body);
-      
-      // Handle "not-selected" as null for personalityAnimal
-      if (profileData.personalityAnimal === "not-selected") {
-        profileData = { ...profileData, personalityAnimal: null };
-      }
-      
-      // Check if email is being changed and if it's already taken
-      if (profileData.email && profileData.email !== req.user.email) {
-        const existingUser = await storage.getUserByEmail(profileData.email);
-        if (existingUser && existingUser.id !== req.user.userId) {
-          return res.status(400).json({ message: "Email already in use" });
-        }
-      }
-      
-      const updatedUser = await storage.updateUserProfile(req.user.userId, profileData);
-      
-      res.json({
-        id: updatedUser.id,
-        firstName: updatedUser.firstName,
-        lastName: updatedUser.lastName,
-        email: updatedUser.email,
-        schoolOrganization: updatedUser.schoolOrganization,
-        roleTitle: updatedUser.roleTitle,
-        howHeardAbout: updatedUser.howHeardAbout
-      });
-    } catch (error) {
-      console.error("Update profile error:", error);
-      res.status(400).json({ message: "Failed to update profile" });
-    }
-  });
-
-  // Update user password
-  app.put("/api/me/password", requireAuth, async (req: any, res) => {
-    try {
-      const passwordData = updatePasswordSchema.parse(req.body);
-      
-      const success = await storage.updateUserPassword(
-        req.user.userId,
-        passwordData.currentPassword,
-        passwordData.newPassword
-      );
-      
-      if (!success) {
-        return res.status(400).json({ message: "Current password is incorrect" });
-      }
-      
-      res.json({ message: "Password updated successfully" });
-    } catch (error) {
-      console.error("Update password error:", error);
-      res.status(400).json({ message: "Failed to update password" });
-    }
+    });
   });
 
   // Create class
   app.post("/api/classes", requireAuth, async (req: any, res) => {
     try {
-      const classData = insertClassSchema.parse({
-        ...req.body,
-        teacherId: req.user.userId,
-      });
+      console.log("[/api/classes POST] Request body:", req.body);
+      console.log("[/api/classes POST] User:", req.user);
       
-      const newClass = await storage.createClass(classData);
+      const classData = insertClassSchema.parse(req.body);
+      console.log("[/api/classes POST] Parsed class data:", classData);
+      
+      // Generate unique class code
+      const code = await generateUniqueClassCodeSupabase();
+      console.log("[/api/classes POST] Generated code:", code);
+      
+      // Use UUID-compatible storage method
+      const newClass = await uuidStorage.createClass({
+        ...classData,
+        teacherId: req.user.userId,
+        code
+      });
+      console.log("[/api/classes POST] Created class:", newClass);
+      
       res.json(newClass);
     } catch (error) {
-      console.error("Create class error:", error);
-      res.status(400).json({ message: "Failed to create class" });
+      console.error("[/api/classes POST] Create class error:", error);
+      if (error instanceof Error) {
+        console.error("[/api/classes POST] Error message:", error.message);
+        console.error("[/api/classes POST] Error stack:", error.stack);
+      }
+      res.status(400).json({ message: "Failed to create class", error: error instanceof Error ? error.message : "Unknown error" });
     }
   });
 
   // Get teacher's classes
   app.get("/api/classes", requireAuth, async (req: any, res) => {
     try {
-      const classes = await storage.getClassesByTeacherId(req.user.userId);
+      console.log("[/api/classes] User ID:", req.user?.userId);
+      
+      if (!req.user?.userId) {
+        console.error("[/api/classes] No user ID in request");
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+      
+      // Use UUID-compatible storage method
+      const classes = await uuidStorage.getClassesByTeacherId(req.user.userId);
+      console.log(`[/api/classes] Found ${classes.length} classes for user ${req.user.userId}`);
       
       // Get submission counts for each class
       const classesWithStats = await Promise.all(
@@ -349,7 +175,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(classesWithStats);
     } catch (error) {
-      console.error("Get classes error:", error);
+      console.error("[/api/classes] Error:", error);
+      console.error("[/api/classes] Stack:", error instanceof Error ? error.stack : 'No stack trace');
       res.status(500).json({ message: "Failed to get classes" });
     }
   });

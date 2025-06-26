@@ -1,7 +1,11 @@
 import { Router } from 'express';
-import { supabase } from '../supabase';
-import { insertUserSchema, updateUserProfileSchema, updatePasswordSchema } from '@shared/schema';
-import { storage, getProfileById, updateLastLogin } from '../storage';
+import { supabaseAnon as supabase } from '../supabase-clients';
+
+// Debug: Check if supabase client is initialized
+console.log('Auth route loading, supabase client:', !!supabase);
+console.log('Supabase auth object:', !!supabase?.auth);
+// import { insertUserSchema, updateUserProfileSchema, updatePasswordSchema } from '@shared/schema';
+import { getProfileById, updateLastLoginSupabase as updateLastLogin } from '../storage-supabase';
 import { authLimiter, passwordResetLimiter } from '../middleware/rateLimiter';
 import { z } from 'zod';
 
@@ -21,7 +25,8 @@ function createAppToken(user: any, profile: any) {
 // Teacher registration - integrates with Supabase Auth
 router.post('/register', authLimiter, async (req, res) => {
   try {
-    const userData = insertUserSchema.parse(req.body);
+    // const userData = insertUserSchema.parse(req.body);
+    const userData = req.body;
     
     console.log('Registration attempt for:', userData.email);
     
