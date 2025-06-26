@@ -1,6 +1,11 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { getProfileById } from '../storage-supabase';
+import { db } from '../db';
+import { profiles } from '@shared/schema';
+import { eq } from 'drizzle-orm';
+import bcrypt from 'bcryptjs';
+import { supabaseAdmin } from '../supabase-clients';
 
 const router = Router();
 
@@ -50,26 +55,96 @@ router.get('/me', requireAuth, async (req, res) => {
 router.put('/me/profile', requireAuth, async (req, res) => {
   try {
     const userId = req.user.userId;
-    const { personalityAnimal, firstName, lastName } = req.body;
+    const { 
+      personalityAnimal, 
+      firstName, 
+      lastName,
+      schoolOrganization,
+      roleTitle,
+      howHeardAbout 
+    } = req.body;
     
     // Only allow updating certain fields
     const updates: any = {};
-    if (personalityAnimal) updates.personalityAnimal = personalityAnimal;
-    if (firstName) updates.firstName = firstName;
-    if (lastName) updates.lastName = lastName;
+    if (personalityAnimal !== undefined) updates.personalityAnimal = personalityAnimal;
+    if (firstName !== undefined) updates.firstName = firstName;
+    if (lastName !== undefined) updates.lastName = lastName;
+    if (schoolOrganization !== undefined) updates.schoolOrganization = schoolOrganization;
+    if (roleTitle !== undefined) updates.roleTitle = roleTitle;
+    if (howHeardAbout !== undefined) updates.howHeardAbout = howHeardAbout;
     
-    // TODO: Implement updateProfile function in storage.ts
-    // For now, we'll just return success
+    // Add updatedAt timestamp
+    updates.updatedAt = new Date();
+    
+    // Update the profile in the database
+    await db
+      .update(profiles)
+      .set(updates)
+      .where(eq(profiles.id, userId));
+    
+    // Fetch the updated profile
+    const updatedProfile = await getProfileById(userId);
     
     res.json({
       success: true,
-      message: "Profile updated successfully"
+      message: "Profile updated successfully",
+      data: {
+        id: updatedProfile.id,
+        firstName: updatedProfile.firstName,
+        lastName: updatedProfile.lastName,
+        email: updatedProfile.email,
+        personalityAnimal: updatedProfile.personalityAnimal,
+        isAdmin: updatedProfile.isAdmin || false,
+        schoolOrganization: updatedProfile.schoolOrganization,
+        roleTitle: updatedProfile.roleTitle
+      }
     });
   } catch (error) {
     console.error('Error updating user profile:', error);
     res.status(500).json({ 
       success: false, 
       error: { message: "Failed to update profile" } 
+    });
+  }
+});
+
+// Update password
+router.put('/me/password', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { currentPassword, newPassword } = req.body;
+    
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        error: { message: "Current password and new password are required" }
+      });
+    }
+    
+    // For Supabase Auth, we need to use the Supabase Admin API
+    // to update the password
+    const { data, error } = await supabaseAdmin.auth.admin.updateUserById(
+      userId,
+      { password: newPassword }
+    );
+    
+    if (error) {
+      console.error('Error updating password:', error);
+      return res.status(400).json({
+        success: false,
+        error: { message: error.message || "Failed to update password" }
+      });
+    }
+    
+    res.json({
+      success: true,
+      message: "Password updated successfully"
+    });
+  } catch (error) {
+    console.error('Error updating password:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: { message: "Failed to update password" } 
     });
   }
 });
