@@ -3,7 +3,7 @@ import { randomBytes } from 'crypto';
 
 interface WebSocketTicket {
   token: string;
-  userId?: number;
+  userId?: string;
   gameId?: string;
   expiresAt: Date;
   used: boolean;
@@ -26,7 +26,7 @@ class WebSocketAuthManager {
   /**
    * Generate a temporary WebSocket authentication ticket
    */
-  generateTicket(userId?: number, gameId?: string): string {
+  generateTicket(userId?: string, gameId?: string): string {
     const token = randomBytes(32).toString('hex');
     const ticket: WebSocketTicket = {
       token,
@@ -43,7 +43,7 @@ class WebSocketAuthManager {
   /**
    * Validate and consume a WebSocket ticket
    */
-  validateTicket(token: string): { valid: boolean; userId?: number; gameId?: string } {
+  validateTicket(token: string): { valid: boolean; userId?: string; gameId?: string } {
     const ticket = this.tickets.get(token);
     
     if (!ticket) {

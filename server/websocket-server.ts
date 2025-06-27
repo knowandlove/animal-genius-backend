@@ -25,7 +25,7 @@ interface ExtendedWebSocket extends WebSocket {
   isTeacher?: boolean;
   isAlive?: boolean;
   authenticated?: boolean;
-  userId?: number;
+  userId?: string;
 }
 
 export class GameWebSocketServer {

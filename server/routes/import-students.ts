@@ -142,7 +142,7 @@ function generateSampleAnswers(personalityType: string) {
  */
 export async function handleImportStudents(req: Request, res: Response) {
   try {
-    const classId = parseInt(req.params.id);
+    const classId = req.params.id;
     
     // Verify the class exists and belongs to the teacher
     const classResult = await db
