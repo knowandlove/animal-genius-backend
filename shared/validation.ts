@@ -17,6 +17,11 @@ export const classCodeSchema = z
   .length(6, "Class code must be exactly 6 characters")
   .regex(/^[A-Z0-9]+$/, "Class code must contain only uppercase letters and numbers");
 
+// IMPORTANT: Passport codes use animal-based format (e.g., MEE-X7K)
+// DO NOT CHANGE this format - students identify with their animal codes!
+// Format: [3-letter animal abbreviation]-[3 random alphanumeric chars]
+// Validation is in currency-types.ts: isValidPassportCode()
+
 export const emailSchema = z
   .string()
   .email("Please enter a valid email address")
