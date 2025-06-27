@@ -157,9 +157,13 @@ export class UUIDStorage implements IUUIDStorage {
         gradeLevel: classes.gradeLevel,
         passportCode: classes.passportCode,
         schoolName: classes.schoolName,
+        icon: classes.icon,
+        backgroundColor: classes.backgroundColor,
+        numberOfStudents: classes.numberOfStudents,
         isArchived: classes.isArchived,
         createdAt: classes.createdAt,
         updatedAt: classes.updatedAt,
+        deletedAt: classes.deletedAt,
         studentCount: sql<number>`COUNT(${students.id})`.as('studentCount')
       })
       .from(classes)
@@ -190,8 +194,17 @@ export class UUIDStorage implements IUUIDStorage {
     const [student] = await db
       .insert(students)
       .values({
-        ...studentData,
-        passportCode
+        classId: studentData.classId,
+        studentName: studentData.studentName || studentData.name || 'Unknown Student',
+        gradeLevel: studentData.gradeLevel,
+        personalityType: studentData.personalityType,
+        animalType: studentData.animalType,
+        animalGenius: studentData.animalGenius,
+        learningStyle: studentData.learningStyle,
+        passportCode,
+        currencyBalance: 0,
+        avatarData: {},
+        roomData: { furniture: [] }
       })
       .returning();
     return student;
@@ -199,20 +212,53 @@ export class UUIDStorage implements IUUIDStorage {
 
   async upsertStudent(studentData: NewStudent): Promise<Student> {
     const passportCode = await this.generateUniquePassportCode();
-    await db
-      .insert(students)
-      .values({
-        ...studentData,
-        passportCode
-      })
-      .onConflictDoNothing({ target: [students.classId, students.name] });
-
-    const [student] = await db
+    
+    // First try to find existing student
+    const [existingStudent] = await db
       .select()
       .from(students)
-      .where(and(eq(students.classId, studentData.classId), eq(students.name, studentData.name)));
+      .where(and(
+        eq(students.classId, studentData.classId), 
+        eq(students.studentName, studentData.studentName || studentData.name || '')
+      ));
     
-    if (!student) throw new Error("Failed to find or create student.");
+    if (existingStudent) {
+      // Update existing student with new data if provided
+      const [updatedStudent] = await db
+        .update(students)
+        .set({
+          studentName: studentData.studentName || studentData.name || existingStudent.studentName,
+          gradeLevel: studentData.gradeLevel || existingStudent.gradeLevel,
+          personalityType: studentData.personalityType || existingStudent.personalityType,
+          animalType: studentData.animalType || existingStudent.animalType,
+          animalGenius: studentData.animalGenius || existingStudent.animalGenius,
+          learningStyle: studentData.learningStyle || existingStudent.learningStyle,
+          updatedAt: new Date()
+        })
+        .where(eq(students.id, existingStudent.id))
+        .returning();
+      return updatedStudent;
+    }
+    
+    // Create new student - ensure we're using studentName field
+    const [student] = await db
+      .insert(students)
+      .values({
+        classId: studentData.classId,
+        studentName: studentData.studentName || studentData.name || 'Unknown Student',
+        gradeLevel: studentData.gradeLevel,
+        personalityType: studentData.personalityType,
+        animalType: studentData.animalType,
+        animalGenius: studentData.animalGenius,
+        learningStyle: studentData.learningStyle,
+        passportCode,
+        currencyBalance: 0,
+        avatarData: {},
+        roomData: { furniture: [] }
+      })
+      .returning();
+    
+    if (!student) throw new Error("Failed to create student.");
     return student;
   }
 
