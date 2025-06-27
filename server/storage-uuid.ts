@@ -122,13 +122,9 @@ export class UUIDStorage implements IUUIDStorage {
 
   // Class operations
   async generateUniquePassportCode(): Promise<string> {
-    // Use the database function we created
-    console.log('Generating passport code...');
-    const result = await db.execute(sql`SELECT generate_passport_code() as code`);
-    console.log('Database result:', result);
-    const code = result.rows[0].code as string;
-    console.log('Generated code:', code);
-    return code;
+    // Import the class passport code generator
+    const { generateClassPassportCode } = await import('./passport-generator');
+    return generateClassPassportCode();
   }
 
   async createClass(classData: NewClass): Promise<Class> {
@@ -190,7 +186,10 @@ export class UUIDStorage implements IUUIDStorage {
 
   // Student operations
   async createStudent(studentData: NewStudent): Promise<Student> {
-    const passportCode = await this.generateUniquePassportCode();
+    // Import the animal passport code generator
+    const { generateAnimalPassportCode } = await import('./passport-generator');
+    const passportCode = await generateAnimalPassportCode(studentData.animalType || 'Unknown');
+    
     const [student] = await db
       .insert(students)
       .values({
@@ -211,7 +210,9 @@ export class UUIDStorage implements IUUIDStorage {
   }
 
   async upsertStudent(studentData: NewStudent): Promise<Student> {
-    const passportCode = await this.generateUniquePassportCode();
+    // Import the animal passport code generator
+    const { generateAnimalPassportCode } = await import('./passport-generator');
+    const passportCode = await generateAnimalPassportCode(studentData.animalType || 'Unknown');
     
     // First try to find existing student
     const [existingStudent] = await db
