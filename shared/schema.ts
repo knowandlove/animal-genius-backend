@@ -1,12 +1,27 @@
-import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, uuid, numeric, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, uuid, numeric, uniqueIndex, index, pgSchema } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
+
+// Define the auth schema to reference auth.users
+const authSchema = pgSchema('auth');
+
+// Reference to auth.users table (for foreign key purposes only)
+const authUsers = authSchema.table('users', {
+  id: uuid('id').primaryKey(),
+});
 
 // Profiles table (extends Supabase auth.users)
 export const profiles = pgTable('profiles', {
-  id: uuid('id').primaryKey(),
+  id: uuid('id').primaryKey().references(() => authUsers.id, { onDelete: 'cascade' }),
   email: text('email').notNull().unique(),
   fullName: text('full_name'),
+  firstName: varchar('first_name', { length: 255 }),
+  lastName: varchar('last_name', { length: 255 }),
+  schoolOrganization: varchar('school_organization', { length: 255 }),
+  roleTitle: varchar('role_title', { length: 255 }),
+  howHeardAbout: varchar('how_heard_about', { length: 255 }),
+  personalityAnimal: varchar('personality_animal', { length: 50 }),
   isAdmin: boolean('is_admin').default(false),
+  lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
@@ -20,16 +35,24 @@ export const classes = pgTable('classes', {
   gradeLevel: varchar('grade_level', { length: 50 }),
   passportCode: varchar('passport_code', { length: 20 }).notNull().unique(),
   schoolName: varchar('school_name', { length: 255 }),
+  icon: varchar('icon', { length: 50 }).default('book'),
+  backgroundColor: varchar('background_color', { length: 7 }).default('#829B79'),
+  numberOfStudents: integer('number_of_students'),
   isArchived: boolean('is_archived').default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (table) => {
+  return {
+    teacherIdIdx: index('idx_classes_teacher_id').on(table.teacherId),
+    activeIdx: index('idx_classes_active').on(table.teacherId).where("deleted_at IS NULL"),
+  };
 });
 
 // Students table
 export const students = pgTable('students', {
   id: uuid('id').primaryKey().defaultRandom(),
   classId: uuid('class_id').notNull().references(() => classes.id, { onDelete: 'restrict' }),
-  name: varchar('name', { length: 255 }).notNull(),
   passportCode: varchar('passport_code', { length: 20 }).notNull().unique(),
   // Profile fields
   studentName: varchar('student_name', { length: 255 }),
@@ -46,7 +69,8 @@ export const students = pgTable('students', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => {
   return {
-    classStudentNameKey: uniqueIndex('class_student_name_key').on(table.classId, table.name),
+    classIdIdx: index('idx_students_class_id').on(table.classId),
+    passportCodeIdx: index('idx_students_passport_code').on(table.passportCode),
   };
 });
 
@@ -60,6 +84,10 @@ export const quizSubmissions = pgTable('quiz_submissions', {
   coinsEarned: integer('coins_earned').default(0),
   completedAt: timestamp('completed_at', { withTimezone: true }).defaultNow(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => {
+  return {
+    studentIdIdx: index('idx_quiz_submissions_student_id').on(table.studentId),
+  };
 });
 
 // Assets table
@@ -88,6 +116,11 @@ export const storeItems = pgTable('store_items', {
   assetId: uuid('asset_id').references(() => assets.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => {
+  return {
+    assetIdIdx: index('idx_store_items_asset_id').on(table.assetId),
+    activeIdx: index('idx_store_items_active').on(table.isActive).where("is_active = true"),
+  };
 });
 
 // Purchase requests
@@ -95,15 +128,22 @@ export const purchaseRequests = pgTable('purchase_requests', {
   id: uuid('id').primaryKey().defaultRandom(),
   studentId: uuid('student_id').notNull().references(() => students.id, { onDelete: 'cascade' }),
   storeItemId: uuid('store_item_id').notNull().references(() => storeItems.id, { onDelete: 'cascade' }),
-  // Additional fields for frontend compatibility
-  itemId: uuid('item_id'),
-  itemType: varchar('item_type', { length: 50 }),
-  cost: integer('cost'),
+  // Historical snapshot fields (intentionally denormalized for audit purposes)
+  itemType: varchar('item_type', { length: 50 }), // Snapshot of item type at request time
+  cost: integer('cost'), // Snapshot of cost at request time
   status: varchar('status', { length: 20 }).default('pending'),
   requestedAt: timestamp('requested_at', { withTimezone: true }).defaultNow(),
   processedAt: timestamp('processed_at', { withTimezone: true }),
   processedBy: uuid('processed_by').references(() => profiles.id, { onDelete: 'set null' }),
   notes: text('notes'),
+}, (table) => {
+  return {
+    studentIdIdx: index('idx_purchase_requests_student_id').on(table.studentId),
+    storeItemIdIdx: index('idx_purchase_requests_store_item_id').on(table.storeItemId),
+    processedByIdx: index('idx_purchase_requests_processed_by').on(table.processedBy),
+    statusIdx: index('idx_purchase_requests_status').on(table.status),
+    studentStatusIdx: index('idx_purchase_requests_student_status').on(table.studentId, table.status),
+  };
 });
 
 // Student inventory
@@ -116,6 +156,8 @@ export const studentInventory = pgTable('student_inventory', {
 }, (table) => {
   return {
     uniqueStudentItem: uniqueIndex('unique_student_item').on(table.studentId, table.storeItemId),
+    studentIdIdx: index('idx_student_inventory_student_id').on(table.studentId),
+    storeItemIdIdx: index('idx_student_inventory_store_item_id').on(table.storeItemId),
   };
 });
 
@@ -128,6 +170,11 @@ export const currencyTransactions = pgTable('currency_transactions', {
   transactionType: varchar('transaction_type', { length: 20 }).notNull(),
   description: text('description'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => {
+  return {
+    studentIdIdx: index('idx_currency_transactions_student_id').on(table.studentId),
+    teacherIdIdx: index('idx_currency_transactions_teacher_id').on(table.teacherId),
+  };
 });
 
 // Lesson progress
@@ -146,6 +193,8 @@ export const lessonProgress = pgTable('lesson_progress', {
 }, (table) => {
   return {
     uniqueStudentLesson: uniqueIndex('unique_student_lesson').on(table.studentId, table.lessonId),
+    studentIdIdx: index('idx_lesson_progress_student_id').on(table.studentId),
+    teacherIdIdx: index('idx_lesson_progress_teacher_id').on(table.teacherId),
   };
 });
 
@@ -161,6 +210,10 @@ export const storeSettings = pgTable('store_settings', {
   settings: jsonb('settings').default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => {
+  return {
+    classIdIdx: index('idx_store_settings_class_id').on(table.classId),
+  };
 });
 
 // Admin logs
@@ -173,6 +226,11 @@ export const adminLogs = pgTable('admin_logs', {
   targetUserId: uuid('target_user_id').references(() => profiles.id, { onDelete: 'set null' }),
   details: jsonb('details'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => {
+  return {
+    adminIdIdx: index('idx_admin_logs_admin_id').on(table.adminId),
+    targetUserIdIdx: index('idx_admin_logs_target_user_id').on(table.targetUserId),
+  };
 });
 
 // Item animal positions
@@ -294,6 +352,10 @@ export const storeSettingsRelations = relations(storeSettings, ({ one }) => ({
   teacher: one(profiles, {
     fields: [storeSettings.teacherId],
     references: [profiles.id],
+  }),
+  class: one(classes, {
+    fields: [storeSettings.classId],
+    references: [classes.id],
   }),
 }));
 

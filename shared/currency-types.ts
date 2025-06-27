@@ -85,9 +85,14 @@ export function generatePassportCode(animalType: string): string {
   return `${prefix}-${random}`;
 }
 
-// Validate passport code format (3-4 character suffix for legacy support)
+// Validate passport code format (handles both legacy and new UUID-based formats)
 export function isValidPassportCode(code: string): boolean {
-  return /^[A-Z]{3}-[A-Z0-9]{3,4}$/.test(code);
+  // Legacy format: ABC-XYZ or ABC-XYZ1
+  const legacyFormat = /^[A-Z]{3}-[A-Z0-9]{3,4}$/;
+  // New format: 123-A1B or 123-A1B2C (numeric prefix, alphanumeric suffix)
+  const newFormat = /^[0-9]+-[A-Z0-9]+$/;
+  
+  return legacyFormat.test(code) || newFormat.test(code);
 }
 
 // Currency constants

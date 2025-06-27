@@ -6,22 +6,24 @@ import { eq, and } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth";
 import { z } from "zod";
 import * as cache from "../lib/cache";
+import { validateUUID } from "../middleware/validateUUID";
+import { uuidSchema } from "@shared/validation";
 
 // Store toggle schema
 const storeToggleSchema = z.object({
-  classId: z.number().positive(),
+  classId: uuidSchema,
   isOpen: z.boolean()
 });
 
 // Auto-approval threshold schema
 const autoApprovalSchema = z.object({
-  classId: z.number().positive(),
+  classId: uuidSchema,
   threshold: z.number().min(0).max(1000).nullable() // null means no auto-approval
 });
 
 // Store hours schema
 const storeHoursSchema = z.object({
-  classId: z.number().positive(),
+  classId: uuidSchema,
   openTime: z.string().optional(), // Format: "HH:MM"
   closeTime: z.string().optional(), // Format: "HH:MM"
   timezone: z.string().optional()
@@ -65,11 +67,11 @@ export function registerStoreManagementRoutes(app: Express) {
         await db
           .insert(storeSettings)
           .values({
+            teacherId: teacherId!,
             classId,
             isOpen,
             openedAt: isOpen ? now : null,
             closesAt: null, // No auto-close time yet
-            updatedBy: teacherId!
           });
       } else {
         // Update existing settings
@@ -79,7 +81,6 @@ export function registerStoreManagementRoutes(app: Express) {
             isOpen,
             openedAt: isOpen ? now : existingSettings[0].openedAt,
             closesAt: isOpen ? null : now, // Record when it was closed
-            updatedBy: teacherId!,
             updatedAt: now
           })
           .where(eq(storeSettings.classId, classId));
@@ -110,7 +111,7 @@ export function registerStoreManagementRoutes(app: Express) {
   });
 
   // Get current store status for a class
-  app.get("/api/classes/:classId/store-status", requireAuth, async (req: any, res) => {
+  app.get("/api/classes/:classId/store-status", requireAuth, validateUUID('classId'), async (req: any, res) => {
     try {
       const { classId } = req.params;
       const teacherId = req.user?.userId || req.user?.id;
@@ -121,7 +122,7 @@ export function registerStoreManagementRoutes(app: Express) {
         .from(classes)
         .where(
           and(
-            eq(classes.id, parseInt(classId)),
+            eq(classes.id, classId),
             eq(classes.teacherId, teacherId!)
           )
         )
@@ -135,7 +136,7 @@ export function registerStoreManagementRoutes(app: Express) {
       const settings = await db
         .select()
         .from(storeSettings)
-        .where(eq(storeSettings.classId, parseInt(classId)))
+        .where(eq(storeSettings.classId, classId))
         .limit(1);
 
       if (settings.length === 0) {
@@ -167,7 +168,7 @@ export function registerStoreManagementRoutes(app: Express) {
           closesAt: storeData.closesAt,
           autoApprovalThreshold: storeData.autoApprovalThreshold,
           lastUpdated: storeData.updatedAt,
-          updatedBy: storeData.updatedBy
+          updatedBy: storeData.teacherId
         }
       });
     } catch (error) {
@@ -210,6 +211,7 @@ export function registerStoreManagementRoutes(app: Express) {
         await db
           .insert(storeSettings)
           .values({
+            teacherId: teacherId!,
             classId,
             isOpen: false,
             autoApprovalThreshold: threshold,

@@ -1,7 +1,7 @@
 // Student Island Routes - No authentication required
 import type { Express } from "express";
 import { db } from "../db";
-import { students, classes, purchaseRequests, currencyTransactions, storeSettings, storeItems, quizSubmissions } from "@shared/schema";
+import { students, classes, purchaseRequests, currencyTransactions, storeSettings, storeItems, quizSubmissions, studentInventory } from "@shared/schema";
 import { eq, and, desc, asc, inArray, sql } from "drizzle-orm";
 import { isValidPassportCode, TRANSACTION_REASONS } from "@shared/currency-types";
 import { z } from "zod";
@@ -163,47 +163,82 @@ export function registerIslandRoutes(app: Express) {
         available: (student.currencyBalance || 0) - pendingTotal
       };
 
-      // 5. Get inventory items from avatarData.owned and store catalog
-      const ownedItemIds = student.avatarData?.owned || [];
-      const inventoryItems = ownedItemIds.map(itemId => {
-        const catalogItem = storeCatalog.find(item => item.id === itemId);
-        if (catalogItem) {
-          return {
-            ...catalogItem,
-            quantity: 1,
-            obtainedAt: new Date()
-          };
+      // 5. Get inventory items from student_inventory table (NEW!)
+      const inventoryData = await db
+        .select({
+          itemId: studentInventory.storeItemId,
+          isEquipped: studentInventory.isEquipped,
+          acquiredAt: studentInventory.acquiredAt,
+          // Join with store items to get details
+          name: storeItems.name,
+          description: storeItems.description,
+          itemType: storeItems.itemType,
+          cost: storeItems.cost,
+          rarity: storeItems.rarity,
+          imageUrl: storeItems.assetId
+        })
+        .from(studentInventory)
+        .innerJoin(storeItems, eq(studentInventory.storeItemId, storeItems.id))
+        .where(eq(studentInventory.studentId, student.id));
+
+      // Transform inventory data to match frontend expectations
+      const inventoryItems = await Promise.all(inventoryData.map(async (item) => {
+        // Get image URL if asset exists
+        let imageUrl = null;
+        if (item.imageUrl) {
+          const preparedItem = await StorageRouter.prepareStoreItemsResponse([{ 
+            assetId: item.imageUrl 
+          } as any]);
+          imageUrl = preparedItem[0]?.imageUrl;
         }
-        // If item not in catalog (maybe it was removed), still include it
+
         return {
-          id: itemId,
-          name: itemId,
-          type: 'avatar_accessory' as const,
-          cost: 0,
-          description: 'Legacy item',
-          rarity: 'common' as const,
+          id: item.itemId,
+          name: item.name,
+          type: item.itemType,
+          cost: item.cost,
+          description: item.description,
+          rarity: item.rarity,
+          imageUrl,
           quantity: 1,
-          obtainedAt: new Date()
+          obtainedAt: item.acquiredAt,
+          isEquipped: item.isEquipped
         };
-      });
+      }));
+
+      // Get equipped items for avatarData compatibility
+      const equippedItems = inventoryData
+        .filter(item => item.isEquipped)
+        .reduce((acc, item) => {
+          // Map item types to slots
+          const slot = item.itemType.replace('avatar_', ''); // e.g., avatar_hat -> hat
+          acc[slot] = item.itemId;
+          return acc;
+        }, {} as Record<string, string>);
+
+      // Update avatarData to include equipped items (for compatibility)
+      const updatedAvatarData = {
+        ...student.avatarData,
+        equipped: equippedItems,
+        owned: inventoryData.map(item => item.itemId) // For legacy compatibility
+      };
 
       // Debug log
-      console.log(`[DEBUG] Student ${student.studentName} avatarData:`, JSON.stringify(student.avatarData, null, 2));
-      console.log(`[DEBUG] Student ${student.studentName} inventoryItems:`, inventoryItems);
+      console.log(`[DEBUG] Student ${student.studentName} inventory:`, inventoryItems.length, 'items');
       
       // Format consolidated response
       const pageData = {
         island: {
           id: student.id,
           passportCode: student.passportCode,
-          studentName: student.studentName || student.name, // Fallback to name if studentName is null
+          studentName: student.studentName,
           gradeLevel: student.gradeLevel,
           animalType: student.animalType,
           personalityType: student.personalityType,
           animalGenius: student.animalGenius,
           learningStyle: student.learningStyle,
           currencyBalance: student.currencyBalance || 0,
-          avatarData: student.avatarData || {},
+          avatarData: updatedAvatarData,
           roomData: student.roomData || { furniture: [] },
           className: student.className,
           classId: student.classId,
@@ -267,7 +302,7 @@ export function registerIslandRoutes(app: Express) {
       const islandData = {
         id: student.id,
         passportCode: student.passportCode,
-        studentName: student.studentName || student.name, // Fallback to name if studentName is null
+        studentName: student.studentName,
         gradeLevel: student.gradeLevel,
         animalType: student.animalType,
         personalityType: student.personalityType,
@@ -470,6 +505,22 @@ export function registerIslandRoutes(app: Express) {
         return res.status(500).json({ message: "Class configuration error" });
       }
 
+      // Check if student already owns this item (using student_inventory table)
+      const existingOwnership = await db
+        .select()
+        .from(studentInventory)
+        .where(
+          and(
+            eq(studentInventory.studentId, student.id),
+            eq(studentInventory.storeItemId, itemId)
+          )
+        )
+        .limit(1);
+
+      if (existingOwnership.length > 0) {
+        return res.status(400).json({ message: "You already own this item" });
+      }
+
       // Check for existing pending request for same item
       const existingRequest = await db
         .select()
@@ -477,7 +528,7 @@ export function registerIslandRoutes(app: Express) {
         .where(
           and(
             eq(purchaseRequests.studentId, student.id),
-            eq(purchaseRequests.itemId, itemId),
+            eq(purchaseRequests.storeItemId, itemId),
             eq(purchaseRequests.status, 'pending')
           )
         )
@@ -524,39 +575,28 @@ export function registerIslandRoutes(app: Express) {
             .values({
               studentId: student.id,
               storeItemId: itemId,
-              itemType: item.itemType,
-              itemId: itemId,
-              cost: item.cost,
+              itemType: item.itemType, // Historical snapshot
+              cost: item.cost, // Historical snapshot
               status: 'approved',
               processedAt: new Date(),
               processedBy: classInfo.teacherId
             })
             .returning();
 
-          // Get current avatar data
-          const currentStudent = await tx
-            .select({ avatarData: students.avatarData })
-            .from(students)
-            .where(eq(students.id, student.id))
-            .limit(1);
+          // Add item to student_inventory (NEW!)
+          await tx
+            .insert(studentInventory)
+            .values({
+              studentId: student.id,
+              storeItemId: itemId,
+              isEquipped: false
+            });
           
-          const currentAvatarData = currentStudent[0]?.avatarData || {};
-          const currentOwnedItems = currentAvatarData.owned || [];
-          
-          // Add item to owned items if not already owned
-          const newOwnedItems = currentOwnedItems.includes(itemId)
-            ? currentOwnedItems
-            : [...currentOwnedItems, itemId];
-          
-          // Update student balance and avatar data atomically
+          // Update student balance atomically
           const updateResult = await tx
             .update(students)
             .set({
-              currencyBalance: sql`${students.currencyBalance} - ${item.cost}`,
-              avatarData: {
-                ...currentAvatarData,
-                owned: newOwnedItems
-              }
+              currencyBalance: sql`${students.currencyBalance} - ${item.cost}`
             })
             .where(and(
               eq(students.id, student.id),
@@ -599,9 +639,8 @@ export function registerIslandRoutes(app: Express) {
           .values({
             studentId: student.id,
             storeItemId: itemId,
-            itemType: item.itemType,
-            itemId: itemId,
-            cost: item.cost,
+            itemType: item.itemType, // Historical snapshot
+            cost: item.cost, // Historical snapshot
             status: 'pending',
             processedAt: null,
             processedBy: null
@@ -725,7 +764,7 @@ export function registerIslandRoutes(app: Express) {
     }
   });
 
-  // Equip/unequip items endpoint
+  // Equip/unequip items endpoint (UPDATED to use student_inventory)
   app.post("/api/island/:passportCode/equip", async (req, res) => {
     try {
       const { passportCode } = req.params;
@@ -744,8 +783,7 @@ export function registerIslandRoutes(app: Express) {
       // Get student data
       const studentData = await db
         .select({
-          id: students.id,
-          avatarData: students.avatarData
+          id: students.id
         })
         .from(students)
         .where(eq(students.passportCode, passportCode))
@@ -756,42 +794,76 @@ export function registerIslandRoutes(app: Express) {
       }
       
       const student = studentData[0];
-      const currentAvatarData = student.avatarData || {};
-      const ownedItems = currentAvatarData.owned || [];
-      const equippedItems = currentAvatarData.equipped || {};
       
-      // If itemId is provided, verify ownership
-      if (itemId && !ownedItems.includes(itemId)) {
-        return res.status(400).json({ message: "You don't own this item" });
-      }
-      
-      // Update equipped items
-      const newEquipped = { ...equippedItems };
+      // If itemId is provided, verify ownership in student_inventory
       if (itemId) {
-        newEquipped[slot] = itemId;
-      } else {
-        // Unequip
-        delete newEquipped[slot];
+        const ownership = await db
+          .select()
+          .from(studentInventory)
+          .where(
+            and(
+              eq(studentInventory.studentId, student.id),
+              eq(studentInventory.storeItemId, itemId)
+            )
+          )
+          .limit(1);
+        
+        if (ownership.length === 0) {
+          return res.status(400).json({ message: "You don't own this item" });
+        }
       }
       
-      // Update database
-      await db
-        .update(students)
-        .set({
-          avatarData: {
-            ...currentAvatarData,
-            equipped: newEquipped
-          }
-        })
-        .where(eq(students.id, student.id));
+      // Start transaction to update equipped status
+      await db.transaction(async (tx) => {
+        // First, unequip any item currently in this slot
+        const itemsInSlot = await tx
+          .select({
+            storeItemId: studentInventory.storeItemId,
+            itemType: storeItems.itemType
+          })
+          .from(studentInventory)
+          .innerJoin(storeItems, eq(studentInventory.storeItemId, storeItems.id))
+          .where(
+            and(
+              eq(studentInventory.studentId, student.id),
+              eq(studentInventory.isEquipped, true),
+              eq(storeItems.itemType, `avatar_${slot}`) // e.g., avatar_hat
+            )
+          );
+        
+        // Unequip items in the slot
+        for (const item of itemsInSlot) {
+          await tx
+            .update(studentInventory)
+            .set({ isEquipped: false })
+            .where(
+              and(
+                eq(studentInventory.studentId, student.id),
+                eq(studentInventory.storeItemId, item.storeItemId)
+              )
+            );
+        }
+        
+        // Equip the new item if provided
+        if (itemId) {
+          await tx
+            .update(studentInventory)
+            .set({ isEquipped: true })
+            .where(
+              and(
+                eq(studentInventory.studentId, student.id),
+                eq(studentInventory.storeItemId, itemId)
+              )
+            );
+        }
+      });
       
       // Clear cache for the main island data endpoint
       const cacheKey = `island-page-data:${passportCode}`;
       cache.del(cacheKey);
       
       res.json({
-        message: itemId ? "Item equipped!" : "Item unequipped!",
-        equipped: newEquipped
+        message: itemId ? "Item equipped!" : "Item unequipped!"
       });
     } catch (error) {
       console.error("Equip item error:", error);
@@ -799,7 +871,7 @@ export function registerIslandRoutes(app: Express) {
     }
   });
 
-  // Save avatar customization endpoint
+  // Save avatar customization endpoint (UPDATED)
   app.post("/api/island/:passportCode/avatar", async (req, res) => {
     try {
       const { passportCode } = req.params;
@@ -813,8 +885,7 @@ export function registerIslandRoutes(app: Express) {
       // Get student data
       const studentData = await db
         .select({
-          id: students.id,
-          avatarData: students.avatarData
+          id: students.id
         })
         .from(students)
         .where(eq(students.passportCode, passportCode))
@@ -825,41 +896,60 @@ export function registerIslandRoutes(app: Express) {
       }
       
       const student = studentData[0];
-      const currentAvatarData = student.avatarData || {};
-      const ownedItems = currentAvatarData.owned || [];
       
       // Validate all equipped items are owned
       const equippedItemIds = Object.values(equipped || {}).filter(Boolean) as string[];
-      const unownedItems = equippedItemIds.filter(itemId => !ownedItems.includes(itemId));
       
-      if (unownedItems.length > 0) {
-        return res.status(400).json({ 
-          message: "You don't own some of the items you're trying to equip",
-          unownedItems 
-        });
+      if (equippedItemIds.length > 0) {
+        const ownedItems = await db
+          .select({ storeItemId: studentInventory.storeItemId })
+          .from(studentInventory)
+          .where(
+            and(
+              eq(studentInventory.studentId, student.id),
+              inArray(studentInventory.storeItemId, equippedItemIds)
+            )
+          );
+        
+        const ownedItemIds = ownedItems.map(item => item.storeItemId);
+        const unownedItems = equippedItemIds.filter(itemId => !ownedItemIds.includes(itemId));
+        
+        if (unownedItems.length > 0) {
+          return res.status(400).json({ 
+            message: "You don't own some of the items you're trying to equip",
+            unownedItems 
+          });
+        }
       }
       
-      // Update avatar data with new equipped items
-      const updatedAvatarData = {
-        ...currentAvatarData,
-        equipped: equipped || {}
-      };
+      // Update equipped status in transaction
+      await db.transaction(async (tx) => {
+        // First, unequip all items
+        await tx
+          .update(studentInventory)
+          .set({ isEquipped: false })
+          .where(eq(studentInventory.studentId, student.id));
+        
+        // Then equip the specified items
+        for (const itemId of equippedItemIds) {
+          await tx
+            .update(studentInventory)
+            .set({ isEquipped: true })
+            .where(
+              and(
+                eq(studentInventory.studentId, student.id),
+                eq(studentInventory.storeItemId, itemId)
+              )
+            );
+        }
+      });
       
-      // Update database
-      await db
-        .update(students)
-        .set({
-          avatarData: updatedAvatarData
-        })
-        .where(eq(students.id, student.id));
-      
-      // Clear cache for the main island data endpoint
+      // Clear cache
       const cacheKey = `island-page-data:${passportCode}`;
       cache.del(cacheKey);
       
       res.json({
-        message: "Avatar customization saved!",
-        avatarData: updatedAvatarData
+        message: "Avatar customization saved!"
       });
     } catch (error) {
       console.error("Save avatar error:", error);
@@ -867,7 +957,7 @@ export function registerIslandRoutes(app: Express) {
     }
   });
 
-  // Save room decoration endpoint
+  // Save room decoration endpoint (UPDATED to check ownership in student_inventory)
   app.post("/api/island/:passportCode/room", async (req, res) => {
     try {
       const { passportCode } = req.params;
@@ -890,8 +980,7 @@ export function registerIslandRoutes(app: Express) {
       const studentData = await db
         .select({
           id: students.id,
-          roomData: students.roomData,
-          avatarData: students.avatarData
+          roomData: students.roomData
         })
         .from(students)
         .where(eq(students.passportCode, passportCode))
@@ -902,12 +991,23 @@ export function registerIslandRoutes(app: Express) {
       }
       
       const student = studentData[0];
-      const ownedItems = student.avatarData?.owned || [];
       
-      // Validate all furniture items are owned
+      // Validate all furniture items are owned (using student_inventory)
       if (furniture && furniture.length > 0) {
         const furnishingItemIds = furniture.map((item: any) => item.itemId);
-        const unownedItems = furnishingItemIds.filter((itemId: string) => !ownedItems.includes(itemId));
+        
+        const ownedItems = await db
+          .select({ storeItemId: studentInventory.storeItemId })
+          .from(studentInventory)
+          .where(
+            and(
+              eq(studentInventory.studentId, student.id),
+              inArray(studentInventory.storeItemId, furnishingItemIds)
+            )
+          );
+        
+        const ownedItemIds = ownedItems.map(item => item.storeItemId);
+        const unownedItems = furnishingItemIds.filter((itemId: string) => !ownedItemIds.includes(itemId));
         
         if (unownedItems.length > 0) {
           return res.status(400).json({ 

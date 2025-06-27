@@ -35,7 +35,8 @@ router.get('/me', requireAuth, async (req, res) => {
       personalityAnimal: profile.personalityAnimal,
       isAdmin: profile.isAdmin || false,
       schoolOrganization: profile.schoolOrganization,
-      roleTitle: profile.roleTitle
+      roleTitle: profile.roleTitle,
+      howHeardAbout: profile.howHeardAbout
     };
     
     res.json({
@@ -96,7 +97,8 @@ router.put('/me/profile', requireAuth, async (req, res) => {
         personalityAnimal: updatedProfile.personalityAnimal,
         isAdmin: updatedProfile.isAdmin || false,
         schoolOrganization: updatedProfile.schoolOrganization,
-        roleTitle: updatedProfile.roleTitle
+        roleTitle: updatedProfile.roleTitle,
+        howHeardAbout: updatedProfile.howHeardAbout
       }
     });
   } catch (error) {
