@@ -21,6 +21,10 @@ export function registerPurchaseApprovalRoutes(app: Express) {
       const { classId } = req.params;
       const userId = req.user?.userId || req.user?.id; // Support both userId and id
       
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
       // Verify teacher owns this class
       const classData = await db
         .select()
@@ -48,7 +52,7 @@ export function registerPurchaseApprovalRoutes(app: Express) {
           animalType: students.animalType,
           avatarData: students.avatarData,
           itemType: purchaseRequests.itemType,
-          itemId: purchaseRequests.itemId,
+          itemId: purchaseRequests.storeItemId,
           cost: purchaseRequests.cost,
           status: purchaseRequests.status,
           requestedAt: purchaseRequests.requestedAt,
@@ -69,7 +73,7 @@ export function registerPurchaseApprovalRoutes(app: Express) {
       }
 
       // Collect all unique item IDs from the requests
-      const itemIds = [...new Set(requests.map(r => r.itemId))];
+      const itemIds = [...new Set(requests.map(r => r.itemId).filter(id => id !== null))];
 
       // Fetch all item details in a single query
       const itemDetailsList = await db
@@ -104,6 +108,14 @@ export function registerPurchaseApprovalRoutes(app: Express) {
     try {
       const { requestId, action, reason } = approvalSchema.parse(req.body);
       const teacherId = req.user?.userId || req.user?.id;
+      
+      if (!teacherId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
+      if (!teacherId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
 
       // Get the purchase request and verify it belongs to teacher's class
       const requestData = await db
@@ -164,12 +176,12 @@ export function registerPurchaseApprovalRoutes(app: Express) {
           console.log(`[APPROVAL DEBUG] Student ${studentId}:`);
           console.log('  - Current avatarData:', JSON.stringify(currentAvatarData));
           console.log('  - Current owned items:', currentOwnedItems);
-          console.log('  - Adding item:', request.itemId);
+          console.log('  - Adding item:', request.storeItemId);
           
           // Create new array to ensure Drizzle detects the change
-          const newOwnedItems = currentOwnedItems.includes(request.itemId)
+          const newOwnedItems = currentOwnedItems.includes(request.storeItemId)
             ? currentOwnedItems
-            : [...currentOwnedItems, request.itemId];
+            : [...currentOwnedItems, request.storeItemId];
           
           console.log('  - New owned items:', newOwnedItems);
           
@@ -196,10 +208,10 @@ export function registerPurchaseApprovalRoutes(app: Express) {
           const itemData = await tx
             .select({ name: storeItems.name })
             .from(storeItems)
-            .where(eq(storeItems.id, request.itemId))
+            .where(eq(storeItems.id, request.storeItemId))
             .limit(1);
           
-          const itemName = itemData[0]?.name || request.itemId;
+          const itemName = itemData[0]?.name || request.storeItemId;
           
           await tx
             .insert(currencyTransactions)
@@ -293,9 +305,9 @@ export function registerPurchaseApprovalRoutes(app: Express) {
               const currentOwnedItems = currentAvatarData.owned || [];
               
               // Create new array to ensure Drizzle detects the change
-              const newOwnedItems = currentOwnedItems.includes(request.itemId)
+              const newOwnedItems = currentOwnedItems.includes(request.storeItemId)
                 ? currentOwnedItems
-                : [...currentOwnedItems, request.itemId];
+                : [...currentOwnedItems, request.storeItemId];
               
               await tx
                 .update(students)
@@ -312,10 +324,10 @@ export function registerPurchaseApprovalRoutes(app: Express) {
               const itemData = await tx
                 .select({ name: storeItems.name })
                 .from(storeItems)
-                .where(eq(storeItems.id, request.itemId))
+                .where(eq(storeItems.id, request.storeItemId))
                 .limit(1);
               
-              const itemName = itemData[0]?.name || request.itemId;
+              const itemName = itemData[0]?.name || request.storeItemId;
               
               await tx
                 .insert(currencyTransactions)
