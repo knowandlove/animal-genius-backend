@@ -161,10 +161,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Submit quiz
   app.post("/api/quiz-submissions", async (req, res) => {
     try {
-      const { studentName, gradeLevel, classId, animalType, geniusType, animalGenius, answers, personalityType, learningStyle, scores, learningScores } = req.body;
+      const { studentName, name, gradeLevel, classId, animalType, geniusType, animalGenius, answers, personalityType, learningStyle, scores, learningScores } = req.body;
+      const finalStudentName = studentName || name; // Handle both field names
       
       // Validate required fields
-      if (!studentName?.trim()) {
+      if (!finalStudentName?.trim()) {
         return res.status(400).json({ message: "Student name is required" });
       }
       if (!gradeLevel?.trim()) {
@@ -183,7 +184,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create or get student using upsert to prevent race conditions
       const student = await uuidStorage.upsertStudent({
         classId: classId,
-        studentName: studentName, // Use studentName field
+        studentName: finalStudentName, // Use finalStudentName which handles both fields
         gradeLevel: gradeLevel,
         personalityType: personalityType,
         animalType: animalType,
