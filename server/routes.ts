@@ -383,6 +383,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Delete submission
+  app.delete("/api/submissions/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const submissionId = req.params.id;
+      const submission = await uuidStorage.getSubmissionById(submissionId);
+      
+      if (!submission) {
+        return res.status(404).json({ message: "Submission not found" });
+      }
+      
+      // Get student to access class info
+      const student = await uuidStorage.getStudentById(submission.studentId);
+      if (!student) {
+        return res.status(404).json({ message: "Student not found" });
+      }
+      
+      // Get class info to verify teacher access
+      const classRecord = await uuidStorage.getClassById(student.classId);
+      if (!classRecord || classRecord.teacherId !== req.user!.userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Delete the submission
+      await db.delete(quizSubmissions).where(eq(quizSubmissions.id, submissionId));
+      
+      res.json({ message: "Submission deleted successfully" });
+    } catch (error: any) {
+      console.error("Delete submission error:", error);
+      res.status(500).json({ message: "Failed to delete submission" });
+    }
+  });
+
   // Delete class (regular - fails if has students)
   app.delete("/api/classes/:id", requireAuth, async (req: Request, res: Response) => {
     try {
