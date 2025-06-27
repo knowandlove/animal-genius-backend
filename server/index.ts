@@ -1,6 +1,6 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { config } from "dotenv";
-import { registerRoutes } from "./routes-uuid";
+import { registerRoutes } from "./routes";
 import path from "path";
 import { fileURLToPath } from "url";
 // Vite imports removed - frontend is now separate
@@ -32,6 +32,8 @@ const app = express();
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:5174',
+  'https://animal-genius-frontend.vercel.app',
+  'https://animal-genius-quiz-pro.vercel.app',
   process.env.FRONTEND_URL
 ].filter(Boolean);
 

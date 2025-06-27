@@ -1,10 +1,11 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { storage } from "./storage";
-import { uuidStorage, generateUniqueClassCodeSupabase } from "./storage-uuid-fixes";
-import { insertClassSchema, insertQuizSubmissionSchema, insertLessonProgressSchema } from "@shared/schema";
-import { z } from "zod";
-import crypto from "crypto";
+import { Request, Response } from "express";
+import { uuidStorage } from "./storage-uuid";
+import { NewQuizSubmission, NewStudent } from "@shared/schema";
+import { db } from "./db";
+import { eq, inArray } from "drizzle-orm";
+import { quizSubmissions, students, currencyTransactions, purchaseRequests, lessonProgress, classes } from "@shared/schema";
 import { gameSessionManager } from "./game-session-manager";
 import { GameWebSocketServer } from "./websocket-server";
 import { getRandomQuestions } from "@shared/animal-facts-questions";
@@ -23,60 +24,20 @@ import { registerStoreAdminRoutes } from "./routes/store/admin";
 import { requireAuth, authenticateAdmin } from "./middleware/auth";
 import authRoutes from "./routes/auth";
 import meRoutes from './routes/me';
-// import storeRoutes from "./routes/store"; // OLD SYSTEM - commented out
 import assetsRouter from './routes/admin/assets-direct';
 import storeRouter from './routes/store';
 import adminUploadRoutes from "./routes/admin/upload-asset";
 import monitoringRoutes from "./routes/admin/monitoring";
 import quickStatsRoutes from "./routes/admin/quick-stats";
 import debugStoreRouter from './routes/debug-store';
-import emergencyLoginRouter from './routes/emergency-login';
+import lessonsRouter from './routes/lessons';
 
 // Feature flags to disable unused features
 const FEATURE_FLAGS = {
-  GAMES_ENABLED: process.env.GAMES_ENABLED !== 'false', // Default true for backward compatibility
+  GAMES_ENABLED: process.env.GAMES_ENABLED !== 'false',
   WEBSOCKET_ENABLED: process.env.WEBSOCKET_ENABLED !== 'false',
   METRICS_ENABLED: process.env.METRICS_ENABLED !== 'false',
 };
-
-// JWT is now handled by Supabase Auth
-
-// Helper function for safe parseInt validation
-function safeParseInt(value: string, paramName: string): number {
-  const parsed = parseInt(value, 10);
-  
-  if (isNaN(parsed)) {
-    throw new Error(`Invalid ${paramName}: must be a valid integer`);
-  }
-  
-  return parsed;
-}
-
-// Alternative helper that returns null instead of throwing
-function tryParseInt(value: string): number | null {
-  const parsed = parseInt(value, 10);
-  return isNaN(parsed) ? null : parsed;
-}
-
-/* 
- * Usage pattern for remaining parseInt calls:
- * 
- * 1. Replace: const id = parseInt(req.params.id);
- *    With:    const id = safeParseInt(req.params.id, 'descriptive name');
- * 
- * 2. Update the catch block to handle validation errors:
- *    catch (error: any) {
- *      if (error.message?.includes('Invalid')) {
- *        res.status(400).json({ message: error.message });
- *      } else {
- *        res.status(500).json({ message: "Failed to..." });
- *      }
- *    }
- * 
- * 3. For optional parameters, use tryParseInt() and check for null
- */
-
-// Admin middleware is now imported from ./middleware/auth
 
 export async function registerRoutes(app: Express): Promise<Server> {
 
@@ -97,97 +58,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Use new Supabase auth routes
   app.use('/api/auth', authRoutes);
   
-  // TEMPORARY: Emergency login for migration period
-  app.use('/api', emergencyLoginRouter);
-  
   // Test endpoint to verify auth is working
-  app.get("/api/test-auth", requireAuth, async (req: any, res) => {
-    console.log("[/api/test-auth] User:", req.user);
-    console.log("[/api/test-auth] Profile:", req.profile);
+  app.get("/api/test-auth", requireAuth, async (req: Request, res: Response) => {
     res.json({ 
       success: true, 
       user: req.user,
       profile: {
         id: req.profile?.id,
-        firstName: req.profile?.first_name,
-        lastName: req.profile?.last_name,
-        email: req.profile?.email
+        fullName: req.profile?.full_name,
+        email: req.profile?.email,
+        isAdmin: req.profile?.is_admin
       }
     });
   });
 
   // Create class
-  app.post("/api/classes", requireAuth, async (req: any, res) => {
+  app.post("/api/classes", requireAuth, async (req: Request, res: Response) => {
     try {
-      console.log("[/api/classes POST] Request body:", req.body);
-      console.log("[/api/classes POST] User:", req.user);
+      const { name, subject, gradeLevel, schoolName, icon, backgroundColor, numberOfStudents } = req.body;
       
-      const classData = insertClassSchema.parse(req.body);
-      console.log("[/api/classes POST] Parsed class data:", classData);
+      if (!name?.trim()) {
+        return res.status(400).json({ message: "Class name is required" });
+      }
       
-      // Generate unique class code
-      const code = await generateUniqueClassCodeSupabase();
-      console.log("[/api/classes POST] Generated code:", code);
+      console.log('Creating class for teacher:', req.user.userId);
       
-      // Use UUID-compatible storage method
       const newClass = await uuidStorage.createClass({
-        ...classData,
         teacherId: req.user.userId,
-        code
+        name: name.trim(),
+        subject: subject?.trim() || null,
+        gradeLevel: gradeLevel?.trim() || null,
+        schoolName: schoolName?.trim() || null,
+        icon: icon || 'book',
+        backgroundColor: backgroundColor || '#829B79',
+        numberOfStudents: numberOfStudents || null,
+        passportCode: '', // Will be generated by storage method
+        isArchived: false
       });
-      console.log("[/api/classes POST] Created class:", newClass);
+      
+      console.log('Created class:', newClass);
+      console.log('Passport code:', newClass.passportCode);
       
       res.json(newClass);
     } catch (error) {
       console.error("[/api/classes POST] Create class error:", error);
-      if (error instanceof Error) {
-        console.error("[/api/classes POST] Error message:", error.message);
-        console.error("[/api/classes POST] Error stack:", error.stack);
-      }
-      res.status(400).json({ message: "Failed to create class", error: error instanceof Error ? error.message : "Unknown error" });
+      res.status(400).json({ message: "Failed to create class" });
     }
   });
 
   // Get teacher's classes
-  app.get("/api/classes", requireAuth, async (req: any, res) => {
+  app.get("/api/classes", requireAuth, async (req: Request, res: Response) => {
     try {
-      console.log("[/api/classes] User ID:", req.user?.userId);
-      
-      if (!req.user?.userId) {
-        console.error("[/api/classes] No user ID in request");
-        return res.status(401).json({ message: "User not authenticated" });
-      }
-      
-      // Use UUID-compatible storage method
-      const classes = await uuidStorage.getClassesByTeacherId(req.user.userId);
-      console.log(`[/api/classes] Found ${classes.length} classes for user ${req.user.userId}`);
-      
-      // Get submission counts for each class
-      const classesWithStats = await Promise.all(
-        classes.map(async (cls) => {
-          const stats = await storage.getClassStats(cls.id);
-          return {
-            ...cls,
-            submissionCount: stats.totalSubmissions,
-          };
-        })
-      );
-      
+      const classesWithStats = await uuidStorage.getClassesWithStudentCount(req.user.userId);
       res.json(classesWithStats);
     } catch (error) {
       console.error("[/api/classes] Error:", error);
-      console.error("[/api/classes] Stack:", error instanceof Error ? error.stack : 'No stack trace');
       res.status(500).json({ message: "Failed to get classes" });
     }
   });
 
   // Get individual class by ID
-  app.get("/api/classes/:id", requireAuth, validateParams(schemas.idParam), async (req: any, res) => {
+  app.get("/api/classes/:id", requireAuth, async (req: Request, res: Response) => {
     try {
       const classId = req.params.id;
-      const teacherId = req.user.userId;
+      const teacherId = req.user!.userId;
       
-      const classRecord = await storage.getClassById(classId);
+      const classRecord = await uuidStorage.getClassById(classId);
       
       if (!classRecord || classRecord.teacherId !== teacherId) {
         return res.status(403).json({ message: "Access denied" });
@@ -196,29 +132,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(classRecord);
     } catch (error: any) {
       console.error("Get class error:", error);
-      if (error.message?.includes('Invalid class ID')) {
-        res.status(400).json({ message: error.message });
-      } else {
-        res.status(500).json({ message: "Failed to get class" });
-      }
+      res.status(500).json({ message: "Failed to get class" });
     }
   });
 
-  // Get class by code (for students)
-  app.get("/api/classes/code/:code", validateParams(schemas.classCodeParam), async (req, res) => {
+  // Get class by passport code (for students)
+  app.get("/api/classes/code/:code", async (req, res) => {
     try {
       const { code } = req.params;
-      const classRecord = await storage.getClassByCode(code);
+      const classRecord = await uuidStorage.getClassByPassportCode(code);
       
       if (!classRecord) {
         return res.status(404).json({ message: "Class not found" });
       }
       
-      const teacher = await storage.getUserById(classRecord.teacherId);
+      const teacher = await uuidStorage.getProfileById(classRecord.teacherId);
       
       res.json({
         ...classRecord,
-        teacherName: teacher ? `${teacher.firstName} ${teacher.lastName}` : "Unknown Teacher",
+        teacherName: teacher?.fullName || "Unknown Teacher",
       });
     } catch (error) {
       console.error("Get class by code error:", error);
@@ -226,50 +158,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Submit quiz - OPTIMIZED VERSION
-  app.post("/api/quiz/submit", async (req, res) => {
-    try {
-      const submission = insertQuizSubmissionSchema.parse(req.body);
-      
-      // Use the optimized method for fast submission
-      const result = await storage.createQuizSubmissionOptimized(submission);
-      
-      // Return immediately - rewards will be processed async
-      res.json(result);
-    } catch (error) {
-      console.error("Submit quiz error:", error);
-      res.status(400).json({ message: "Failed to submit quiz" });
-    }
-  });
-
-  // Submit quiz submissions (alternative endpoint) - OPTIMIZED VERSION
+  // Submit quiz
   app.post("/api/quiz-submissions", async (req, res) => {
     try {
+      const { studentName, gradeLevel, classId, animalType, geniusType, animalGenius, answers, personalityType, learningStyle, scores, learningScores } = req.body;
+      
       // Validate required fields
-      if (!req.body.studentName?.trim()) {
+      if (!studentName?.trim()) {
         return res.status(400).json({ message: "Student name is required" });
       }
-      if (!req.body.gradeLevel?.trim()) {
+      if (!gradeLevel?.trim()) {
         return res.status(400).json({ message: "Grade level is required" });
       }
-      if (!req.body.classId) {
+      if (!classId) {
         return res.status(400).json({ message: "Class ID is required" });
       }
       
       // Verify class exists
-      const classExists = await storage.getClassById(req.body.classId);
-      if (!classExists) {
+      const classRecord = await uuidStorage.getClassById(classId);
+      if (!classRecord) {
         return res.status(404).json({ message: "Class not found" });
       }
       
-      const submission = insertQuizSubmissionSchema.parse(req.body);
+      // Create or get student using upsert to prevent race conditions
+      const student = await uuidStorage.upsertStudent({
+        classId: classId,
+        studentName: studentName, // Use studentName field
+        gradeLevel: gradeLevel,
+        personalityType: personalityType,
+        animalType: animalType,
+        animalGenius: geniusType || animalGenius || '',
+        learningStyle: learningStyle || 'visual',
+      });
       
-      // Use the optimized method for fast submission
-      const result = await storage.createQuizSubmissionOptimized(submission);
+      // Create quiz submission and award coins in a transaction
+      const submission = await uuidStorage.submitQuizAndAwardCoins(
+        {
+          studentId: student.id,
+          animalType: animalType,
+          geniusType: geniusType || animalGenius || '',
+          answers: {
+            ...answers,
+            personalityType: personalityType,
+            learningStyle: learningStyle,
+            learningScores: learningScores,
+            scores: scores,
+            gradeLevel: gradeLevel
+          },
+          coinsEarned: 50,
+        },
+        {
+          studentId: student.id,
+          teacherId: classRecord.teacherId,
+          amount: 50,
+          transactionType: 'quiz_complete',
+          description: 'Quiz completion reward',
+        }
+      );
       
-      // Return immediately - rewards will be processed async
-      res.json(result);
-    } catch (error: any) {
+      // Return the student's passport code
+      res.json({
+        ...submission,
+        passportCode: student.passportCode,
+        studentId: student.id,
+        message: 'Quiz completed successfully!'
+      });
+    } catch (error) {
       console.error("Submit quiz submission error:", error);
       const errorMessage = error instanceof Error ? error.message : "Failed to submit quiz";
       res.status(400).json({ message: errorMessage });
@@ -277,33 +231,93 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get class analytics
-  app.get("/api/classes/:id/analytics", requireAuth, async (req: any, res) => {
+  app.get("/api/classes/:id/analytics", requireAuth, async (req: Request, res: Response) => {
     try {
-      const classId = req.params.id; // UUID - no parsing needed
-      const classRecord = await storage.getClassById(classId);
+      const classId = req.params.id;
+      const classRecord = await uuidStorage.getClassById(classId);
       
-      if (!classRecord || classRecord.teacherId !== req.user.userId) {
+      if (!classRecord || classRecord.teacherId !== req.user!.userId) {
         return res.status(404).json({ message: "Class not found" });
       }
       
-      const stats = await storage.getClassStats(classId);
-      const submissions = await storage.getSubmissionsByClassId(classId);
+      const classStudents = await uuidStorage.getStudentsByClassId(classId);
       
-      // Import pairing service functions
-      const { calculateGeniusDistribution, generateClassInsights } = await import("./services/pairingService");
+      // Get all submissions with student info
+      const submissionsWithDetails = await Promise.all(
+        classStudents.map(async (student) => {
+          const submissions = await uuidStorage.getSubmissionsByStudentId(student.id);
+          const balance = await uuidStorage.getStudentBalance(student.id);
+          
+          return submissions.map(sub => {
+            // Parse the answers to get personality type
+            let personalityType = 'INTJ'; // Default
+            let learningStyle = 'visual'; // Default
+            
+            if (sub.answers && typeof sub.answers === 'object') {
+              const answers = sub.answers as any;
+              // If answers includes calculated personality type
+              if (answers.personalityType) {
+                personalityType = answers.personalityType;
+              }
+              if (answers.learningStyle) {
+                learningStyle = answers.learningStyle;
+              }
+            }
+            
+            return {
+              id: sub.id,
+              studentName: student.studentName || student.name || 'Unknown',
+              gradeLevel: 'Unknown', // We don't store grade level in the student table
+              personalityType: personalityType,
+              animalType: sub.animalType,
+              animalGenius: sub.geniusType,
+              learningStyle: learningStyle,
+              learningScores: {
+                visual: 0,
+                auditory: 0,
+                kinesthetic: 0,
+                readingWriting: 0
+              },
+              completedAt: sub.completedAt,
+              passportCode: student.passportCode,
+              currencyBalance: balance
+            };
+          });
+        })
+      );
       
-      // Calculate genius distribution and insights
-      const geniusDistribution = calculateGeniusDistribution(submissions);
-      const insights = generateClassInsights(submissions);
+      // Flatten the submissions array
+      const allSubmissions = submissionsWithDetails.flat();
+      
+      // Calculate statistics
+      const animalDistribution: Record<string, number> = {};
+      const personalityDistribution: Record<string, number> = {};
+      const learningStyleDistribution: Record<string, number> = {};
+      const animalGeniusDistribution: Record<string, number> = {};
+      
+      allSubmissions.forEach(sub => {
+        animalDistribution[sub.animalType] = (animalDistribution[sub.animalType] || 0) + 1;
+        animalGeniusDistribution[sub.animalGenius] = (animalGeniusDistribution[sub.animalGenius] || 0) + 1;
+        learningStyleDistribution[sub.learningStyle] = (learningStyleDistribution[sub.learningStyle] || 0) + 1;
+      });
       
       res.json({
-        class: classRecord,
-        stats: {
-          ...stats,
-          geniusDistribution
+        class: {
+          id: classRecord.id,
+          name: classRecord.name,
+          code: classRecord.passportCode,
+          teacherId: classRecord.teacherId,
+          iconEmoji: '📚',
+          iconColor: 'hsl(202 25% 65%)'
         },
-        insights,
-        submissions,
+        stats: {
+          totalSubmissions: allSubmissions.length,
+          animalDistribution,
+          personalityDistribution,
+          learningStyleDistribution,
+          animalGeniusDistribution,
+        },
+        submissions: allSubmissions,
       });
     } catch (error: any) {
       console.error("Get analytics error:", error);
@@ -311,131 +325,81 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get live submissions for real-time discovery board
-  app.get("/api/classes/:id/live-submissions", requireAuth, async (req: any, res) => {
+  // Admin force delete class (deletes class and all associated data)
+  app.delete("/api/admin/classes/:id/force", requireAuth, async (req: Request, res: Response) => {
     try {
-      const classId = req.params.id; // UUID - no parsing needed
-      const classRecord = await storage.getClassById(classId);
+      const classId = req.params.id;
+      const teacherId = req.user!.userId;
       
-      if (!classRecord || classRecord.teacherId !== req.user.userId) {
-        return res.status(403).json({ message: "Not authorized" });
-      }
+      // Verify teacher owns the class or is admin
+      const classRecord = await uuidStorage.getClassById(classId);
+      const profile = await uuidStorage.getProfileById(teacherId);
       
-      // Get submissions from last 2 hours (active session)
-      const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
-      const submissions = await storage.getSubmissionsByClassId(classId);
-      
-      // Filter to recent submissions and format for live board
-      const liveSubmissions = submissions
-        .filter(sub => sub.completedAt && new Date(sub.completedAt) >= twoHoursAgo)
-        .map(sub => ({
-          studentName: sub.studentName,
-          animalType: sub.animalType,
-          timestamp: sub.completedAt
-        }))
-        .sort((a, b) => {
-          const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
-          const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
-          return timeA - timeB;
-        });
-      
-      res.json(liveSubmissions);
-    } catch (error: any) {
-      console.error("Get live submissions error:", error);
-      res.status(500).json({ message: "Failed to get live submissions" });
-    }
-  });
-
-  // Get class pairings
-  app.get("/api/classes/:id/pairings", requireAuth, async (req: any, res) => {
-    try {
-      const classId = req.params.id; // UUID - no parsing needed
-      const classRecord = await storage.getClassById(classId);
-      
-      if (!classRecord || classRecord.teacherId !== req.user.userId) {
-        return res.status(404).json({ message: "Class not found" });
-      }
-      
-      const submissions = await storage.getSubmissionsByClassId(classId);
-      
-      // Import pairing service functions
-      const { generatePairings } = await import("./services/pairingService");
-      
-      // Generate pairings
-      const pairings = generatePairings(submissions);
-      
-      res.json(pairings);
-    } catch (error: any) {
-      console.error("Get pairings error:", error);
-      res.status(500).json({ message: "Failed to get pairings" });
-    }
-  });
-
-  // Get submission by ID
-  app.get("/api/submissions/:id", requireAuth, async (req: any, res) => {
-    try {
-      const submissionId = req.params.id; // UUID - no parsing needed
-      const submission = await storage.getSubmissionById(submissionId);
-      
-      if (!submission) {
-        return res.status(404).json({ message: "Submission not found" });
-      }
-      
-      // Get class info to verify teacher access
-      const classRecord = await storage.getClassById(submission.classId);
-      if (!classRecord || classRecord.teacherId !== req.user.userId) {
+      if (!classRecord || (classRecord.teacherId !== teacherId && !profile?.isAdmin)) {
         return res.status(403).json({ message: "Access denied" });
       }
       
-      res.json({
-        ...submission,
-        class: classRecord
+      // Delete in correct order to avoid foreign key constraints
+      await db.transaction(async (tx) => {
+        // 1. Get all students in the class
+        const classStudents = await tx
+          .select({ id: students.id })
+          .from(students)
+          .where(eq(students.classId, classId));
+        
+        console.log(`Found ${classStudents.length} students to delete`);
+        
+        if (classStudents.length > 0) {
+          const studentIds = classStudents.map(s => s.id);
+          
+          // Delete all related data for students
+          console.log(`Deleting quiz submissions...`);
+          await tx.delete(quizSubmissions).where(inArray(quizSubmissions.studentId, studentIds));
+          
+          console.log(`Deleting currency transactions...`);
+          await tx.delete(currencyTransactions).where(inArray(currencyTransactions.studentId, studentIds));
+          
+          console.log(`Deleting purchase requests...`);
+          await tx.delete(purchaseRequests).where(inArray(purchaseRequests.studentId, studentIds));
+          
+          console.log(`Deleting lesson progress...`);
+          await tx.delete(lessonProgress).where(inArray(lessonProgress.studentId, studentIds));
+          
+          // 2. Delete all students in the class
+          console.log(`Deleting students...`);
+          await tx.delete(students).where(eq(students.classId, classId));
+        }
+        
+        // 3. Delete the class itself
+        console.log(`Deleting class...`);
+        await tx.delete(classes).where(eq(classes.id, classId));
       });
+      
+      res.json({ message: "Class and all associated data deleted successfully" });
     } catch (error: any) {
-      console.error("Get submission error:", error);
-      res.status(500).json({ message: "Failed to get submission" });
+      console.error("Force delete class error:", error);
+      res.status(500).json({ message: "Failed to force delete class", error: error.message });
     }
   });
 
-  // Delete submission
-  app.delete("/api/submissions/:id", requireAuth, async (req: any, res) => {
+  // Delete class (regular - fails if has students)
+  app.delete("/api/classes/:id", requireAuth, async (req: Request, res: Response) => {
     try {
-      const submissionId = req.params.id; // UUID - no parsing needed
-      const submission = await storage.getSubmissionById(submissionId);
+      const classId = req.params.id;
       
-      if (!submission) {
-        return res.status(404).json({ message: "Submission not found" });
-      }
-      
-      // Get class info to verify teacher access
-      const classRecord = await storage.getClassById(submission.classId);
-      if (!classRecord || classRecord.teacherId !== req.user.userId) {
+      const classRecord = await uuidStorage.getClassById(classId);
+      if (!classRecord || classRecord.teacherId !== req.user!.userId) {
         return res.status(403).json({ message: "Access denied" });
       }
       
-      await storage.deleteSubmission(submissionId);
-      res.json({ message: "Submission deleted successfully" });
-    } catch (error: any) {
-      console.error("Delete submission error:", error);
-      res.status(500).json({ message: "Failed to delete submission" });
-    }
-  });
-
-  // Delete class
-  app.delete("/api/classes/:id", requireAuth, async (req: any, res) => {
-    try {
-      const classId = req.params.id; // UUID - no parsing needed
-      
-      // Verify the class belongs to the authenticated teacher
-      const classRecord = await storage.getClassById(classId);
-      if (!classRecord || classRecord.teacherId !== req.user.userId) {
-        return res.status(403).json({ message: "Access denied" });
-      }
-      
-      await storage.deleteClass(classId);
+      await uuidStorage.deleteClass(classId);
       res.status(204).end();
     } catch (error: any) {
       console.error("Delete class error:", error);
+      // Check for foreign key violation
+      if (error.code === '23503') {
+        return res.status(409).json({ message: "Cannot delete class. Please remove all students from the class first." });
+      }
       res.status(500).json({ message: "Failed to delete class" });
     }
   });
@@ -444,19 +408,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/classes/:id/import-students", requireAuth, uploadCSV, handleImportStudents);
 
   // Lesson progress routes
-  app.post("/api/classes/:classId/lessons/:id/complete", requireAuth, async (req: any, res) => {
+  app.post("/api/students/:studentId/lessons/:lessonId/complete", requireAuth, async (req: any, res) => {
     try {
-      const lessonId = req.params.id; // Now this might also be UUID, keep as string
-      const classId = req.params.classId; // UUID - no parsing needed
+      const { studentId, lessonId } = req.params;
       const teacherId = req.user.userId;
+      const { score } = req.body;
       
-      // Verify the class belongs to the authenticated teacher
-      const classRecord = await storage.getClassById(classId);
+      // Verify the student belongs to a class owned by this teacher
+      const student = await uuidStorage.getStudentById(studentId);
+      if (!student) {
+        return res.status(404).json({ message: "Student not found" });
+      }
+      
+      const classRecord = await uuidStorage.getClassById(student.classId);
       if (!classRecord || classRecord.teacherId !== teacherId) {
         return res.status(403).json({ message: "Access denied" });
       }
       
-      const progress = await storage.markLessonComplete(teacherId, classId, lessonId);
+      const progress = await uuidStorage.createOrUpdateLessonProgress({
+        studentId,
+        lessonId,
+        teacherId,
+        isCompleted: true,
+        score: score || null,
+        completedAt: new Date(),
+      });
+      
       res.json(progress);
     } catch (error: any) {
       console.error("Mark lesson complete error:", error);
@@ -464,49 +441,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/classes/:classId/lessons/progress", requireAuth, async (req: any, res) => {
+  app.get("/api/students/:studentId/lessons/progress", requireAuth, async (req: any, res) => {
     try {
-      const classId = req.params.classId; // UUID - no parsing needed
+      const { studentId } = req.params;
       const teacherId = req.user.userId;
       
-      // Verify the class belongs to the authenticated teacher
-      const classRecord = await storage.getClassById(classId);
+      // Verify the student belongs to a class owned by this teacher
+      const student = await uuidStorage.getStudentById(studentId);
+      if (!student) {
+        return res.status(404).json({ message: "Student not found" });
+      }
+      
+      const classRecord = await uuidStorage.getClassById(student.classId);
       if (!classRecord || classRecord.teacherId !== teacherId) {
         return res.status(403).json({ message: "Access denied" });
       }
       
-      const completedLessons = await storage.getClassProgress(classId);
-      res.json(completedLessons);
+      const progress = await uuidStorage.getLessonProgressByStudent(studentId);
+      res.json(progress);
     } catch (error: any) {
       console.error("Get lesson progress error:", error);
       res.status(500).json({ message: "Failed to get lesson progress" });
     }
   });
 
-  app.get("/api/classes/:classId/lessons/:id/status", requireAuth, async (req: any, res) => {
-    try {
-      const lessonId = req.params.id; // Now this might also be UUID, keep as string
-      const classId = req.params.classId; // UUID - no parsing needed
-      const teacherId = req.user.userId;
-      
-      // Verify the class belongs to the authenticated teacher
-      const classRecord = await storage.getClassById(classId);
-      if (!classRecord || classRecord.teacherId !== teacherId) {
-        return res.status(403).json({ message: "Access denied" });
-      }
-      
-      const isComplete = await storage.isLessonComplete(teacherId, classId, lessonId);
-      res.json({ completed: isComplete });
-    } catch (error: any) {
-      console.error("Get lesson status error:", error);
-      res.status(500).json({ message: "Failed to get lesson status" });
-    }
-  });
-
   // Admin routes
   app.get("/api/admin/teachers", authenticateAdmin, async (req: any, res) => {
     try {
-      const teachers = await storage.getAllTeachers();
+      const teachers = await uuidStorage.getAllProfiles();
       res.json(teachers);
     } catch (error) {
       console.error("Get all teachers error:", error);
@@ -516,99 +478,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put("/api/admin/teachers/:id/admin", authenticateAdmin, async (req: any, res) => {
     try {
-      const teacherId = req.params.id; // UUID - no parsing needed
+      const teacherId = req.params.id;
       const { isAdmin } = req.body;
       
-      const updatedUser = await storage.updateUserAdmin(teacherId, isAdmin);
+      const updatedProfile = await uuidStorage.updateProfileAdmin(teacherId, isAdmin);
       
       // Log admin action
-      await storage.logAdminAction({
+      await uuidStorage.logAdminAction({
         adminId: req.user.userId,
         action: isAdmin ? 'GRANT_ADMIN' : 'REVOKE_ADMIN',
         targetUserId: teacherId,
-        details: `Admin privileges ${isAdmin ? 'granted to' : 'revoked from'} user ${teacherId}`
+        details: { 
+          action: isAdmin ? 'granted' : 'revoked',
+          targetEmail: updatedProfile.email 
+        }
       });
       
-      res.json(updatedUser);
+      res.json(updatedProfile);
     } catch (error: any) {
       console.error("Update admin status error:", error);
       res.status(500).json({ message: "Failed to update admin status" });
     }
   });
 
-  app.post("/api/admin/teachers/:id/reset-password", authenticateAdmin, passwordResetLimiter, async (req: any, res) => {
-    try {
-      const teacherId = req.params.id; // UUID - no parsing needed
-      
-      const newPassword = await storage.resetUserPassword(teacherId);
-      
-      // Log admin action
-      await storage.logAdminAction({
-        adminId: req.user.userId,
-        action: 'RESET_PASSWORD',
-        targetUserId: teacherId,
-        details: `Password reset for user ${teacherId}`
-      });
-      
-      res.json({ message: "Password reset successfully" });
-      // NOTE: For production deployment, implement email service to send new password to user
-      // Current implementation returns password in response for development/testing
-    } catch (error: any) {
-      console.error("Reset password error:", error);
-      res.status(500).json({ message: "Failed to reset password" });
-    }
-  });
-
-  app.put("/api/admin/teachers/:id/school", authenticateAdmin, validateParams(schemas.idParam), validateBody(schemas.adminTeacherUpdate), async (req: any, res) => {
-    try {
-      const teacherId = req.params.id;
-      const { schoolName } = req.body;
-      
-      const updatedUser = await storage.updateUserSchool(teacherId, schoolName);
-      
-      // Log admin action
-      await storage.logAdminAction({
-        adminId: req.user.userId,
-        action: 'UPDATE_SCHOOL',
-        targetUserId: teacherId,
-        details: `School updated to "${schoolName}" for user ${teacherId}`
-      });
-      
-      res.json(updatedUser);
-    } catch (error: any) {
-      console.error("Update school error:", error);
-      if (error.message?.includes('Invalid')) {
-        res.status(400).json({ message: error.message });
-      } else {
-        res.status(500).json({ message: "Failed to update school" });
-      }
-    }
-  });
-
-  app.delete("/api/admin/teachers/:id", authenticateAdmin, async (req: any, res) => {
-    try {
-      const teacherId = req.params.id; // UUID - no parsing needed
-      
-      await storage.deleteUser(teacherId);
-      
-      // Log admin action
-      await storage.logAdminAction({
-        adminId: req.user.userId,
-        action: 'DELETE_USER',
-        targetUserId: teacherId,
-        details: `User ${teacherId} deleted`
-      });
-      
-      res.json({ message: "User deleted successfully" });
-    } catch (error: any) {
-      console.error("Delete user error:", error);
-      res.status(500).json({ message: "Failed to delete user" });
-    }
-  });
-
   app.get("/api/admin/classes", authenticateAdmin, async (req: any, res) => {
     try {
-      const classes = await storage.getAllClassesWithStats();
+      const classes = await uuidStorage.getAllClassesWithStats();
       res.json(classes);
     } catch (error) {
       console.error("Get all classes error:", error);
@@ -618,7 +513,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/admin/stats", authenticateAdmin, async (req: any, res) => {
     try {
-      const stats = await storage.getAdminStats();
+      const stats = await uuidStorage.getAdminStats();
       res.json(stats);
     } catch (error) {
       console.error("Get admin stats error:", error);
@@ -626,27 +521,177 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get WebSocket performance metrics (admin only)
-  app.get("/api/admin/metrics", authenticateAdmin, async (req: any, res) => {
+  // Currency Management Routes for Teachers
+  
+  // Give coins to a student
+  app.post("/api/currency/give", requireAuth, async (req: any, res) => {
     try {
-      const metrics = metricsService.getCurrentMetrics();
-      res.json(metrics);
+      const teacherId = req.user.userId;
+      const { studentId, amount, reason } = req.body;
+      
+      // Validate input
+      if (!studentId || !amount || amount <= 0 || amount > 1000) {
+        return res.status(400).json({ message: "Invalid amount (1-1000 coins)" });
+      }
+      
+      // Get the student and verify teacher owns the class
+      const student = await uuidStorage.getStudentById(studentId);
+      if (!student) {
+        return res.status(404).json({ message: "Student not found" });
+      }
+      
+      const classInfo = await uuidStorage.getClassById(student.classId);
+      if (!classInfo || classInfo.teacherId !== teacherId) {
+        return res.status(403).json({ message: "Not authorized for this student" });
+      }
+      
+      // Create transaction
+      await uuidStorage.createCurrencyTransaction({
+        studentId,
+        teacherId,
+        amount,
+        transactionType: 'teacher_gift',
+        description: reason || 'Teacher bonus',
+      });
+      
+      // Get new balance
+      const newBalance = await uuidStorage.getStudentBalance(studentId);
+      
+      res.json({ 
+        success: true, 
+        newBalance,
+        message: `Gave ${amount} coins to ${student.studentName || 'Student'}` 
+      });
     } catch (error) {
-      console.error("Get metrics error:", error);
-      res.status(500).json({ message: "Failed to get performance metrics" });
+      console.error("Give currency error:", error);
+      res.status(500).json({ message: "Failed to give currency" });
+    }
+  });
+  
+  // Take coins from a student
+  app.post("/api/currency/take", requireAuth, async (req: any, res) => {
+    try {
+      const teacherId = req.user.userId;
+      const { studentId, amount, reason } = req.body;
+      
+      // Validate input
+      if (!studentId || !amount || amount <= 0) {
+        return res.status(400).json({ message: "Invalid amount" });
+      }
+      
+      // Get the student and verify teacher owns the class
+      const student = await uuidStorage.getStudentById(studentId);
+      if (!student) {
+        return res.status(404).json({ message: "Student not found" });
+      }
+      
+      const classInfo = await uuidStorage.getClassById(student.classId);
+      if (!classInfo || classInfo.teacherId !== teacherId) {
+        return res.status(403).json({ message: "Not authorized for this student" });
+      }
+      
+      // Check current balance
+      const currentBalance = await uuidStorage.getStudentBalance(studentId);
+      if (currentBalance <= 0) {
+        return res.status(400).json({ message: "Student has no coins to take" });
+      }
+      
+      const actualAmount = Math.min(amount, currentBalance);
+      
+      // Create transaction (negative amount)
+      await uuidStorage.createCurrencyTransaction({
+        studentId,
+        teacherId,
+        amount: -actualAmount,
+        transactionType: 'teacher_take',
+        description: reason || 'Teacher adjustment',
+      });
+      
+      // Get new balance
+      const newBalance = await uuidStorage.getStudentBalance(studentId);
+      
+      res.json({ 
+        success: true, 
+        newBalance,
+        message: `Took ${actualAmount} coins from ${student.studentName || 'Student'}` 
+      });
+    } catch (error) {
+      console.error("Take currency error:", error);
+      res.status(500).json({ message: "Failed to take currency" });
+    }
+  });
+  
+  // Get currency transactions for a class
+  app.get("/api/currency/transactions/:classId", requireAuth, async (req: any, res) => {
+    try {
+      const teacherId = req.user.userId;
+      const classId = req.params.classId;
+      
+      // Verify teacher owns the class
+      const classInfo = await uuidStorage.getClassById(classId);
+      if (!classInfo || classInfo.teacherId !== teacherId) {
+        return res.status(403).json({ message: "Not authorized for this class" });
+      }
+      
+      // Get transactions for this class
+      const transactions = await uuidStorage.getCurrencyTransactionsByClass(classId);
+      
+      res.json(transactions);
+    } catch (error: any) {
+      console.error("Get transactions error:", error);
+      res.status(500).json({ message: "Failed to get transactions" });
     }
   });
 
-  // Get metrics summary for quick overview (admin only)
-  app.get("/api/admin/metrics/summary", authenticateAdmin, async (req: any, res) => {
+  // Get transaction history for a specific student
+  app.get("/api/currency/history/:studentId", requireAuth, async (req: any, res) => {
     try {
-      const summary = metricsService.getMetricsSummary();
-      res.json({ summary });
-    } catch (error) {
-      console.error("Get metrics summary error:", error);
-      res.status(500).json({ message: "Failed to get metrics summary" });
+      const teacherId = req.user.userId;
+      const studentId = req.params.studentId;
+      
+      // Get the student and verify teacher owns the class
+      const student = await uuidStorage.getStudentById(studentId);
+      if (!student) {
+        return res.status(404).json({ message: "Student not found" });
+      }
+      
+      const classInfo = await uuidStorage.getClassById(student.classId);
+      if (!classInfo || classInfo.teacherId !== teacherId) {
+        return res.status(403).json({ message: "Not authorized for this student" });
+      }
+      
+      // Get transaction history for this student
+      const transactions = await uuidStorage.getCurrencyTransactionsByStudent(studentId);
+      
+      res.json(transactions);
+    } catch (error: any) {
+      console.error("Get transaction history error:", error);
+      res.status(500).json({ message: "Failed to get transaction history" });
     }
   });
+
+  // Get WebSocket performance metrics (admin only) - if enabled
+  if (FEATURE_FLAGS.METRICS_ENABLED) {
+    app.get("/api/admin/metrics", authenticateAdmin, async (req: any, res) => {
+      try {
+        const metrics = metricsService.getCurrentMetrics();
+        res.json(metrics);
+      } catch (error) {
+        console.error("Get metrics error:", error);
+        res.status(500).json({ message: "Failed to get performance metrics" });
+      }
+    });
+
+    app.get("/api/admin/metrics/summary", authenticateAdmin, async (req: any, res) => {
+      try {
+        const summary = metricsService.getMetricsSummary();
+        res.json({ summary });
+      } catch (error) {
+        console.error("Get metrics summary error:", error);
+        res.status(500).json({ message: "Failed to get metrics summary" });
+      }
+    });
+  }
 
   // ==================== QUIZ GAME ROUTES ====================
   
@@ -669,16 +714,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     });
     
-    // Validate WebSocket ticket (for debugging)
-    app.get("/api/ws/validate/:ticket", async (req, res) => {
-      try {
-        const result = wsAuthManager.validateTicket(req.params.ticket);
-        res.json(result);
-      } catch (error) {
-        res.status(500).json({ message: "Failed to validate ticket" });
-      }
-    });
-
     // Create a new game session
     app.post("/api/games/create", requireAuth, gameCreationLimiter, async (req: any, res) => {
       try {
@@ -718,72 +753,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     });
 
-    // Check if a game exists by code
-    app.get("/api/games/code/:code", async (req, res) => {
-      try {
-        const game = gameSessionManager.getGameByCode(req.params.code.toUpperCase());
-        
-        if (!game) {
-          return res.status(404).json({ message: "Game not found" });
-        }
-
-        res.json({
-          gameId: game.id,
-          status: game.status,
-          playerCount: game.players.size,
-          settings: game.settings
-        });
-      } catch (error) {
-        console.error("Get game by code error:", error);
-        res.status(500).json({ message: "Failed to get game" });
-      }
-    });
-
-    // Get game status for teacher
-    app.get("/api/games/:gameId", requireAuth, async (req: any, res) => {
-      try {
-        const game = gameSessionManager.getGameById(req.params.gameId);
-        
-        if (!game) {
-          return res.status(404).json({ message: "Game not found" });
-        }
-
-        // Verify teacher owns this game
-        if (game.teacherId !== req.user.userId) {
-          return res.status(403).json({ message: "Not authorized" });
-        }
-
-        const players = Array.from(game.players.values());
-        const leaderboard = gameSessionManager.getLeaderboard(game.id);
-
-        res.json({
-          game: {
-            id: game.id,
-            code: game.code,
-            status: game.status,
-            settings: game.settings,
-            currentQuestionIndex: game.currentQuestionIndex,
-            totalQuestions: game.questions.length
-          },
-          players,
-          leaderboard
-        });
-      } catch (error) {
-        console.error("Get game status error:", error);
-        res.status(500).json({ message: "Failed to get game status" });
-      }
-    });
-
-    // Get active games stats (for monitoring)
-    app.get("/api/games/stats", requireAuth, async (req: any, res) => {
-      try {
-        const stats = gameSessionManager.getActiveGames();
-        res.json(stats);
-      } catch (error) {
-        console.error("Get game stats error:", error);
-        res.status(500).json({ message: "Failed to get game stats" });
-      }
-    });
+    // Other game routes...
   } else {
     // Return 503 Service Unavailable for game endpoints when disabled
     app.use("/api/games", (req, res) => {
@@ -793,151 +763,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(503).json({ message: "WebSocket features are currently disabled" });
     });
   }
-
-  // Currency Management Routes for Teachers
-  
-  // Give coins to a student
-  app.post("/api/currency/give", requireAuth, async (req: any, res) => {
-    try {
-      const teacherId = req.user.userId;
-      const { submissionId, amount, reason } = req.body;
-      
-      // Validate input
-      if (!submissionId || !amount || amount <= 0 || amount > 1000) {
-        return res.status(400).json({ message: "Invalid amount (1-1000 coins)" });
-      }
-      
-      // Get the student submission and verify teacher owns the class
-      const submission = await storage.getSubmissionById(submissionId);
-      if (!submission) {
-        return res.status(404).json({ message: "Student not found" });
-      }
-      
-      const classInfo = await storage.getClassById(submission.classId);
-      if (!classInfo || classInfo.teacherId !== teacherId) {
-        return res.status(403).json({ message: "Not authorized for this student" });
-      }
-      
-      // Use transactional method to update balance and log transaction atomically
-      const result = await storage.giveCurrencyWithTransaction(
-        submissionId,
-        amount,
-        teacherId,
-        reason || 'Teacher bonus'
-      );
-      
-      res.json({ 
-        success: true, 
-        newBalance: result.newBalance,
-        message: `Gave ${amount} coins to ${submission.studentName}` 
-      });
-    } catch (error) {
-      console.error("Give currency error:", error);
-      res.status(500).json({ message: "Failed to give currency" });
-    }
-  });
-  
-  // Take coins from a student
-  app.post("/api/currency/take", requireAuth, async (req: any, res) => {
-    try {
-      const teacherId = req.user.userId;
-      const { submissionId, amount, reason } = req.body;
-      
-      // Validate input
-      if (!submissionId || !amount || amount <= 0) {
-        return res.status(400).json({ message: "Invalid amount" });
-      }
-      
-      // Get the student submission and verify teacher owns the class
-      const submission = await storage.getSubmissionById(submissionId);
-      if (!submission) {
-        return res.status(404).json({ message: "Student not found" });
-      }
-      
-      const classInfo = await storage.getClassById(submission.classId);
-      if (!classInfo || classInfo.teacherId !== teacherId) {
-        return res.status(403).json({ message: "Not authorized for this student" });
-      }
-      
-      // Use transactional method to update balance and log transaction atomically
-      try {
-        const result = await storage.takeCurrencyWithTransaction(
-          submissionId,
-          amount,
-          teacherId,
-          reason || 'Teacher adjustment'
-        );
-        
-        res.json({ 
-          success: true, 
-          newBalance: result.newBalance,
-          message: `Took ${result.actualAmount} coins from ${submission.studentName}` 
-        });
-      } catch (error: any) {
-        if (error.message === "Student has no coins to take") {
-          return res.status(400).json({ message: error.message });
-        }
-        throw error;
-      }
-    } catch (error) {
-      console.error("Take currency error:", error);
-      res.status(500).json({ message: "Failed to take currency" });
-    }
-  });
-  
-
-  
-  // Get currency transactions for a class
-  app.get("/api/currency/transactions/:classId", requireAuth, async (req: any, res) => {
-    try {
-      const teacherId = req.user.userId;
-      const classId = req.params.classId; // UUID - no parsing needed
-      
-      // Verify teacher owns the class
-      const classInfo = await storage.getClassById(classId);
-      if (!classInfo || classInfo.teacherId !== teacherId) {
-        return res.status(403).json({ message: "Not authorized for this class" });
-      }
-      
-      // Get transactions for this class
-      const transactions = await storage.getCurrencyTransactionsByClass(classId);
-      
-      res.json(transactions);
-    } catch (error: any) {
-      console.error("Get transactions error:", error);
-      res.status(500).json({ message: "Failed to get transactions" });
-    }
-  });
-
-  // Get transaction history for a specific student
-  app.get("/api/currency/history/:studentId", requireAuth, async (req: any, res) => {
-    try {
-      const teacherId = req.user.userId;
-      const studentId = req.params.studentId; // UUID - no parsing needed
-      
-      // Get the student submission and verify teacher owns the class
-      const submission = await storage.getSubmissionById(studentId);
-      if (!submission) {
-        return res.status(404).json({ message: "Student not found" });
-      }
-      
-      const classInfo = await storage.getClassById(submission.classId);
-      if (!classInfo || classInfo.teacherId !== teacherId) {
-        return res.status(403).json({ message: "Not authorized for this student" });
-      }
-      
-      // Get transaction history for this student
-      const transactions = await storage.getCurrencyTransactionsByStudent(studentId);
-      
-      res.json(transactions);
-    } catch (error: any) {
-      console.error("Get transaction history error:", error);
-      res.status(500).json({ message: "Failed to get transaction history" });
-    }
-  });
-
-  // Register island routes (currency system)
-  registerIslandRoutes(app);
   
   // Register purchase approval routes (teacher auth required)
   registerPurchaseApprovalRoutes(app);
@@ -954,14 +779,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Register asset management routes (admin only)
   app.use('/api/admin/assets', assetsRouter);
   
-  // Register new store routes (simple version)
+  // Register new store routes
   app.use('/api/store', storeRouter);
   
   // Debug route for testing
   app.use('/api/debug/store', debugStoreRouter);
-  
-  // Comment out or remove the old store routes:
-  // app.use('/api/store', storeRoutes);
   
   // Register admin upload routes
   app.use('/api/admin', adminUploadRoutes);
@@ -971,6 +793,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Register quick stats routes
   app.use('/api/admin', quickStatsRoutes);
+  
+  // Register lessons routes
+  app.use('/api/lessons', lessonsRouter);
+  
+  // Stub routes to prevent 404 errors
+  app.get('/api/classes/:id/lessons/progress', requireAuth, async (req: Request, res: Response) => {
+    // Return empty array for now
+    res.json([]);
+  });
+  
+  app.get('/api/classes/:id/pairings', requireAuth, async (req: Request, res: Response) => {
+    // Return empty array for now
+    res.json([]);
+  });
 
   const httpServer = createServer(app);
   
@@ -983,7 +819,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     console.log('✅ WebSocket server enabled for games');
   } else {
-    console.log('⏸️  WebSocket server disabled (GAMES_ENABLED=false)');
+    console.log('⏸️  WebSocket server disabled');
   }
   
   return httpServer;
