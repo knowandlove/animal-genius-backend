@@ -39,7 +39,7 @@ export const schemas = {
 
   // Quiz submission
   quizSubmission: z.object({
-    classId: z.number().int().positive("Invalid class ID"),
+    classId: z.string().uuid("Invalid class ID"),
     studentName: z.string().min(1, "Student name is required").max(100, "Student name too long"),
     answers: z.array(z.string().max(10, "Invalid answer")).min(1, "At least one answer required"),
     personalityType: z.string().max(10, "Invalid personality type"),
@@ -61,7 +61,12 @@ export const schemas = {
 
   // ID parameters
   idParam: z.object({
-    id: z.string().regex(/^\d+$/, "ID must be a number").transform(Number)
+    id: z.string().uuid("Invalid UUID format")
+  }),
+  
+  // UUID parameter (alias for clarity)
+  uuidParam: z.object({
+    id: z.string().uuid("Invalid UUID format")
   }),
 
   // Class code parameter
