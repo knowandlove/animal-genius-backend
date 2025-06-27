@@ -279,7 +279,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get class analytics
   app.get("/api/classes/:id/analytics", requireAuth, async (req: any, res) => {
     try {
-      const classId = safeParseInt(req.params.id, 'class ID');
+      const classId = req.params.id; // UUID - no parsing needed
       const classRecord = await storage.getClassById(classId);
       
       if (!classRecord || classRecord.teacherId !== req.user.userId) {
@@ -307,18 +307,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error: any) {
       console.error("Get analytics error:", error);
-      if (error.message?.includes('Invalid class ID')) {
-        res.status(400).json({ message: error.message });
-      } else {
-        res.status(500).json({ message: "Failed to get analytics" });
-      }
+      res.status(500).json({ message: "Failed to get analytics" });
     }
   });
 
   // Get live submissions for real-time discovery board
   app.get("/api/classes/:id/live-submissions", requireAuth, async (req: any, res) => {
     try {
-      const classId = safeParseInt(req.params.id, 'class ID');
+      const classId = req.params.id; // UUID - no parsing needed
       const classRecord = await storage.getClassById(classId);
       
       if (!classRecord || classRecord.teacherId !== req.user.userId) {
@@ -346,18 +342,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(liveSubmissions);
     } catch (error: any) {
       console.error("Get live submissions error:", error);
-      if (error.message?.includes('Invalid class ID')) {
-        res.status(400).json({ message: error.message });
-      } else {
-        res.status(500).json({ message: "Failed to get live submissions" });
-      }
+      res.status(500).json({ message: "Failed to get live submissions" });
     }
   });
 
   // Get class pairings
   app.get("/api/classes/:id/pairings", requireAuth, async (req: any, res) => {
     try {
-      const classId = safeParseInt(req.params.id, 'class ID');
+      const classId = req.params.id; // UUID - no parsing needed
       const classRecord = await storage.getClassById(classId);
       
       if (!classRecord || classRecord.teacherId !== req.user.userId) {
@@ -375,18 +367,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(pairings);
     } catch (error: any) {
       console.error("Get pairings error:", error);
-      if (error.message?.includes('Invalid class ID')) {
-        res.status(400).json({ message: error.message });
-      } else {
-        res.status(500).json({ message: "Failed to get pairings" });
-      }
+      res.status(500).json({ message: "Failed to get pairings" });
     }
   });
 
   // Get submission by ID
   app.get("/api/submissions/:id", requireAuth, async (req: any, res) => {
     try {
-      const submissionId = safeParseInt(req.params.id, 'submission ID');
+      const submissionId = req.params.id; // UUID - no parsing needed
       const submission = await storage.getSubmissionById(submissionId);
       
       if (!submission) {
@@ -405,18 +393,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error: any) {
       console.error("Get submission error:", error);
-      if (error.message?.includes('Invalid submission ID')) {
-        res.status(400).json({ message: error.message });
-      } else {
-        res.status(500).json({ message: "Failed to get submission" });
-      }
+      res.status(500).json({ message: "Failed to get submission" });
     }
   });
 
   // Delete submission
   app.delete("/api/submissions/:id", requireAuth, async (req: any, res) => {
     try {
-      const submissionId = safeParseInt(req.params.id, 'submission ID');
+      const submissionId = req.params.id; // UUID - no parsing needed
       const submission = await storage.getSubmissionById(submissionId);
       
       if (!submission) {
@@ -433,18 +417,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ message: "Submission deleted successfully" });
     } catch (error: any) {
       console.error("Delete submission error:", error);
-      if (error.message?.includes('Invalid submission ID')) {
-        res.status(400).json({ message: error.message });
-      } else {
-        res.status(500).json({ message: "Failed to delete submission" });
-      }
+      res.status(500).json({ message: "Failed to delete submission" });
     }
   });
 
   // Delete class
   app.delete("/api/classes/:id", requireAuth, async (req: any, res) => {
     try {
-      const classId = safeParseInt(req.params.id, 'class ID');
+      const classId = req.params.id; // UUID - no parsing needed
       
       // Verify the class belongs to the authenticated teacher
       const classRecord = await storage.getClassById(classId);
@@ -456,11 +436,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(204).end();
     } catch (error: any) {
       console.error("Delete class error:", error);
-      if (error.message?.includes('Invalid')) {
-        res.status(400).json({ message: error.message });
-      } else {
-        res.status(500).json({ message: "Failed to delete class" });
-      }
+      res.status(500).json({ message: "Failed to delete class" });
     }
   });
 
@@ -470,8 +446,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Lesson progress routes
   app.post("/api/classes/:classId/lessons/:id/complete", requireAuth, async (req: any, res) => {
     try {
-      const lessonId = safeParseInt(req.params.id, 'lesson ID');
-      const classId = safeParseInt(req.params.classId, 'class ID');
+      const lessonId = req.params.id; // Now this might also be UUID, keep as string
+      const classId = req.params.classId; // UUID - no parsing needed
       const teacherId = req.user.userId;
       
       // Verify the class belongs to the authenticated teacher
@@ -484,17 +460,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(progress);
     } catch (error: any) {
       console.error("Mark lesson complete error:", error);
-      if (error.message?.includes('Invalid')) {
-        res.status(400).json({ message: error.message });
-      } else {
-        res.status(500).json({ message: "Failed to mark lesson complete" });
-      }
+      res.status(500).json({ message: "Failed to mark lesson complete" });
     }
   });
 
   app.get("/api/classes/:classId/lessons/progress", requireAuth, async (req: any, res) => {
     try {
-      const classId = safeParseInt(req.params.classId, 'class ID');
+      const classId = req.params.classId; // UUID - no parsing needed
       const teacherId = req.user.userId;
       
       // Verify the class belongs to the authenticated teacher
@@ -507,18 +479,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(completedLessons);
     } catch (error: any) {
       console.error("Get lesson progress error:", error);
-      if (error.message?.includes('Invalid')) {
-        res.status(400).json({ message: error.message });
-      } else {
-        res.status(500).json({ message: "Failed to get lesson progress" });
-      }
+      res.status(500).json({ message: "Failed to get lesson progress" });
     }
   });
 
   app.get("/api/classes/:classId/lessons/:id/status", requireAuth, async (req: any, res) => {
     try {
-      const lessonId = safeParseInt(req.params.id, 'lesson ID');
-      const classId = safeParseInt(req.params.classId, 'class ID');
+      const lessonId = req.params.id; // Now this might also be UUID, keep as string
+      const classId = req.params.classId; // UUID - no parsing needed
       const teacherId = req.user.userId;
       
       // Verify the class belongs to the authenticated teacher
@@ -531,11 +499,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ completed: isComplete });
     } catch (error: any) {
       console.error("Get lesson status error:", error);
-      if (error.message?.includes('Invalid')) {
-        res.status(400).json({ message: error.message });
-      } else {
-        res.status(500).json({ message: "Failed to get lesson status" });
-      }
+      res.status(500).json({ message: "Failed to get lesson status" });
     }
   });
 
@@ -552,7 +516,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put("/api/admin/teachers/:id/admin", authenticateAdmin, async (req: any, res) => {
     try {
-      const teacherId = safeParseInt(req.params.id, 'teacher ID');
+      const teacherId = req.params.id; // UUID - no parsing needed
       const { isAdmin } = req.body;
       
       const updatedUser = await storage.updateUserAdmin(teacherId, isAdmin);
@@ -568,17 +532,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(updatedUser);
     } catch (error: any) {
       console.error("Update admin status error:", error);
-      if (error.message?.includes('Invalid')) {
-        res.status(400).json({ message: error.message });
-      } else {
-        res.status(500).json({ message: "Failed to update admin status" });
-      }
+      res.status(500).json({ message: "Failed to update admin status" });
     }
   });
 
   app.post("/api/admin/teachers/:id/reset-password", authenticateAdmin, passwordResetLimiter, async (req: any, res) => {
     try {
-      const teacherId = safeParseInt(req.params.id, 'teacher ID');
+      const teacherId = req.params.id; // UUID - no parsing needed
       
       const newPassword = await storage.resetUserPassword(teacherId);
       
@@ -595,11 +555,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Current implementation returns password in response for development/testing
     } catch (error: any) {
       console.error("Reset password error:", error);
-      if (error.message?.includes('Invalid')) {
-        res.status(400).json({ message: error.message });
-      } else {
-        res.status(500).json({ message: "Failed to reset password" });
-      }
+      res.status(500).json({ message: "Failed to reset password" });
     }
   });
 
@@ -631,7 +587,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/admin/teachers/:id", authenticateAdmin, async (req: any, res) => {
     try {
-      const teacherId = safeParseInt(req.params.id, 'teacher ID');
+      const teacherId = req.params.id; // UUID - no parsing needed
       
       await storage.deleteUser(teacherId);
       
@@ -646,11 +602,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ message: "User deleted successfully" });
     } catch (error: any) {
       console.error("Delete user error:", error);
-      if (error.message?.includes('Invalid')) {
-        res.status(400).json({ message: error.message });
-      } else {
-        res.status(500).json({ message: "Failed to delete user" });
-      }
+      res.status(500).json({ message: "Failed to delete user" });
     }
   });
 
@@ -939,7 +891,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/currency/transactions/:classId", requireAuth, async (req: any, res) => {
     try {
       const teacherId = req.user.userId;
-      const classId = safeParseInt(req.params.classId, 'classId');
+      const classId = req.params.classId; // UUID - no parsing needed
       
       // Verify teacher owns the class
       const classInfo = await storage.getClassById(classId);
@@ -952,12 +904,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(transactions);
     } catch (error: any) {
-      if (error.message?.includes('Invalid')) {
-        res.status(400).json({ message: error.message });
-      } else {
-        console.error("Get transactions error:", error);
-        res.status(500).json({ message: "Failed to get transactions" });
-      }
+      console.error("Get transactions error:", error);
+      res.status(500).json({ message: "Failed to get transactions" });
     }
   });
 
@@ -965,7 +913,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/currency/history/:studentId", requireAuth, async (req: any, res) => {
     try {
       const teacherId = req.user.userId;
-      const studentId = safeParseInt(req.params.studentId, 'studentId');
+      const studentId = req.params.studentId; // UUID - no parsing needed
       
       // Get the student submission and verify teacher owns the class
       const submission = await storage.getSubmissionById(studentId);
@@ -983,12 +931,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(transactions);
     } catch (error: any) {
-      if (error.message?.includes('Invalid')) {
-        res.status(400).json({ message: error.message });
-      } else {
-        console.error("Get transaction history error:", error);
-        res.status(500).json({ message: "Failed to get transaction history" });
-      }
+      console.error("Get transaction history error:", error);
+      res.status(500).json({ message: "Failed to get transaction history" });
     }
   });
 
