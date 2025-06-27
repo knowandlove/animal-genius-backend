@@ -266,7 +266,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
             
             return {
-              id: sub.id,
+              id: student.id,  // Use the student ID, not submission ID!
               studentName: student.studentName || student.name || 'Unknown',
               gradeLevel: 'Unknown', // We don't store grade level in the student table
               personalityType: personalityType,
