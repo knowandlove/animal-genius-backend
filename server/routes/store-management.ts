@@ -34,8 +34,16 @@ export function registerStoreManagementRoutes(app: Express) {
   // Toggle store open/closed status
   app.post("/api/currency/store/toggle", requireAuth, async (req: any, res) => {
     try {
+      console.log('[STORE TOGGLE] Request body:', JSON.stringify(req.body));
+      console.log('[STORE TOGGLE] User:', req.user);
+      
       const { classId, isOpen } = storeToggleSchema.parse(req.body);
       const teacherId = req.user?.userId || req.user?.id;
+      
+      if (!teacherId) {
+        console.error('[STORE TOGGLE] No teacher ID found');
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       
       // Verify teacher owns this class
       const classData = await db
@@ -104,7 +112,14 @@ export function registerStoreManagementRoutes(app: Express) {
     } catch (error) {
       console.error("Store toggle error:", error);
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Invalid request data", errors: error.errors });
+        console.error('[STORE TOGGLE] Validation errors:', error.errors);
+        return res.status(400).json({ 
+          message: "Invalid request data", 
+          errors: error.errors.map(e => ({
+            field: e.path.join('.'),
+            message: e.message
+          }))
+        });
       }
       res.status(500).json({ message: "Failed to toggle store status" });
     }
@@ -115,6 +130,14 @@ export function registerStoreManagementRoutes(app: Express) {
     try {
       const { classId } = req.params;
       const teacherId = req.user?.userId || req.user?.id;
+      
+      console.log('[STORE STATUS] ClassId:', classId);
+      console.log('[STORE STATUS] TeacherId:', teacherId);
+      
+      if (!teacherId) {
+        console.error('[STORE STATUS] No teacher ID found');
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       
       // Verify teacher owns this class
       const classData = await db
