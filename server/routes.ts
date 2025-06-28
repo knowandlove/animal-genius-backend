@@ -383,6 +383,83 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get student data for teacher view
+  app.get("/api/teacher/students/:studentId", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const studentId = req.params.studentId;
+      const teacherId = req.user!.userId;
+      
+      // Get the student
+      const student = await uuidStorage.getStudentById(studentId);
+      if (!student) {
+        return res.status(404).json({ message: "Student not found" });
+      }
+      
+      // Verify teacher owns the class
+      const classRecord = await uuidStorage.getClassById(student.classId);
+      if (!classRecord || classRecord.teacherId !== teacherId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Get the student's submissions
+      const submissions = await uuidStorage.getSubmissionsByStudentId(studentId);
+      if (submissions.length === 0) {
+        return res.status(404).json({ message: "No submissions found for this student" });
+      }
+      
+      // Get the latest submission
+      const latestSubmission = submissions.sort((a, b) => 
+        new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime()
+      )[0];
+      
+      // Parse answers to get additional data
+      let personalityType = 'INTJ';
+      let learningStyle = 'visual';
+      let learningScores = { visual: 0, auditory: 0, kinesthetic: 0, readingWriting: 0 };
+      let scores = { E: 0, I: 0, S: 0, N: 0, T: 0, F: 0, J: 0, P: 0 };
+      let gradeLevel = 'Unknown';
+      
+      if (latestSubmission.answers && typeof latestSubmission.answers === 'object') {
+        const answers = latestSubmission.answers as any;
+        if (answers.personalityType) personalityType = answers.personalityType;
+        if (answers.learningStyle) learningStyle = answers.learningStyle;
+        if (answers.learningScores) learningScores = answers.learningScores;
+        if (answers.scores) scores = answers.scores;
+        if (answers.gradeLevel) gradeLevel = answers.gradeLevel;
+      }
+      
+      // Get the student's balance
+      const balance = await uuidStorage.getStudentBalance(studentId);
+      
+      // Format response similar to what teacher-student-view expects
+      const response = {
+        id: latestSubmission.id,
+        studentId: student.id,
+        studentName: student.studentName || student.name || 'Unknown',
+        gradeLevel: gradeLevel,
+        animalType: latestSubmission.animalType,
+        animalGenius: latestSubmission.geniusType,
+        personalityType: personalityType,
+        learningStyle: learningStyle,
+        learningScores: learningScores,
+        scores: scores,
+        completedAt: latestSubmission.completedAt,
+        passportCode: student.passportCode,
+        currencyBalance: balance,
+        class: {
+          id: classRecord.id,
+          name: classRecord.name,
+          code: classRecord.passportCode
+        }
+      };
+      
+      res.json(response);
+    } catch (error: any) {
+      console.error("Get student data error:", error);
+      res.status(500).json({ message: "Failed to get student data" });
+    }
+  });
+
   // Delete submission
   app.delete("/api/submissions/:id", requireAuth, async (req: Request, res: Response) => {
     try {
