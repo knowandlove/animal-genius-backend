@@ -7,19 +7,26 @@ import path from 'path';
 
 const router = Router();
 
-// Initialize Supabase client
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+// Supabase client will be initialized on first use
+let supabase: ReturnType<typeof createClient> | null = null;
 
-if (!supabaseUrl || !supabaseServiceKey) {
-  console.error('Missing Supabase environment variables:', {
-    SUPABASE_URL: !!supabaseUrl,
-    SUPABASE_SERVICE_ROLE_KEY: !!supabaseServiceKey
-  });
-  throw new Error('Missing Supabase environment variables');
+function getSupabaseClient() {
+  if (!supabase) {
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      console.error('Missing Supabase environment variables:', {
+        SUPABASE_URL: !!supabaseUrl,
+        SUPABASE_SERVICE_ROLE_KEY: !!supabaseServiceKey
+      });
+      throw new Error('Missing Supabase environment variables. Please check your .env file.');
+    }
+
+    supabase = createClient(supabaseUrl, supabaseServiceKey);
+  }
+  return supabase;
 }
-
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 // Configure multer for memory storage
 const upload = multer({
@@ -64,7 +71,7 @@ router.post('/upload', authenticateAdmin, upload.single('image'), async (req, re
     const bucket = 'store-items';
     console.log('Uploading to Supabase:', { bucket, storagePath, size: req.file.size });
     
-    const { data: uploadData, error: uploadError } = await supabase.storage
+    const { data: uploadData, error: uploadError } = await getSupabaseClient().storage
       .from(bucket)
       .upload(storagePath, req.file.buffer, {
         contentType: req.file.mimetype,
@@ -73,13 +80,22 @@ router.post('/upload', authenticateAdmin, upload.single('image'), async (req, re
     
     if (uploadError) {
       console.error('Supabase upload error:', uploadError);
+      
+      // Check if it's a bucket not found error
+      if (uploadError.message?.includes('The resource was not found')) {
+        return res.status(500).json({ 
+          error: 'Storage bucket not found', 
+          details: 'The "store-items" bucket does not exist in Supabase. Please create it in your Supabase dashboard under Storage.' 
+        });
+      }
+      
       return res.status(500).json({ error: 'Failed to upload to storage', details: uploadError.message });
     }
     
     console.log('Upload successful:', uploadData);
     
     // Get public URL
-    const { data: { publicUrl } } = supabase.storage
+    const { data: { publicUrl } } = getSupabaseClient().storage
       .from(bucket)
       .getPublicUrl(storagePath);
     
