@@ -128,8 +128,9 @@ router.post('/upload', authenticateAdmin, upload.single('image'), async (req, re
       assetId: newAsset.id
     });
     
-  } catch (error) {
+  } catch (error: any) {
     console.error('Asset upload error:', error);
+    console.error('Error stack:', error.stack);
     
     if (error instanceof multer.MulterError) {
       if (error.code === 'LIMIT_FILE_SIZE') {
@@ -138,7 +139,70 @@ router.post('/upload', authenticateAdmin, upload.single('image'), async (req, re
       return res.status(400).json({ error: error.message });
     }
     
-    res.status(500).json({ error: 'Failed to upload asset' });
+    // If it's the missing env vars error, return a specific message
+    if (error.message?.includes('Missing Supabase environment variables')) {
+      return res.status(500).json({ 
+        error: 'Server configuration error', 
+        details: 'Supabase is not properly configured on the server. Please contact the administrator.'
+      });
+    }
+    
+    res.status(500).json({ 
+      error: 'Failed to upload asset',
+      details: error.message || 'Unknown error occurred'
+    });
+  }
+});
+
+/**
+ * GET /api/admin/assets/test-connection
+ * Test Supabase connection and configuration
+ */
+router.get('/test-connection', authenticateAdmin, async (req, res) => {
+  try {
+    // Test environment variables
+    const envCheck = {
+      SUPABASE_URL: !!process.env.SUPABASE_URL,
+      SUPABASE_SERVICE_ROLE_KEY: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+      USE_CLOUD_STORAGE: process.env.USE_CLOUD_STORAGE
+    };
+    
+    // Try to initialize client
+    let clientStatus = 'Not initialized';
+    let bucketCheck = null;
+    
+    try {
+      const client = getSupabaseClient();
+      clientStatus = 'Initialized successfully';
+      
+      // Try to list buckets
+      const { data: buckets, error: listError } = await client.storage.listBuckets();
+      if (listError) {
+        bucketCheck = { error: listError.message };
+      } else {
+        bucketCheck = {
+          buckets: buckets?.map(b => b.name) || [],
+          hasStoreItems: buckets?.some(b => b.name === 'store-items') || false
+        };
+      }
+    } catch (initError: any) {
+      clientStatus = `Failed: ${initError.message}`;
+    }
+    
+    res.json({
+      success: true,
+      environment: envCheck,
+      supabaseClient: clientStatus,
+      storage: bucketCheck,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
   }
 });
 
