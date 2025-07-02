@@ -5,7 +5,9 @@ import { db } from '../db';
 import { profiles } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
-import { supabaseAdmin } from '../supabase-clients';
+import { supabaseAdmin, supabaseAnon } from '../supabase-clients';
+import { z } from 'zod';
+import { updateProfileSchema, updatePasswordSchema } from '../validation/auth-schemas';
 
 const router = Router();
 
@@ -56,6 +58,9 @@ router.get('/me', requireAuth, async (req, res) => {
 router.put('/me/profile', requireAuth, async (req, res) => {
   try {
     const userId = req.user.userId;
+    
+    // Validate request body
+    const validatedData = updateProfileSchema.parse(req.body);
     const { 
       personalityAnimal, 
       firstName, 
@@ -63,7 +68,7 @@ router.put('/me/profile', requireAuth, async (req, res) => {
       schoolOrganization,
       roleTitle,
       howHeardAbout 
-    } = req.body;
+    } = validatedData;
     
     // Only allow updating certain fields
     const updates: any = {};
@@ -103,6 +108,18 @@ router.put('/me/profile', requireAuth, async (req, res) => {
     });
   } catch (error) {
     console.error('Error updating user profile:', error);
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ 
+        success: false,
+        error: { 
+          message: "Invalid request data",
+          errors: error.errors.map(e => ({
+            field: e.path.join('.'),
+            message: e.message
+          }))
+        }
+      });
+    }
     res.status(500).json({ 
       success: false, 
       error: { message: "Failed to update profile" } 
@@ -114,17 +131,34 @@ router.put('/me/profile', requireAuth, async (req, res) => {
 router.put('/me/password', requireAuth, async (req, res) => {
   try {
     const userId = req.user.userId;
-    const { currentPassword, newPassword } = req.body;
     
-    if (!currentPassword || !newPassword) {
-      return res.status(400).json({
+    // Validate request body
+    const { currentPassword, newPassword } = updatePasswordSchema.parse(req.body);
+    
+    // Get user email from profile
+    const profile = await getProfileById(userId);
+    if (!profile) {
+      return res.status(404).json({
         success: false,
-        error: { message: "Current password and new password are required" }
+        error: { message: "User profile not found" }
       });
     }
     
-    // For Supabase Auth, we need to use the Supabase Admin API
-    // to update the password
+    // First, verify the current password is correct by attempting to sign in
+    const { error: signInError } = await supabaseAnon.auth.signInWithPassword({
+      email: profile.email,
+      password: currentPassword
+    });
+    
+    if (signInError) {
+      console.error('Current password verification failed:', signInError);
+      return res.status(401).json({
+        success: false,
+        error: { message: "Current password is incorrect" }
+      });
+    }
+    
+    // Current password is correct, now update to new password
     const { data, error } = await supabaseAdmin.auth.admin.updateUserById(
       userId,
       { password: newPassword }
@@ -144,6 +178,18 @@ router.put('/me/password', requireAuth, async (req, res) => {
     });
   } catch (error) {
     console.error('Error updating password:', error);
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ 
+        success: false,
+        error: { 
+          message: "Invalid request data",
+          errors: error.errors.map(e => ({
+            field: e.path.join('.'),
+            message: e.message
+          }))
+        }
+      });
+    }
     res.status(500).json({ 
       success: false, 
       error: { message: "Failed to update password" } 

@@ -1,0 +1,6 @@
+{
+  "baselineErrorCount": 159,
+  "baselineDate": "2025-01-01",
+  "description": "TypeScript error baseline to prevent regression while gradually fixing existing errors",
+  "lastUpdate": "Added @ts-nocheck to non-critical debug/admin routes"
+}

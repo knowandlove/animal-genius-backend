@@ -6,7 +6,6 @@ import {
   classes, 
   quizSubmissions, 
   storeItems, 
-  purchaseRequests,
   currencyTransactions,
   students 
 } from '@shared/schema';
@@ -49,10 +48,10 @@ router.get('/quick-stats', authenticateAdmin, async (req, res) => {
 
     // Most common animal
     const animalDistribution = await db.select({
-      animalType: quizSubmissions.animalType,
+      animalType: quizSubmissions.animalTypeId,
       count: count()
     }).from(quizSubmissions)
-    .groupBy(quizSubmissions.animalType)
+    .groupBy(quizSubmissions.animalTypeId)
     .orderBy(desc(count()))
     .limit(1);
 
@@ -62,26 +61,11 @@ router.get('/quick-stats', authenticateAdmin, async (req, res) => {
       active: count(sql`CASE WHEN ${storeItems.isActive} THEN 1 END`)
     }).from(storeItems);
 
-    const pendingOrders = await db.select({
-      count: count()
-    }).from(purchaseRequests)
-    .where(eq(purchaseRequests.status, 'pending'));
+    // Since we removed purchase requests, set pending orders to 0
+    const pendingOrders = [{ count: 0 }];
 
-    // Popular items (last 7 days)
-    const popularItems = await db.select({
-      name: storeItems.name,
-      purchases: count()
-    }).from(purchaseRequests)
-    .innerJoin(storeItems, eq(purchaseRequests.storeItemId, storeItems.id))
-    .where(
-      and(
-        eq(purchaseRequests.status, 'approved'),
-        gte(purchaseRequests.processedAt, weekAgo)
-      )
-    )
-    .groupBy(storeItems.name)
-    .orderBy(desc(count()))
-    .limit(5);
+    // Popular items - for now just return empty array since we don't track purchases
+    const popularItems = [];
 
     // Engagement stats
     const dailyActive = await db.select({

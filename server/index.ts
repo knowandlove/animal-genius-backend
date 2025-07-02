@@ -3,6 +3,8 @@ import { config } from "dotenv";
 import { registerRoutes } from "./routes";
 import path from "path";
 import { fileURLToPath } from "url";
+import { startPerformanceLogging } from "./middleware/auth-monitor";
+import cookieParser from "cookie-parser";
 // Vite imports removed - frontend is now separate
 
 // Get __dirname equivalent in ES modules
@@ -38,6 +40,7 @@ const allowedOrigins = [
 ].filter(Boolean);
 
 app.use(cors({
+  credentials: true, // Allow cookies to be sent
   origin: (origin, callback) => {
     // Log the origin for debugging
     console.log('CORS check - Origin:', origin);
@@ -63,6 +66,9 @@ app.use(cors({
 
 // Trust proxy for rate limiting to work properly in Replit
 app.set('trust proxy', 1);
+
+// Cookie parsing middleware (MUST be before routes that use cookies)
+app.use(cookieParser());
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
@@ -148,6 +154,10 @@ app.use((req, res, next) => {
     server.listen(port, "0.0.0.0", () => {
       log(`serving on port ${port}`);
       log(`WebSocket server also listening on port ${port}`);
+      
+      // Start authentication performance monitoring
+      startPerformanceLogging();
+      log('Authentication performance monitoring started');
     });
     
     // Graceful shutdown handling

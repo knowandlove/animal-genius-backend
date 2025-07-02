@@ -4,6 +4,7 @@ import { db } from "../db";
 import { storeSettings, classes } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth";
+import { verifyClassOwnership } from "../middleware/ownership";
 import { z } from "zod";
 import * as cache from "../lib/cache";
 import { validateUUID } from "../middleware/validateUUID";
@@ -32,7 +33,7 @@ const storeHoursSchema = z.object({
 export function registerStoreManagementRoutes(app: Express) {
   
   // Toggle store open/closed status
-  app.post("/api/currency/store/toggle", requireAuth, async (req: any, res) => {
+  app.post("/api/currency/store/toggle", requireAuth, verifyClassOwnership, async (req: any, res) => {
     try {
       console.log('[STORE TOGGLE] Request body:', JSON.stringify(req.body));
       console.log('[STORE TOGGLE] User:', req.user);
@@ -43,22 +44,6 @@ export function registerStoreManagementRoutes(app: Express) {
       if (!teacherId) {
         console.error('[STORE TOGGLE] No teacher ID found');
         return res.status(401).json({ message: "Unauthorized" });
-      }
-      
-      // Verify teacher owns this class
-      const classData = await db
-        .select()
-        .from(classes)
-        .where(
-          and(
-            eq(classes.id, classId),
-            eq(classes.teacherId, teacherId!)
-          )
-        )
-        .limit(1);
-
-      if (classData.length === 0) {
-        return res.status(403).json({ message: "Access denied - you don't own this class" });
       }
 
       // Check if store settings exist
@@ -126,7 +111,7 @@ export function registerStoreManagementRoutes(app: Express) {
   });
 
   // Get current store status for a class
-  app.get("/api/classes/:classId/store-status", requireAuth, validateUUID('classId'), async (req: any, res) => {
+  app.get("/api/classes/:classId/store-status", requireAuth, validateUUID('classId'), verifyClassOwnership, async (req: any, res) => {
     try {
       const { classId } = req.params;
       const teacherId = req.user?.userId || req.user?.id;
@@ -137,22 +122,6 @@ export function registerStoreManagementRoutes(app: Express) {
       if (!teacherId) {
         console.error('[STORE STATUS] No teacher ID found');
         return res.status(401).json({ message: "Unauthorized" });
-      }
-      
-      // Verify teacher owns this class
-      const classData = await db
-        .select()
-        .from(classes)
-        .where(
-          and(
-            eq(classes.id, classId),
-            eq(classes.teacherId, teacherId!)
-          )
-        )
-        .limit(1);
-
-      if (classData.length === 0) {
-        return res.status(403).json({ message: "Access denied" });
       }
 
       // Get store settings
@@ -201,26 +170,10 @@ export function registerStoreManagementRoutes(app: Express) {
   });
 
   // Set auto-approval threshold
-  app.post("/api/currency/store/auto-approval", requireAuth, async (req: any, res) => {
+  app.post("/api/currency/store/auto-approval", requireAuth, verifyClassOwnership, async (req: any, res) => {
     try {
       const { classId, threshold } = autoApprovalSchema.parse(req.body);
       const teacherId = req.user?.userId || req.user?.id;
-      
-      // Verify teacher owns this class
-      const classData = await db
-        .select()
-        .from(classes)
-        .where(
-          and(
-            eq(classes.id, classId),
-            eq(classes.teacherId, teacherId!)
-          )
-        )
-        .limit(1);
-
-      if (classData.length === 0) {
-        return res.status(403).json({ message: "Access denied" });
-      }
 
       // Check if store settings exist
       const existingSettings = await db
@@ -270,26 +223,10 @@ export function registerStoreManagementRoutes(app: Express) {
   });
 
   // Set store hours (future feature)
-  app.post("/api/currency/store/hours", requireAuth, async (req: any, res) => {
+  app.post("/api/currency/store/hours", requireAuth, verifyClassOwnership, async (req: any, res) => {
     try {
       const { classId, openTime, closeTime, timezone } = storeHoursSchema.parse(req.body);
       const teacherId = req.user?.userId || req.user?.id;
-      
-      // Verify teacher owns this class
-      const classData = await db
-        .select()
-        .from(classes)
-        .where(
-          and(
-            eq(classes.id, classId),
-            eq(classes.teacherId, teacherId!)
-          )
-        )
-        .limit(1);
-
-      if (classData.length === 0) {
-        return res.status(403).json({ message: "Access denied" });
-      }
 
       // This is a placeholder for future store hours functionality
       res.json({

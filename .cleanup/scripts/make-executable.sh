@@ -1,0 +1,1 @@
+chmod +x run-payment-migration.sh

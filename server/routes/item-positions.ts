@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { db } from "../db";
-import { itemAnimalPositions, profiles } from "@shared/schema";
+import { itemAnimalPositions, profiles, itemTypes, animalTypes } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth";
 
@@ -10,14 +10,16 @@ export function registerItemPositionRoutes(app: Express) {
     try {
       const positions = await db
         .select({
-          item_type: itemAnimalPositions.itemType,
-          animal_type: itemAnimalPositions.animalType,
+          item_type: itemTypes.code,
+          animal_type: animalTypes.code,
           x_position: itemAnimalPositions.xPosition,
           y_position: itemAnimalPositions.yPosition,
           scale: itemAnimalPositions.scale,
           rotation: itemAnimalPositions.rotation
         })
-        .from(itemAnimalPositions);
+        .from(itemAnimalPositions)
+        .leftJoin(itemTypes, eq(itemAnimalPositions.itemTypeId, itemTypes.id))
+        .leftJoin(animalTypes, eq(itemAnimalPositions.animalTypeId, animalTypes.id));
       
       res.json(positions);
     } catch (error) {
@@ -50,6 +52,9 @@ export function registerItemPositionRoutes(app: Express) {
 
   // Save/update item position
   app.post("/api/admin/item-positions", requireAuth, async (req: any, res) => {
+    console.log('=== SAVE ITEM POSITION REQUEST ===');
+    console.log('Request body:', req.body);
+    
     try {
       // Get user details to verify admin access
       const [user] = await db
@@ -63,11 +68,40 @@ export function registerItemPositionRoutes(app: Express) {
       }
 
       const { item_type, animal_type, x_position, y_position, scale, rotation } = req.body;
+      console.log('Parsed values:', { item_type, animal_type, x_position, y_position, scale, rotation });
 
       // Validate input
       if (!item_type || !animal_type) {
         return res.status(400).json({ message: "Item type and animal type are required" });
       }
+
+      // Look up the UUIDs for item type and animal type
+      const [itemTypeRecord] = await db
+        .select()
+        .from(itemTypes)
+        .where(eq(itemTypes.code, item_type))
+        .limit(1);
+        
+      const [animalTypeRecord] = await db
+        .select()
+        .from(animalTypes)
+        .where(eq(animalTypes.code, animal_type))
+        .limit(1);
+        
+      if (!itemTypeRecord || !animalTypeRecord) {
+        return res.status(400).json({ 
+          message: "Invalid item type or animal type",
+          details: {
+            itemTypeFound: !!itemTypeRecord,
+            animalTypeFound: !!animalTypeRecord
+          }
+        });
+      }
+
+      console.log('Found UUIDs:', {
+        itemTypeId: itemTypeRecord.id,
+        animalTypeId: animalTypeRecord.id
+      });
 
       // Check if position exists
       const [existing] = await db
@@ -75,8 +109,8 @@ export function registerItemPositionRoutes(app: Express) {
         .from(itemAnimalPositions)
         .where(
           and(
-            eq(itemAnimalPositions.itemType, item_type),
-            eq(itemAnimalPositions.animalType, animal_type)
+            eq(itemAnimalPositions.itemTypeId, itemTypeRecord.id),
+            eq(itemAnimalPositions.animalTypeId, animalTypeRecord.id)
           )
         )
         .limit(1);
@@ -88,7 +122,7 @@ export function registerItemPositionRoutes(app: Express) {
           .set({
             xPosition: x_position?.toString() ?? '50',
             yPosition: y_position?.toString() ?? '50',
-            scale: scale?.toString() ?? '1.0',
+            scale: (scale / 100)?.toString() ?? '1.0',
             rotation: rotation ?? 0,
             updatedAt: new Date()
           })
@@ -101,11 +135,11 @@ export function registerItemPositionRoutes(app: Express) {
         const [created] = await db
           .insert(itemAnimalPositions)
           .values({
-            itemType: item_type,
-            animalType: animal_type,
+            itemTypeId: itemTypeRecord.id,
+            animalTypeId: animalTypeRecord.id,
             xPosition: x_position?.toString() ?? '50',
             yPosition: y_position?.toString() ?? '50',
-            scale: scale?.toString() ?? '1.0',
+            scale: (scale / 100)?.toString() ?? '1.0',
             rotation: rotation ?? 0
           })
           .returning();
@@ -114,6 +148,10 @@ export function registerItemPositionRoutes(app: Express) {
       }
     } catch (error) {
       console.error("Save item position error:", error);
+      console.error("Error details:", {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      });
       res.status(500).json({ message: "Failed to save item position" });
     }
   });
@@ -144,8 +182,8 @@ export function registerItemPositionRoutes(app: Express) {
         .from(itemAnimalPositions)
         .where(
           and(
-            eq(itemAnimalPositions.itemType, item_type),
-            eq(itemAnimalPositions.animalType, source_animal)
+            eq(itemAnimalPositions.itemTypeId, item_type),
+            eq(itemAnimalPositions.animalTypeId, source_animal)
           )
         )
         .limit(1);
@@ -163,8 +201,8 @@ export function registerItemPositionRoutes(app: Express) {
           .from(itemAnimalPositions)
           .where(
             and(
-              eq(itemAnimalPositions.itemType, item_type),
-              eq(itemAnimalPositions.animalType, targetAnimal)
+              eq(itemAnimalPositions.itemTypeId, item_type),
+              eq(itemAnimalPositions.animalTypeId, targetAnimal)
             )
           )
           .limit(1);
@@ -245,8 +283,8 @@ export function registerItemPositionRoutes(app: Express) {
             .from(itemAnimalPositions)
             .where(
               and(
-                eq(itemAnimalPositions.itemType, itemType),
-                eq(itemAnimalPositions.animalType, animalType)
+                eq(itemAnimalPositions.itemTypeId, itemType),
+                eq(itemAnimalPositions.animalTypeId, animalType)
               )
             )
             .limit(1);

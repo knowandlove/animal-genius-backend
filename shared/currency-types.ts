@@ -32,8 +32,8 @@ export interface StoreItem {
   unlockLevel?: number; // Future feature
 }
 
-// Student island data structure
-export interface StudentIsland {
+// Student room data structure
+export interface StudentRoom {
   id: number;
   passportCode: string;
   studentName: string;
@@ -112,7 +112,7 @@ export const CURRENCY_CONSTANTS = {
 // 
 // Use the API endpoints instead:
 // - GET /api/store/catalog - Get all store items
-// - GET /api/island-page-data/:passportCode - Get page data including store
+// - GET /api/room-page-data/:passportCode - Get page data including store
 // ============================================
 
 /** @deprecated Use database/API instead */

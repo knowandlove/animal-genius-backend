@@ -3,16 +3,35 @@ import { db } from '../db';
 import { storeItems } from '@shared/schema';
 import { eq, asc, inArray } from 'drizzle-orm';
 import StorageRouter from '../services/storage-router';
+import { storeBrowsingLimiter } from '../middleware/rateLimiter';
 
 const router = Router();
 
+// Simple in-memory cache for store catalog
+interface CatalogCache {
+  data: any[];
+  timestamp: number;
+}
+
+let catalogCache: CatalogCache | null = null;
+const CATALOG_CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache
+
 /**
  * GET /api/store/catalog
- * Get all active store items for students
+ * Get all active store items for students (with caching)
  */
-router.get('/catalog', async (req, res) => {
+router.get('/catalog', storeBrowsingLimiter, async (req, res) => {
   try {
     console.log('=== STORE CATALOG ENDPOINT HIT ===');
+    
+    // Check cache first
+    const now = Date.now();
+    if (catalogCache && (now - catalogCache.timestamp) < CATALOG_CACHE_TTL) {
+      console.log('Returning cached catalog data');
+      return res.json(catalogCache.data);
+    }
+    
+    console.log('Cache miss - fetching fresh data');
     console.log('Cloud storage enabled?', StorageRouter.isCloudStorageEnabled());
     
     const items = await db
@@ -29,6 +48,12 @@ router.get('/catalog', async (req, res) => {
     
     console.log('Prepared first item:', JSON.stringify(preparedItems[0], null, 2));
     
+    // Cache the result
+    catalogCache = {
+      data: preparedItems,
+      timestamp: now
+    };
+    
     res.json(preparedItems);
   } catch (error) {
     console.error('Error fetching store catalog:', error);
@@ -40,7 +65,7 @@ router.get('/catalog', async (req, res) => {
  * POST /api/store/items/batch
  * Get multiple items by IDs (for loading owned items)
  */
-router.post('/items/batch', async (req, res) => {
+router.post('/items/batch', storeBrowsingLimiter, async (req, res) => {
   try {
     const { itemIds } = req.body;
     

@@ -1,62 +1,57 @@
 import { db } from "../db";
-import { quizSubmissions, students, classes, currencyTransactions } from "@shared/schema";
+import { quizSubmissions, students, classes, currencyTransactions, animalTypes, geniusTypes } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { generatePassportCode, CURRENCY_CONSTANTS } from "@shared/currency-types";
-import type { InsertQuizSubmission, InsertCurrencyTransaction, QuizSubmission } from "@shared/schema";
 
 /**
- * Fast quiz submission - only saves the essential data
- * Returns immediately to avoid bottleneck
+ * Maps animal codes to their primary genius type
  */
-export async function createQuizSubmissionFast(submission: InsertQuizSubmission) {
+const ANIMAL_TO_GENIUS_MAP: Record<string, string> = {
+  'meerkat': 'creative',
+  'parrot': 'creative',
+  'otter': 'creative',
+  'panda': 'analytical',
+  'owl': 'analytical',
+  'beaver': 'practical',
+  'border-collie': 'practical',
+  'elephant': 'social'
+};
+
+/**
+ * Fast quiz submission - creates student and submission in one transaction
+ */
+export async function createQuizSubmissionFast(submission: any) {
   console.log(`📝 Fast submission for ${submission.studentName}`);
   
-  // Generate passport code (this is fast, no DB calls)
+  // Generate passport code
   const passportCode = generatePassportCode(submission.animalType);
   
-  // Single, fast insert - no transaction needed for one operation
-  const [submissionRecord] = await db
-    .insert(quizSubmissions)
-    .values({
-      ...submission,
-      // We'll link to student record async
-      studentId: null
-    })
-    .returning();
-
-  console.log(`✅ Quiz submitted quickly for ${submission.studentName} (ID: ${submissionRecord.id})`);
-  
-  // Schedule async processing AFTER we return
-  setImmediate(() => {
-    processQuizRewards(submissionRecord.id, submission, passportCode)
-      .catch(error => {
-        console.error(`❌ Failed to process rewards for submission ${submissionRecord.id}:`, error);
-        // Could implement retry logic here
-      });
-  });
-  
-  // Return with passport code for immediate display
-  return {
-    ...submissionRecord,
-    passportCode, // Include this so frontend can show it immediately
-    currencyBalance: CURRENCY_CONSTANTS.QUIZ_COMPLETION_REWARD // Show expected balance
-  } as QuizSubmission & { passportCode: string; currencyBalance: number };
-}
-
-/**
- * Process rewards and create student record asynchronously
- * This happens AFTER the student gets their success response
- */
-async function processQuizRewards(
-  submissionId: number, 
-  submission: InsertQuizSubmission,
-  passportCode: string
-) {
-  console.log(`🎁 Processing rewards for ${submission.studentName} (async)`);
-  
   try {
-    // Use a transaction for the reward processing
-    await db.transaction(async (tx) => {
+    // Do everything in a transaction for data consistency
+    const result = await db.transaction(async (tx) => {
+      // Look up the animal type ID
+      const [animalType] = await tx
+        .select()
+        .from(animalTypes)
+        .where(eq(animalTypes.code, submission.animalType.toLowerCase()))
+        .limit(1);
+        
+      if (!animalType) {
+        throw new Error(`Animal type not found: ${submission.animalType}`);
+      }
+      
+      // Determine genius type based on animal
+      const geniusCode = ANIMAL_TO_GENIUS_MAP[submission.animalType.toLowerCase()] || 'creative';
+      const [geniusType] = await tx
+        .select()
+        .from(geniusTypes)
+        .where(eq(geniusTypes.code, geniusCode))
+        .limit(1);
+        
+      if (!geniusType) {
+        throw new Error(`Genius type not found: ${geniusCode}`);
+      }
+
       // Check if student already exists
       const [existingStudent] = await tx
         .select()
@@ -73,36 +68,31 @@ async function processQuizRewards(
           .update(students)
           .set({
             gradeLevel: submission.gradeLevel,
-            animalType: submission.animalType,
-            animalGenius: submission.animalGenius || 'Feeler',
+            animalTypeId: animalType.id,
+            geniusTypeId: geniusType.id,
             personalityType: submission.personalityType,
             learningStyle: submission.learningStyle,
-            learningScores: submission.learningScores,
             currencyBalance: (existingStudent.currencyBalance || 0) + CURRENCY_CONSTANTS.QUIZ_COMPLETION_REWARD
           })
           .where(eq(students.id, existingStudent.id));
           
         console.log(`📊 Updated existing student: ${submission.studentName}`);
       } else {
-        // Create new student
+        // Create new student with proper foreign keys
         const [newStudent] = await tx
           .insert(students)
           .values({
             classId: submission.classId,
-            displayName: submission.studentName,
             studentName: submission.studentName,
             passportCode: passportCode,
-            walletBalance: CURRENCY_CONSTANTS.QUIZ_COMPLETION_REWARD,
-            pendingBalance: 0,
             currencyBalance: CURRENCY_CONSTANTS.QUIZ_COMPLETION_REWARD,
             gradeLevel: submission.gradeLevel,
-            animalType: submission.animalType,
-            animalGenius: submission.animalGenius || 'Feeler',
+            animalTypeId: animalType.id,
+            geniusTypeId: geniusType.id,
             personalityType: submission.personalityType,
             learningStyle: submission.learningStyle,
-            learningScores: submission.learningScores,
             avatarData: {},
-            roomData: {}
+            roomData: { furniture: [] }
           })
           .returning();
           
@@ -110,13 +100,19 @@ async function processQuizRewards(
         console.log(`👤 Created new student: ${submission.studentName}`);
       }
       
-      // Update the submission with the student ID
-      await tx
-        .update(quizSubmissions)
-        .set({
-          studentId: studentId
+      // Now create the quiz submission with the student ID
+      const [submissionRecord] = await tx
+        .insert(quizSubmissions)
+        .values({
+          studentId: studentId,
+          animalTypeId: animalType.id,
+          geniusTypeId: geniusType.id,
+          answers: submission.answers || {},
+          coinsEarned: CURRENCY_CONSTANTS.QUIZ_COMPLETION_REWARD
         })
-        .where(eq(quizSubmissions.id, submissionId));
+        .returning();
+
+      console.log(`✅ Quiz submitted for ${submission.studentName} (ID: ${submissionRecord.id})`);
       
       // Get class info for transaction log
       const [classRecord] = await tx
@@ -127,38 +123,47 @@ async function processQuizRewards(
       
       if (classRecord) {
         // Log the currency transaction
-        const currencyTransaction: InsertCurrencyTransaction = {
+        await tx.insert(currencyTransactions).values({
           studentId: studentId,
           teacherId: classRecord.teacherId,
           amount: CURRENCY_CONSTANTS.QUIZ_COMPLETION_REWARD,
-          reason: 'Quiz completion reward',
+          description: 'Quiz completion reward',
           transactionType: 'quiz_complete'
-        };
-        
-        await tx.insert(currencyTransactions).values(currencyTransaction);
+        });
         console.log(`💰 Awarded ${CURRENCY_CONSTANTS.QUIZ_COMPLETION_REWARD} coins to ${submission.studentName}`);
       }
+      
+      return {
+        submissionRecord,
+        studentId,
+        passportCode,
+        currencyBalance: (existingStudent?.currencyBalance || 0) + CURRENCY_CONSTANTS.QUIZ_COMPLETION_REWARD
+      };
     });
     
-    console.log(`✅ Rewards processed successfully for ${submission.studentName}`);
+    // Return with passport code for immediate display
+    return {
+      ...result.submissionRecord,
+      passportCode: result.passportCode,
+      currencyBalance: result.currencyBalance
+    };
+    
   } catch (error) {
-    console.error(`❌ Error processing rewards for ${submission.studentName}:`, error);
+    console.error(`❌ Error processing quiz submission for ${submission.studentName}:`, error);
     throw error;
   }
 }
 
 /**
- * Get submission status including reward processing
- * Useful for checking if async processing is complete
+ * Get submission status
  */
-export async function getSubmissionStatus(submissionId: number) {
+export async function getSubmissionStatus(submissionId: string) {
   const [submission] = await db
     .select({
       id: quizSubmissions.id,
       studentId: quizSubmissions.studentId,
-      studentName: quizSubmissions.studentName,
-      hasStudent: students.id,
-      studentBalance: students.currencyBalance
+      studentBalance: students.currencyBalance,
+      studentName: students.studentName
     })
     .from(quizSubmissions)
     .leftJoin(students, eq(quizSubmissions.studentId, students.id))
@@ -171,8 +176,8 @@ export async function getSubmissionStatus(submissionId: number) {
   
   return {
     submissionId: submission.id,
-    studentName: submission.studentName,
-    isProcessed: !!submission.studentId,
+    studentName: submission.studentName || 'Unknown',
+    isProcessed: true, // Always true now since we do it synchronously
     currentBalance: submission.studentBalance || 0
   };
 }

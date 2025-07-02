@@ -29,8 +29,8 @@ export interface StoreItem {
   updatedAt: string;
 }
 
-// Student island data structure
-export interface StudentIsland {
+// Student room data structure
+export interface StudentRoom {
   id: number;
   passportCode: string;
   studentName: string;

@@ -1,0 +1,1 @@
+ALTER TABLE "students" ADD COLUMN "room_visibility" varchar(20) DEFAULT 'class';

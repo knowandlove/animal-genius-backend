@@ -1,7 +1,7 @@
 // Store Admin Routes - Database-driven store management
 import type { Express } from "express";
 import { db } from "../../db";
-import { storeItems } from "@shared/schema";
+import { storeItems, itemTypes } from "@shared/schema";
 import { eq, desc, asc } from "drizzle-orm";
 import { requireAuth, authenticateAdmin as requireAdmin } from "../../middleware/auth";
 import { validateUUID } from "../../middleware/validate-uuid";
@@ -49,17 +49,42 @@ export function registerStoreAdminRoutes(app: Express) {
   
   // Get all store items (admin view)
   app.get("/api/store/admin/items", requireAuth, requireAdmin, async (req, res) => {
+    console.log('🔍 ADMIN STORE ITEMS REQUEST RECEIVED');
+    console.log('Auth header:', req.headers.authorization);
+    console.log('User from request:', req.user);
+    console.log('Profile from request:', req.profile);
     try {
       const items = await db
-        .select()
+        .select({
+          id: storeItems.id,
+          name: storeItems.name,
+          description: storeItems.description,
+          itemTypeId: storeItems.itemTypeId,
+          itemType: itemTypes.code,
+          cost: storeItems.cost,
+          rarity: storeItems.rarity,
+          isActive: storeItems.isActive,
+          sortOrder: storeItems.sortOrder,
+          assetId: storeItems.assetId,
+          createdAt: storeItems.createdAt,
+          updatedAt: storeItems.updatedAt
+        })
         .from(storeItems)
+        .leftJoin(itemTypes, eq(storeItems.itemTypeId, itemTypes.id))
         .orderBy(desc(storeItems.createdAt));
+      
+      console.log('=== ADMIN STORE ITEMS DEBUG ===');
+      console.log('Raw items from DB:', items.length);
+      console.log('First item:', JSON.stringify(items[0], null, 2));
       
       // Import StorageRouter to prepare items with image URLs
       const StorageRouter = (await import('../../services/storage-router')).default;
       
       // Prepare items with proper image URLs
       const preparedItems = await StorageRouter.prepareStoreItemsResponse(items);
+      
+      console.log('Prepared items:', preparedItems.length);
+      console.log('First prepared item:', JSON.stringify(preparedItems[0], null, 2));
       
       res.json(preparedItems);
     } catch (error) {
@@ -70,8 +95,24 @@ export function registerStoreAdminRoutes(app: Express) {
   
   // Create new store item
   app.post("/api/store/admin/items", requireAuth, requireAdmin, async (req, res) => {
+    console.log('🚀 HIT CREATE STORE ITEM ENDPOINT');
     try {
-      const validatedData = createItemSchema.parse(req.body);
+      console.log('=== CREATE STORE ITEM REQUEST ===');
+      console.log('Request body:', req.body);
+      console.log('Raw itemType from frontend:', req.body.itemType);
+      console.log('Valid enum values:', ['avatar_hat', 'avatar_accessory', 'room_furniture', 'room_decoration', 'room_wallpaper', 'room_flooring']);
+      
+      let validatedData;
+      try {
+        validatedData = createItemSchema.parse(req.body);
+        console.log('Validation passed, data:', validatedData);
+      } catch (validationError) {
+        console.log('VALIDATION FAILED:', validationError);
+        if (validationError instanceof z.ZodError) {
+          console.log('Validation errors:', validationError.errors);
+        }
+        throw validationError;
+      }
       
       // Get assetId from request body (required)
       const assetId = req.body.assetId;
@@ -92,20 +133,39 @@ export function registerStoreAdminRoutes(app: Express) {
         });
       }
       
+      // Look up the item type UUID from the code sent by frontend
+      const itemTypeCode = validatedData.itemType; // This is like "avatar_hat"
+      console.log('=== ITEM TYPE LOOKUP ===');
+      console.log('Frontend sent itemType:', itemTypeCode);
+      console.log('Looking for code in database:', itemTypeCode);
+      
+      const [itemType] = await db
+        .select()
+        .from(itemTypes)
+        .where(eq(itemTypes.code, itemTypeCode))
+        .limit(1);
+      
+      console.log('Found item type in DB:', itemType);
+      console.log('Item type ID found:', itemType?.id || 'NOT FOUND');
+      
+      if (!itemType) {
+        return res.status(400).json({ 
+          message: `Invalid item type: ${itemTypeCode}` 
+        });
+      }
+      
       // Now create the store item with the asset ID
       const [newItem] = await db
         .insert(storeItems)
         .values({
-          ...validatedData,
           name: validatedData.name,
           description: validatedData.description || null,
-          itemType: validatedData.itemType,
+          itemTypeId: itemType.id, // Use the UUID from item_types table
           cost: validatedData.cost,
           rarity: validatedData.rarity,
           isActive: validatedData.isActive,
           sortOrder: validatedData.sortOrder,
           assetId: assetId, // Use the asset ID
-          imageUrl: imageUrl || null // Keep for feature flag compatibility
         })
         .returning();
       
@@ -175,13 +235,19 @@ export function registerStoreAdminRoutes(app: Express) {
           // Import StorageRouter to handle deletion
           const StorageRouter = (await import('../../services/storage-router')).default;
           await StorageRouter.deleteFile(item.assetId);
-        } catch (error) {
+        } catch (error: any) {
           console.error(`Failed to delete asset ${item.assetId} for store item ${id}:`, error);
-          // Return an error WITHOUT deleting the DB record, so the operation can be retried
-          return res.status(500).json({ 
-            message: "Failed to delete associated image asset. Database record was not deleted.",
-            error: error instanceof Error ? error.message : 'Unknown error'
-          });
+          
+          // If cloud storage is not enabled, just log and continue
+          if (error.message && error.message.includes('Cloud storage is not enabled')) {
+            console.log('Cloud storage not enabled, skipping asset deletion');
+          } else {
+            // For other errors, return an error WITHOUT deleting the DB record
+            return res.status(500).json({ 
+              message: "Failed to delete associated image asset. Database record was not deleted.",
+              error: error instanceof Error ? error.message : 'Unknown error'
+            });
+          }
         }
       }
       

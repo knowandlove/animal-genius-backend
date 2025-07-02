@@ -98,12 +98,13 @@ export function calculateResults(answers: QuizAnswer[]): QuizResults {
     }
   });
 
-  // Determine MBTI type
+  // Determine MBTI type with balanced tie-breaking
+  // In case of ties, we alternate preferences to avoid systematic bias
   const mbtiType = 
-    (scores.E > scores.I ? 'E' : 'I') +
-    (scores.S > scores.N ? 'S' : 'N') +
-    (scores.T > scores.F ? 'T' : 'F') +
-    (scores.J > scores.P ? 'J' : 'P');
+    (scores.E >= scores.I ? 'E' : 'I') +  // Ties go to E (Extrovert)
+    (scores.S > scores.N ? 'S' : 'N') +   // Ties go to N (Intuitive)
+    (scores.T >= scores.F ? 'T' : 'F') +  // Ties go to T (Thinking)
+    (scores.J > scores.P ? 'J' : 'P');    // Ties go to P (Perceiving)
 
   // Get animal for MBTI type
   const animal = animalMap[mbtiType] || 'Unknown';

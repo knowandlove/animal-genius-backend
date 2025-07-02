@@ -3,6 +3,7 @@
 import { students, classes } from "@shared/schema";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
+import { randomInt } from 'crypto';
 
 // Animal code mapping
 const ANIMAL_CODES: Record<string, string> = {
@@ -28,7 +29,7 @@ export async function generateAnimalPassportCode(animalType: string): Promise<st
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     let suffix = '';
     for (let i = 0; i < 3; i++) {
-      suffix += chars.charAt(Math.floor(Math.random() * chars.length));
+      suffix += chars.charAt(randomInt(chars.length));
     }
     
     const code = `${prefix}-${suffix}`;
@@ -48,25 +49,25 @@ export async function generateAnimalPassportCode(animalType: string): Promise<st
   }
   
   // If we couldn't generate a unique code after 100 attempts, 
-  // fall back to timestamp-based code
-  const timestamp = Date.now().toString(36).toUpperCase().slice(-3);
-  return `${prefix}-${timestamp}`;
+  // fall back to timestamp-based code with random component for better entropy
+  const timestamp = Date.now().toString(36).toUpperCase().slice(-2);
+  const randomPart = randomInt(10, 99);
+  return `${prefix}-${timestamp}${randomPart}`;
 }
 
 // For classes, we keep the simple format
 export async function generateClassPassportCode(): Promise<string> {
-  let attempts = 0;
   const maxAttempts = 100;
   
-  while (attempts < maxAttempts) {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
     // Generate XXX-XXX format where X is alphanumeric
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     let part1 = '';
     let part2 = '';
     
     for (let i = 0; i < 3; i++) {
-      part1 += chars.charAt(Math.floor(Math.random() * chars.length));
-      part2 += chars.charAt(Math.floor(Math.random() * chars.length));
+      part1 += chars.charAt(randomInt(chars.length));
+      part2 += chars.charAt(randomInt(chars.length));
     }
     
     const code = `${part1}-${part2}`;
@@ -75,17 +76,15 @@ export async function generateClassPassportCode(): Promise<string> {
     const existing = await db
       .select()
       .from(classes)
-      .where(eq(classes.passportCode, code))
+      .where(eq(classes.classCode, code))
       .limit(1);
     
     if (existing.length === 0) {
       return code;
     }
-    
-    attempts++;
   }
   
-  // Fallback to timestamp-based code
-  const timestamp = Date.now().toString(36).toUpperCase();
-  return `${timestamp.slice(0, 3)}-${timestamp.slice(3, 6)}`;
+  // If we couldn't generate a unique code after many attempts,
+  // throw an error instead of using a weak fallback
+  throw new Error('Failed to generate a unique class code after multiple attempts');
 }

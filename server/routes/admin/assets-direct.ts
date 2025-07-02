@@ -99,27 +99,17 @@ router.post('/upload', authenticateAdmin, upload.single('image'), async (req, re
       .from(bucket)
       .getPublicUrl(storagePath);
     
-    // Create asset record in database
+    // Create asset record in database using raw SQL with proper result handling
     const { db } = await import('../../db');
-    const { assets } = await import('@shared/schema');
+    const { sql } = await import('drizzle-orm');
     
-    const [newAsset] = await db.insert(assets)
-      .values({
-        path: storagePath,
-        bucket: bucket,
-        status: 'active',
-        type: 'item', // Use 'item' for all store items
-        category: type, // Store the actual item type (avatar_hat, etc.) in category
-        name: req.file.originalname,
-        mimeType: req.file.mimetype,
-        sizeBytes: req.file.size,
-        metadata: {
-          originalName: req.file.originalname,
-          uploadedBy: req.user?.id || 'admin',
-          itemType: type // Also store in metadata for reference
-        }
-      })
-      .returning();
+    const assetId = crypto.randomUUID();
+    const result = await db.execute(sql`
+      INSERT INTO assets (id, file_name, file_type, file_size, storage_path, public_url, category, created_at, updated_at)
+      VALUES (${assetId}, ${req.file.originalname}, ${req.file.mimetype}, ${req.file.size}, ${storagePath}, ${publicUrl}, ${type}, NOW(), NOW())
+    `);
+    
+    const newAsset = { id: assetId };
     
     // Return response with both URL and assetId
     res.json({

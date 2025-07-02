@@ -4,6 +4,9 @@ import { supabaseAdmin, supabaseAnon } from '../supabase-clients';
 import { db } from '../db';
 import { profiles } from '@shared/schema';
 import { eq } from 'drizzle-orm';
+import { getCachedProfile } from './profile-cache';
+import { sessionTracker } from './session-tracker';
+import { authPerformanceMonitor } from './auth-monitor';
 
 // Extend Request type to include user
 declare global {
@@ -12,7 +15,7 @@ declare global {
       user?: {
         userId: string; // Now using UUID
         email: string;
-        is_admin: boolean;
+        isAdmin: boolean;
       };
       profile?: Profile;
     }
@@ -21,47 +24,59 @@ declare global {
 
 // Main authentication middleware for Supabase Auth
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
+  // Start performance monitoring
+  authPerformanceMonitor(req, res, () => {});
+  
   const authHeader = req.headers.authorization;
-  console.log('Auth header received:', authHeader?.substring(0, 50) + '...');
+  if (process.env.NODE_ENV === 'development') {
+    console.log('Auth header received:', authHeader ? authHeader.substring(0, 50) + '...' : 'None');
+  }
   
   const token = authHeader?.split(' ')[1];
+  if (process.env.NODE_ENV === 'development') {
+    console.log('Token extracted:', token ? token.substring(0, 50) + '...' : 'None');
+  }
   
   if (!token) {
-    console.log('No token found in authorization header');
+    if (process.env.NODE_ENV === 'development') {
+      console.log('No token found in authorization header');
+    }
     return res.status(401).json({ message: "Access token required" });
   }
   
-  console.log('Token extracted:', token.substring(0, 50) + '...');
-  
   try {
     // Verify token with Supabase using anon client
-    console.log('Verifying token with Supabase...');
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Verifying token with Supabase...');
+    }
     const { data: { user }, error } = await supabaseAnon.auth.getUser(token);
     
     if (error) {
-      console.error('Supabase auth error:', error);
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Supabase auth error:', error);
+        console.error('Error details:', {
+          message: error.message,
+          status: error.status,
+          code: error.code
+        });
+      }
       return res.status(403).json({ message: "Invalid token" });
     }
     
     if (!user) {
-      console.log('No user returned from Supabase');
+      if (process.env.NODE_ENV === 'development') {
+        console.log('No user returned from Supabase');
+      }
       return res.status(403).json({ message: "Invalid token" });
     }
     
-    // Get user profile for additional data using Drizzle ORM
-    console.log('Looking for profile with ID:', user.id);
-    
     try {
-      const [profile] = await db
-        .select()
-        .from(profiles)
-        .where(eq(profiles.id, user.id))
-        .limit(1);
-      
-      console.log('Profile query result:', profile ? 'Found' : 'Not found');
+      const profile = await getCachedProfile(user.id);
       
       if (!profile) {
-        console.error('Profile not found for user:', user.id);
+        if (process.env.NODE_ENV === 'development') {
+          console.error('Profile not found for user:', user.id);
+        }
         return res.status(403).json({ message: "Profile not found. Please complete your profile." });
       }
       
@@ -69,19 +84,22 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       req.user = {
         userId: user.id, // UUID from Supabase
         email: user.email || profile.email,
-        is_admin: profile.isAdmin || false
+        isAdmin: profile.isAdmin || false
       };
       
       req.profile = profile;
+      
+      // Track session after authentication
+      sessionTracker(req, res, () => {});
       
       next();
     } catch (dbError) {
       console.error('Database error:', dbError);
       return res.status(500).json({ message: "Database error" });
     }
-  } catch (err: any) {
+  } catch (err) {
     if (process.env.NODE_ENV === 'development') {
-      console.error("Auth verification error:", err.message);
+      console.error("Auth verification error:", err instanceof Error ? err.message : err);
     }
     return res.status(403).json({ message: "Invalid token" });
   }
@@ -106,13 +124,9 @@ export async function authenticateAdmin(req: Request, res: Response, next: NextF
       return res.status(403).json({ message: "Invalid token" });
     }
     
-    // Get user profile to check admin status using Drizzle ORM
+    // Get user profile to check admin status using cached lookup
     try {
-      const [profile] = await db
-        .select()
-        .from(profiles)
-        .where(eq(profiles.id, user.id))
-        .limit(1);
+      const profile = await getCachedProfile(user.id);
       
       if (!profile?.isAdmin) {
         return res.status(403).json({ message: "Admin access required" });
@@ -122,19 +136,22 @@ export async function authenticateAdmin(req: Request, res: Response, next: NextF
       req.user = {
         userId: user.id, // UUID from Supabase
         email: user.email || profile.email,
-        is_admin: true
+        isAdmin: true
       };
       
       req.profile = profile;
+      
+      // Track session after admin authentication
+      sessionTracker(req, res, () => {});
       
       next();
     } catch (dbError) {
       console.error('Database error:', dbError);
       return res.status(500).json({ message: "Database error" });
     }
-  } catch (err: any) {
+  } catch (err) {
     if (process.env.NODE_ENV === 'development') {
-      console.error("Admin auth verification error:", err.message);
+      console.error("Admin auth verification error:", err instanceof Error ? err.message : err);
     }
     return res.status(403).json({ message: "Invalid token" });
   }
@@ -154,26 +171,56 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
     const { data: { user } } = await supabaseAnon.auth.getUser(token);
     
     if (user) {
-      // Get user profile for additional data using admin client
-      const { data: profile } = await supabaseAdmin
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .single();
+      // Get user profile using cached lookup
+      const profile = await getCachedProfile(user.id);
       
       if (profile) {
         req.user = {
           userId: user.id,
           email: user.email || profile.email,
-          is_admin: profile.is_admin || false
+          isAdmin: profile.isAdmin || false
         };
         
         req.profile = profile;
       }
     }
-  } catch (err: any) {
+  } catch (err) {
     // Ignore errors, continue without user
   }
   
   next();
+}
+
+// Middleware to check if authenticated user is admin (use after requireAuth)
+export async function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  try {
+    // This middleware assumes requireAuth has already been called
+    if (!req.user?.userId) {
+      return res.status(401).json({ message: "Authentication required" });
+    }
+
+    // Use cached profile if available
+    if (req.profile) {
+      if (!req.profile.isAdmin) {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      return next();
+    }
+
+    // Otherwise fetch from database
+    const [user] = await db
+      .select()
+      .from(profiles)
+      .where(eq(profiles.id, req.user.userId))
+      .limit(1);
+
+    if (!user || !user.isAdmin) {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    
+    next();
+  } catch (error) {
+    console.error("Admin auth error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
 }

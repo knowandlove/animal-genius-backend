@@ -149,6 +149,12 @@ export function generateClassInsights(submissions: QuizSubmission[]): ClassInsig
 
   submissions.forEach(submission => {
     const rawScores = submission.scores as any;
+    
+    // Skip if no scores available
+    if (!rawScores) {
+      return;
+    }
+    
     const scores = parseScores(rawScores);
     const studentInfo = {
       name: submission.studentName,
@@ -193,12 +199,14 @@ export function generatePairings(submissions: QuizSubmission[]): PairingAnalysis
     scores: any;
   }
   
-  const students: StudentData[] = submissions.map(s => ({
-    name: s.studentName,
-    animalType: s.animalType,
-    submissionId: s.id,
-    scores: parseScores(s.scores as any)
-  }));
+  const students: StudentData[] = submissions
+    .filter(s => s.scores) // Only include submissions with scores
+    .map(s => ({
+      name: s.studentName,
+      animalType: s.animalType,
+      submissionId: s.id,
+      scores: parseScores(s.scores as any)
+    }));
 
   // Find dynamic duos
   for (let i = 0; i < students.length; i++) {

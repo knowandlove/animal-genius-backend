@@ -1,17 +1,18 @@
 import { db } from "../server/db";
-import { storeItems, assets } from "@shared/schema";
-import { v4 as uuidv4 } from 'uuid';
+import { storeItems, assets, itemTypes } from "@shared/schema";
+import { eq } from "drizzle-orm";
+import { randomUUID } from 'crypto';
 
 console.log("\n🏪 Populating store with items...\n");
 
 // First, create some assets
 const assetData = [
-  { id: uuidv4(), fileName: 'explorer_hat.png', fileType: 'image/png', fileSize: 1024, bucketName: 'avatar-items', bucketPath: 'hats/explorer_hat.png' },
-  { id: uuidv4(), fileName: 'safari_hat.png', fileType: 'image/png', fileSize: 1024, bucketName: 'avatar-items', bucketPath: 'hats/safari_hat.png' },
-  { id: uuidv4(), fileName: 'green_sunglasses.png', fileType: 'image/png', fileSize: 1024, bucketName: 'avatar-items', bucketPath: 'glasses/green_sunglasses.png' },
-  { id: uuidv4(), fileName: 'heart_glasses.png', fileType: 'image/png', fileSize: 1024, bucketName: 'avatar-items', bucketPath: 'glasses/heart_glasses.png' },
-  { id: uuidv4(), fileName: 'bow_tie.png', fileType: 'image/png', fileSize: 1024, bucketName: 'avatar-items', bucketPath: 'accessories/bow_tie.png' },
-  { id: uuidv4(), fileName: 'necklace.png', fileType: 'image/png', fileSize: 1024, bucketName: 'avatar-items', bucketPath: 'accessories/necklace.png' }
+  { id: randomUUID(), fileName: 'explorer_hat.png', fileType: 'image/png', fileSize: 1024, storagePath: 'avatar-items/hats/explorer_hat.png', publicUrl: 'https://example.com/avatar-items/hats/explorer_hat.png', category: 'avatar' },
+  { id: randomUUID(), fileName: 'safari_hat.png', fileType: 'image/png', fileSize: 1024, storagePath: 'avatar-items/hats/safari_hat.png', publicUrl: 'https://example.com/avatar-items/hats/safari_hat.png', category: 'avatar' },
+  { id: randomUUID(), fileName: 'green_sunglasses.png', fileType: 'image/png', fileSize: 1024, storagePath: 'avatar-items/glasses/green_sunglasses.png', publicUrl: 'https://example.com/avatar-items/glasses/green_sunglasses.png', category: 'avatar' },
+  { id: randomUUID(), fileName: 'heart_glasses.png', fileType: 'image/png', fileSize: 1024, storagePath: 'avatar-items/glasses/heart_glasses.png', publicUrl: 'https://example.com/avatar-items/glasses/heart_glasses.png', category: 'avatar' },
+  { id: randomUUID(), fileName: 'bow_tie.png', fileType: 'image/png', fileSize: 1024, storagePath: 'avatar-items/accessories/bow_tie.png', publicUrl: 'https://example.com/avatar-items/accessories/bow_tie.png', category: 'avatar' },
+  { id: randomUUID(), fileName: 'necklace.png', fileType: 'image/png', fileSize: 1024, storagePath: 'avatar-items/accessories/necklace.png', publicUrl: 'https://example.com/avatar-items/accessories/necklace.png', category: 'avatar' }
 ];
 
 // Insert assets
@@ -20,13 +21,26 @@ for (const asset of assetData) {
   await db.insert(assets).values(asset).onConflictDoNothing();
 }
 
-// Now create store items linked to these assets
+// Get item type IDs from the database
+console.log("Looking up item types...");
+const itemTypeMap = new Map();
+
+// Get all item types
+const allItemTypes = await db.select().from(itemTypes);
+
+// Create a map for easy lookup
+allItemTypes.forEach(type => itemTypeMap.set(type.code, type.id));
+
+console.log("Available item types:", Array.from(itemTypeMap.keys()));
+console.log("Item types details:", allItemTypes.map(t => ({ code: t.code, name: t.name, category: t.category })));
+
+// Now create store items linked to these assets and item types
 const items = [
   {
-    id: uuidv4(),
+    id: randomUUID(),
     name: 'Explorer Hat',
     description: 'A rugged hat for adventurers',
-    itemType: 'avatar_hat',
+    itemTypeId: itemTypeMap.get('avatar_hat'),
     cost: 100,
     rarity: 'common',
     isActive: true,
@@ -34,10 +48,10 @@ const items = [
     assetId: assetData[0].id
   },
   {
-    id: uuidv4(),
+    id: randomUUID(),
     name: 'Safari Hat', 
     description: 'Perfect for wildlife watching',
-    itemType: 'avatar_hat',
+    itemTypeId: itemTypeMap.get('avatar_hat'),
     cost: 150,
     rarity: 'common',
     isActive: true,
@@ -45,10 +59,10 @@ const items = [
     assetId: assetData[1].id
   },
   {
-    id: uuidv4(),
+    id: randomUUID(),
     name: 'Green Sunglasses',
     description: 'Cool shades for sunny days',
-    itemType: 'avatar_glasses',
+    itemTypeId: itemTypeMap.get('avatar_glasses'),
     cost: 75,
     rarity: 'common',
     isActive: true,
@@ -56,10 +70,10 @@ const items = [
     assetId: assetData[2].id
   },
   {
-    id: uuidv4(),
+    id: randomUUID(),
     name: 'Heart Glasses',
     description: 'Show your love with style',
-    itemType: 'avatar_glasses',
+    itemTypeId: itemTypeMap.get('avatar_glasses'),
     cost: 100,
     rarity: 'rare',
     isActive: true,
@@ -67,10 +81,10 @@ const items = [
     assetId: assetData[3].id
   },
   {
-    id: uuidv4(),
+    id: randomUUID(),
     name: 'Red Bow Tie',
     description: 'A classy accessory',
-    itemType: 'avatar_accessory',
+    itemTypeId: itemTypeMap.get('avatar_accessory'),
     cost: 50,
     rarity: 'common',
     isActive: true,
@@ -78,17 +92,17 @@ const items = [
     assetId: assetData[4].id
   },
   {
-    id: uuidv4(),
+    id: randomUUID(),
     name: 'Pearl Necklace',
     description: 'Elegant and timeless',
-    itemType: 'avatar_accessory',
+    itemTypeId: itemTypeMap.get('avatar_accessory'),
     cost: 200,
     rarity: 'rare',
     isActive: true,
     sortOrder: 6,
     assetId: assetData[5].id
   }
-];
+].filter(item => item.itemTypeId); // Only include items where we found the itemTypeId
 
 // Insert store items
 console.log("\nCreating store items...");

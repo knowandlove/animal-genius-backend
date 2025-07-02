@@ -3,34 +3,43 @@ import {
   classes, 
   quizSubmissions,
   students,
-  lessonProgress,
   adminLogs,
   currencyTransactions,
   storeSettings,
-  purchaseRequests,
+  // purchaseRequests, // TODO: Define purchaseRequests table
   studentInventory,
+  animalTypes,
+  geniusTypes,
   type Profile,
   type NewProfile,
   type Class,
   type NewClass,
   type QuizSubmission,
   type NewQuizSubmission,
-  type LessonProgress,
-  type NewLessonProgress,
   type AdminLog,
   type NewAdminLog,
   type CurrencyTransaction,
   type NewCurrencyTransaction,
   type Student,
   type NewStudent,
-  type PurchaseRequest,
-  type NewPurchaseRequest,
+  // type PurchaseRequest, // TODO: Define purchaseRequests table
+  // type NewPurchaseRequest, // TODO: Define purchaseRequests table
   type StudentInventory,
   type NewStudentInventory
 } from "@shared/schema";
+import type { 
+  SubmissionDetails, 
+  ClassAnalyticsStudent, 
+  StoreSettings, 
+  StudentData,
+  QuizSubmissionData,
+  QuizAnswers
+} from "@shared/types/storage-types";
 import { db } from "./db";
 import { eq, desc, count, and, sql, inArray } from "drizzle-orm";
 import { createClient } from '@supabase/supabase-js';
+import { getAnimalTypeId, getGeniusTypeId } from './type-lookup';
+import { generateClassPassportCode } from './passport-generator';
 
 // Initialize Supabase client
 const supabaseUrl = process.env.SUPABASE_URL || '';
@@ -46,10 +55,10 @@ export interface IUUIDStorage {
   // Class operations
   createClass(classData: NewClass): Promise<Class>;
   getClassesByTeacherId(teacherId: string): Promise<Class[]>;
-  getClassByPassportCode(code: string): Promise<Class | undefined>;
+  getClassByClassCode(code: string): Promise<Class | undefined>;
   getClassById(id: string): Promise<Class | undefined>;
   deleteClass(id: string): Promise<void>;
-  generateUniquePassportCode(): Promise<string>;
+  generateUniqueClassCode(): Promise<string>;
   
   // Student operations
   createStudent(studentData: NewStudent): Promise<Student>;
@@ -59,13 +68,15 @@ export interface IUUIDStorage {
   
   // Quiz submission operations
   createQuizSubmission(submission: NewQuizSubmission): Promise<QuizSubmission>;
-  getSubmissionsByStudentId(studentId: string): Promise<QuizSubmission[]>;
+  getSubmissionsByStudentId(studentId: string): Promise<SubmissionDetails[]>;
   getSubmissionById(id: string): Promise<QuizSubmission | undefined>;
+  getClassAnalytics(classId: string): Promise<ClassAnalyticsStudent[]>;
   
   // Purchase and inventory operations
-  createPurchaseRequest(request: NewPurchaseRequest): Promise<PurchaseRequest>;
-  getPurchaseRequestsByClassId(classId: string): Promise<PurchaseRequest[]>;
-  updatePurchaseRequest(id: string, status: string, processedBy: string): Promise<PurchaseRequest>;
+  // TODO: Uncomment when purchaseRequests table is defined
+  // createPurchaseRequest(request: NewPurchaseRequest): Promise<PurchaseRequest>;
+  // getPurchaseRequestsByClassId(classId: string): Promise<PurchaseRequest[]>;
+  // updatePurchaseRequest(id: string, status: string, processedBy: string): Promise<PurchaseRequest>;
   addToInventory(item: NewStudentInventory): Promise<StudentInventory>;
   getStudentInventory(studentId: string): Promise<StudentInventory[]>;
   
@@ -74,11 +85,15 @@ export interface IUUIDStorage {
   createCurrencyTransaction(transaction: NewCurrencyTransaction): Promise<CurrencyTransaction>;
   getCurrencyTransactionsByStudent(studentId: string): Promise<CurrencyTransaction[]>;
   getCurrencyTransactionsByClass(classId: string): Promise<CurrencyTransaction[]>;
+  // Atomic currency update - prevents race conditions
+  updateCurrencyAtomic(params: {
+    studentId: string;
+    teacherId: string;
+    amount: number;
+    transactionType: string;
+    description: string;
+  }): Promise<{ transaction: CurrencyTransaction; newBalance: number }>;
   
-  // Lesson progress operations
-  createOrUpdateLessonProgress(progress: NewLessonProgress): Promise<LessonProgress>;
-  getLessonProgressByStudent(studentId: string): Promise<LessonProgress[]>;
-  getLessonProgressByClass(classId: string): Promise<LessonProgress[]>;
   
   // Admin operations
   getAllProfiles(): Promise<(Profile & { classCount: number; studentCount: number })[]>;
@@ -94,8 +109,8 @@ export interface IUUIDStorage {
   logAdminAction(log: NewAdminLog): Promise<AdminLog>;
   
   // Store settings
-  getStoreSettings(teacherId: string): Promise<any>;
-  updateStoreSettings(teacherId: string, settings: any): Promise<void>;
+  getStoreSettings(teacherId: string): Promise<StoreSettings>;
+  updateStoreSettings(teacherId: string, settings: StoreSettings): Promise<void>;
 }
 
 export class UUIDStorage implements IUUIDStorage {
@@ -121,26 +136,30 @@ export class UUIDStorage implements IUUIDStorage {
   }
 
   // Class operations
-  async generateUniquePassportCode(): Promise<string> {
-    // Import the class passport code generator
-    const { generateClassPassportCode } = await import('./passport-generator');
+  async generateUniqueClassCode(): Promise<string> {
     return generateClassPassportCode();
   }
 
   async createClass(classData: NewClass): Promise<Class> {
-    const passportCode = await this.generateUniquePassportCode();
+    // generateUniqueClassCode now handles uniqueness checking internally
+    const classCode = await this.generateUniqueClassCode();
+    
     const [classRecord] = await db
       .insert(classes)
       .values({
         ...classData,
-        passportCode,
+        classCode,
       })
       .returning();
+    
     return classRecord;
   }
 
   async getClassesByTeacherId(teacherId: string): Promise<Class[]> {
-    return await db.select().from(classes).where(eq(classes.teacherId, teacherId));
+    return await db.select().from(classes).where(and(
+      eq(classes.teacherId, teacherId),
+      sql`${classes.deletedAt} IS NULL`
+    ));
   }
 
   async getClassesWithStudentCount(teacherId: string): Promise<(Class & { studentCount: number })[]> {
@@ -151,7 +170,7 @@ export class UUIDStorage implements IUUIDStorage {
         name: classes.name,
         subject: classes.subject,
         gradeLevel: classes.gradeLevel,
-        passportCode: classes.passportCode,
+        classCode: classes.classCode,
         schoolName: classes.schoolName,
         icon: classes.icon,
         backgroundColor: classes.backgroundColor,
@@ -164,13 +183,16 @@ export class UUIDStorage implements IUUIDStorage {
       })
       .from(classes)
       .leftJoin(students, eq(classes.id, students.classId))
-      .where(eq(classes.teacherId, teacherId))
+      .where(and(
+        eq(classes.teacherId, teacherId),
+        sql`${classes.deletedAt} IS NULL`
+      ))
       .groupBy(classes.id);
     return result;
   }
 
-  async getClassByPassportCode(code: string): Promise<Class | undefined> {
-    const [classRecord] = await db.select().from(classes).where(eq(classes.passportCode, code));
+  async getClassByClassCode(code: string): Promise<Class | undefined> {
+    const [classRecord] = await db.select().from(classes).where(eq(classes.classCode, code));
     return classRecord;
   }
 
@@ -180,15 +202,25 @@ export class UUIDStorage implements IUUIDStorage {
   }
 
   async deleteClass(id: string): Promise<void> {
-    // Note: This will fail if students are still in the class due to 'onDelete: restrict'
-    await db.delete(classes).where(eq(classes.id, id));
+    // Soft delete by setting deletedAt timestamp
+    await db
+      .update(classes)
+      .set({ 
+        deletedAt: new Date(),
+        isArchived: true 
+      })
+      .where(eq(classes.id, id));
   }
 
   // Student operations
-  async createStudent(studentData: NewStudent): Promise<Student> {
+  async createStudent(studentData: StudentData): Promise<Student> {
     // Import the animal passport code generator
     const { generateAnimalPassportCode } = await import('./passport-generator');
     const passportCode = await generateAnimalPassportCode(studentData.animalType || 'Unknown');
+    
+    // Look up the UUIDs for animal and genius types
+    const animalTypeId = await getAnimalTypeId(studentData.animalType || 'meerkat');
+    const geniusTypeId = await getGeniusTypeId(studentData.geniusType || studentData.animalGenius || 'Feeler');
     
     const [student] = await db
       .insert(students)
@@ -197,8 +229,8 @@ export class UUIDStorage implements IUUIDStorage {
         studentName: studentData.studentName || studentData.name || 'Unknown Student',
         gradeLevel: studentData.gradeLevel,
         personalityType: studentData.personalityType,
-        animalType: studentData.animalType,
-        animalGenius: studentData.animalGenius,
+        animalTypeId,
+        geniusTypeId,
         learningStyle: studentData.learningStyle,
         passportCode,
         currencyBalance: 0,
@@ -209,57 +241,44 @@ export class UUIDStorage implements IUUIDStorage {
     return student;
   }
 
-  async upsertStudent(studentData: NewStudent): Promise<Student> {
+  async upsertStudent(studentData: StudentData): Promise<Student> {
     // Import the animal passport code generator
     const { generateAnimalPassportCode } = await import('./passport-generator');
-    const passportCode = await generateAnimalPassportCode(studentData.animalType || 'Unknown');
     
-    // First try to find existing student
-    const [existingStudent] = await db
-      .select()
-      .from(students)
-      .where(and(
-        eq(students.classId, studentData.classId), 
-        eq(students.studentName, studentData.studentName || studentData.name || '')
-      ));
+    const animalTypeId = await getAnimalTypeId(studentData.animalType || 'meerkat');
+    const geniusTypeId = await getGeniusTypeId(studentData.geniusType || studentData.animalGenius || 'Feeler');
+    const studentName = studentData.studentName || studentData.name || 'Unknown Student';
     
-    if (existingStudent) {
-      // Update existing student with new data if provided
-      const [updatedStudent] = await db
-        .update(students)
-        .set({
-          studentName: studentData.studentName || studentData.name || existingStudent.studentName,
-          gradeLevel: studentData.gradeLevel || existingStudent.gradeLevel,
-          personalityType: studentData.personalityType || existingStudent.personalityType,
-          animalType: studentData.animalType || existingStudent.animalType,
-          animalGenius: studentData.animalGenius || existingStudent.animalGenius,
-          learningStyle: studentData.learningStyle || existingStudent.learningStyle,
-          updatedAt: new Date()
-        })
-        .where(eq(students.id, existingStudent.id))
-        .returning();
-      return updatedStudent;
-    }
-    
-    // Create new student - ensure we're using studentName field
+    // Use onConflictDoUpdate for atomic upsert
     const [student] = await db
       .insert(students)
       .values({
         classId: studentData.classId,
-        studentName: studentData.studentName || studentData.name || 'Unknown Student',
+        studentName: studentName,
         gradeLevel: studentData.gradeLevel,
         personalityType: studentData.personalityType,
-        animalType: studentData.animalType,
-        animalGenius: studentData.animalGenius,
+        animalTypeId,
+        geniusTypeId,
         learningStyle: studentData.learningStyle,
-        passportCode,
+        passportCode: await generateAnimalPassportCode(studentData.animalType || 'Unknown'),
         currencyBalance: 0,
         avatarData: {},
         roomData: { furniture: [] }
       })
+      .onConflictDoUpdate({
+        target: [students.classId, students.studentName],
+        set: {
+          gradeLevel: studentData.gradeLevel,
+          personalityType: studentData.personalityType,
+          animalTypeId,
+          geniusTypeId,
+          learningStyle: studentData.learningStyle,
+          updatedAt: new Date()
+        }
+      })
       .returning();
     
-    if (!student) throw new Error("Failed to create student.");
+    if (!student) throw new Error("Failed to upsert student.");
     return student;
   }
 
@@ -293,27 +312,59 @@ export class UUIDStorage implements IUUIDStorage {
 
   // Transactional quiz submission with coin award
   async submitQuizAndAwardCoins(
-    submission: NewQuizSubmission, 
+    submission: QuizSubmissionData, 
     transaction: NewCurrencyTransaction
   ): Promise<QuizSubmission> {
     return await db.transaction(async (tx) => {
+      // Look up the UUIDs for animal and genius types
+      const animalTypeId = await getAnimalTypeId(submission.animalType || 'meerkat');
+      const geniusTypeId = await getGeniusTypeId(submission.geniusType || 'Feeler');
+      
       const [quizSubmission] = await tx
         .insert(quizSubmissions)
-        .values(submission)
+        .values({
+          studentId: submission.studentId,
+          animalTypeId,
+          geniusTypeId,
+          answers: submission.answers,
+          coinsEarned: submission.coinsEarned || 50
+        })
         .returning();
       
       await tx
         .insert(currencyTransactions)
         .values(transaction);
+      
+      // Update student's currency balance
+      await tx
+        .update(students)
+        .set({
+          currencyBalance: sql`${students.currencyBalance} + ${transaction.amount}`,
+          updatedAt: new Date()
+        })
+        .where(eq(students.id, submission.studentId));
         
       return quizSubmission;
     });
   }
 
-  async getSubmissionsByStudentId(studentId: string): Promise<QuizSubmission[]> {
+  async getSubmissionsByStudentId(studentId: string): Promise<SubmissionDetails[]> {
     return await db
-      .select()
+      .select({
+        id: quizSubmissions.id,
+        studentId: quizSubmissions.studentId,
+        animalType: animalTypes.code,
+        animalTypeName: animalTypes.name,
+        geniusType: geniusTypes.name,
+        geniusTypeName: geniusTypes.name,
+        answers: quizSubmissions.answers,
+        coinsEarned: quizSubmissions.coinsEarned,
+        completedAt: quizSubmissions.completedAt,
+        createdAt: quizSubmissions.createdAt
+      })
       .from(quizSubmissions)
+      .leftJoin(animalTypes, eq(quizSubmissions.animalTypeId, animalTypes.id))
+      .leftJoin(geniusTypes, eq(quizSubmissions.geniusTypeId, geniusTypes.id))
       .where(eq(quizSubmissions.studentId, studentId))
       .orderBy(desc(quizSubmissions.completedAt));
   }
@@ -335,7 +386,94 @@ export class UUIDStorage implements IUUIDStorage {
     return submission;
   }
 
+  async getClassAnalytics(classId: string): Promise<ClassAnalyticsStudent[]> {
+    // Get all students with their latest submission and balance in a single query
+    const studentsWithData = await db
+      .select({
+        studentId: students.id,
+        studentName: students.studentName,
+        studentGradeLevel: students.gradeLevel,
+        passportCode: students.passportCode,
+        // Submission data
+        submissionId: sql`latest_submissions.id`,
+        animalType: animalTypes.code,
+        animalTypeName: animalTypes.name,
+        geniusType: geniusTypes.name,
+        answers: sql`latest_submissions.answers`,
+        completedAt: sql`latest_submissions.completed_at`,
+        // Balance calculation
+        currencyBalance: students.currencyBalance
+      })
+      .from(students)
+      .leftJoin(
+        db
+          .select({
+            studentId: quizSubmissions.studentId,
+            id: quizSubmissions.id,
+            animalTypeId: quizSubmissions.animalTypeId,
+            geniusTypeId: quizSubmissions.geniusTypeId,
+            answers: quizSubmissions.answers,
+            completedAt: quizSubmissions.completedAt,
+            rowNum: sql<number>`ROW_NUMBER() OVER (PARTITION BY ${quizSubmissions.studentId} ORDER BY ${quizSubmissions.completedAt} DESC)`.as('rowNum')
+          })
+          .from(quizSubmissions)
+          .as('latest_submissions'),
+        and(
+          eq(students.id, sql`latest_submissions.student_id`),
+          eq(sql`latest_submissions."rowNum"`, 1)
+        )
+      )
+      .leftJoin(animalTypes, eq(sql`latest_submissions.animal_type_id`, animalTypes.id))
+      .leftJoin(geniusTypes, eq(sql`latest_submissions.genius_type_id`, geniusTypes.id))
+      .where(eq(students.classId, classId));
+
+    // Process the results
+    return studentsWithData.map(row => {
+      let personalityType = 'INTJ';
+      let learningStyle = 'visual';
+      let gradeLevel = row.studentGradeLevel || 'Unknown';
+
+      if (row.answers && typeof row.answers === 'object') {
+        const answers = row.answers as QuizAnswers;
+        if (answers.personalityType) personalityType = answers.personalityType;
+        if (answers.learningStyle) learningStyle = answers.learningStyle;
+        if (answers.gradeLevel) gradeLevel = answers.gradeLevel;
+      }
+
+      // Extract scores if available
+      let scores = null;
+      if (row.answers && typeof row.answers === 'object') {
+        const answers = row.answers as QuizAnswers;
+        if (answers.scores) {
+          scores = answers.scores;
+        }
+      }
+
+      return {
+        id: row.studentId,
+        studentName: row.studentName || 'Unknown',
+        gradeLevel: gradeLevel,
+        personalityType: personalityType,
+        animalType: row.animalTypeName || '',
+        geniusType: row.geniusType || '',
+        learningStyle: learningStyle,
+        learningScores: {
+          visual: 0,
+          auditory: 0,
+          kinesthetic: 0,
+          readingWriting: 0
+        },
+        scores: scores,
+        completedAt: row.completedAt,
+        passportCode: row.passportCode,
+        currencyBalance: row.currencyBalance || 0
+      };
+    });
+  }
+
   // Purchase and inventory operations
+  // TODO: Uncomment when purchaseRequests table is defined
+  /*
   async createPurchaseRequest(request: NewPurchaseRequest): Promise<PurchaseRequest> {
     const [purchaseRequest] = await db
       .insert(purchaseRequests)
@@ -366,6 +504,7 @@ export class UUIDStorage implements IUUIDStorage {
     if (!request) throw new Error("Purchase request not found");
     return request;
   }
+  */
 
   async addToInventory(item: NewStudentInventory): Promise<StudentInventory> {
     const [inventoryItem] = await db
@@ -414,45 +553,68 @@ export class UUIDStorage implements IUUIDStorage {
       .orderBy(desc(currencyTransactions.createdAt));
   }
 
-  // Lesson progress operations
-  async createOrUpdateLessonProgress(progress: NewLessonProgress): Promise<LessonProgress> {
-    const [result] = await db
-      .insert(lessonProgress)
-      .values({
-        ...progress,
-        attempts: 1,
-        lastAttemptedAt: new Date(),
-        completedAt: progress.isCompleted ? new Date() : null,
-      })
-      .onConflictDoUpdate({
-        target: [lessonProgress.studentId, lessonProgress.lessonId],
-        set: {
-          isCompleted: progress.isCompleted,
-          score: progress.score,
-          attempts: sql`${lessonProgress.attempts} + 1`,
-          lastAttemptedAt: new Date(),
-          completedAt: progress.isCompleted ? new Date() : sql`${lessonProgress.completedAt}`,
-          updatedAt: new Date(),
-        },
-      })
-      .returning();
-    return result;
+  // Atomic currency update - prevents race conditions
+  async updateCurrencyAtomic(params: {
+    studentId: string;
+    teacherId: string;
+    amount: number;
+    transactionType: string;
+    description: string;
+  }): Promise<{ transaction: CurrencyTransaction; newBalance: number }> {
+    // Use a transaction to ensure atomicity
+    return await db.transaction(async (tx) => {
+      // Create the currency transaction
+      const [currencyTx] = await tx
+        .insert(currencyTransactions)
+        .values({
+          studentId: params.studentId,
+          teacherId: params.teacherId,
+          amount: params.amount,
+          transactionType: params.transactionType,
+          description: params.description,
+        })
+        .returning();
+      
+      // Update the student's balance atomically
+      // For deductions (negative amounts), ensure balance doesn't go negative
+      const [updatedStudent] = await tx
+        .update(students)
+        .set({
+          currencyBalance: sql`${students.currencyBalance} + ${params.amount}`,
+          updatedAt: new Date()
+        })
+        .where(
+          params.amount >= 0 
+            ? eq(students.id, params.studentId) // For additions, just check student exists
+            : and(
+                eq(students.id, params.studentId),
+                sql`${students.currencyBalance} + ${params.amount} >= 0` // For deductions, ensure no negative balance
+              )
+        )
+        .returning({ currencyBalance: students.currencyBalance });
+      
+      if (!updatedStudent) {
+        // Check if the student exists to provide a more specific error
+        const [studentExists] = await tx
+          .select({ id: students.id })
+          .from(students)
+          .where(eq(students.id, params.studentId))
+          .limit(1);
+          
+        if (!studentExists) {
+          throw new Error('Student not found');
+        }
+        // If we get here, it means the balance check failed
+        throw new Error('Insufficient funds');
+      }
+      
+      return {
+        transaction: currencyTx,
+        newBalance: updatedStudent.currencyBalance
+      };
+    });
   }
 
-  async getLessonProgressByStudent(studentId: string): Promise<LessonProgress[]> {
-    return await db
-      .select()
-      .from(lessonProgress)
-      .where(eq(lessonProgress.studentId, studentId));
-  }
-
-  async getLessonProgressByClass(classId: string): Promise<LessonProgress[]> {
-    return await db
-      .select()
-      .from(lessonProgress)
-      .innerJoin(students, eq(lessonProgress.studentId, students.id))
-      .where(eq(students.classId, classId));
-  }
 
   // Admin operations
   async getAllProfiles(): Promise<(Profile & { classCount: number; studentCount: number })[]> {
@@ -483,7 +645,7 @@ export class UUIDStorage implements IUUIDStorage {
         name: classes.name,
         subject: classes.subject,
         gradeLevel: classes.gradeLevel,
-        passportCode: classes.passportCode,
+        classCode: classes.classCode,
         schoolName: classes.schoolName,
         isArchived: classes.isArchived,
         createdAt: classes.createdAt,
@@ -523,15 +685,16 @@ export class UUIDStorage implements IUUIDStorage {
     // Animal distribution from quiz submissions
     const animals = await db
       .select({
-        animal: quizSubmissions.animalType,
+        animal: animalTypes.name,
         count: count(),
       })
       .from(quizSubmissions)
-      .groupBy(quizSubmissions.animalType);
+      .leftJoin(animalTypes, eq(quizSubmissions.animalTypeId, animalTypes.id))
+      .groupBy(animalTypes.name);
 
     const animalDistribution: Record<string, number> = {};
     animals.forEach(({ animal, count }) => {
-      animalDistribution[animal] = count;
+      if (animal) animalDistribution[animal] = count;
     });
 
     return {
@@ -550,7 +713,7 @@ export class UUIDStorage implements IUUIDStorage {
   }
 
   // Store settings
-  async getStoreSettings(teacherId: string): Promise<any> {
+  async getStoreSettings(teacherId: string): Promise<StoreSettings> {
     const [settings] = await db
       .select()
       .from(storeSettings)
@@ -559,7 +722,7 @@ export class UUIDStorage implements IUUIDStorage {
     return settings?.settings || {};
   }
 
-  async updateStoreSettings(teacherId: string, settings: any): Promise<void> {
+  async updateStoreSettings(teacherId: string, settings: StoreSettings): Promise<void> {
     await db
       .insert(storeSettings)
       .values({ teacherId, settings })

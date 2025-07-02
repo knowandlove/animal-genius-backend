@@ -46,3 +46,60 @@ export const wsConnectionLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+// Store purchase rate limiter (per student)
+export const storePurchaseLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  max: 10, // 10 purchases per 5 minutes per student
+  message: 'Too many purchase attempts. Please wait before trying again.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    // Rate limit by passport code (student) if available, otherwise IP
+    return req.body?.passportCode || req.ip;
+  },
+});
+
+// Store browsing rate limiter (less strict)
+export const storeBrowsingLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 60, // 60 requests per minute (1 per second average)
+  message: 'Too many store requests. Please slow down.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Room save operations rate limiter
+export const roomSaveLimiter = rateLimit({
+  windowMs: 2 * 60 * 1000, // 2 minutes
+  max: 20, // 20 saves per 2 minutes per student
+  message: 'Too many room save attempts. Please wait before saving again.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    // Rate limit by passport code (student) if available, otherwise IP
+    return req.params?.passportCode || req.ip;
+  },
+});
+
+// Room data browsing rate limiter
+export const roomBrowsingLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 30, // 30 requests per minute (reasonable for room page loads)
+  message: 'Too many room requests. Please slow down.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    return req.params?.passportCode || req.ip;
+  },
+});
+
+// Passport code login rate limiter (protect against brute force)
+export const passportLoginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // 10 login attempts per IP per 15 minutes
+  message: 'Too many login attempts. Please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true, // Don't count successful logins
+});

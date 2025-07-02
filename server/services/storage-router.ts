@@ -73,7 +73,12 @@ export class StorageRouter {
    * Get image URL - Simple version, no legacy support
    */
   static getImageUrl(item: any): string {
-    // Only support cloud storage assets
+    // First check if we have a direct publicUrl from the asset
+    if (item.asset && item.asset.publicUrl) {
+      return item.asset.publicUrl;
+    }
+    
+    // Fallback: construct URL from bucket and path if available
     if (item.asset && item.asset.bucket && item.asset.path) {
       return EnhancedStorageService.getPublicUrl(item.asset.bucket, item.asset.path);
     }

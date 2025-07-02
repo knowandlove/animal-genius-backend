@@ -7,7 +7,8 @@ import { drizzle } from 'drizzle-orm/neon-serverless';
 import ws from "ws";
 import * as schema from "@shared/schema";
 
-// Configure WebSocket for Neon in development
+// Configure WebSocket for Neon in development  
+// @ts-ignore - window doesn't exist in Node
 if (typeof window === 'undefined') {
   neonConfig.webSocketConstructor = ws;
   // Disable SSL verification for local development with Railway

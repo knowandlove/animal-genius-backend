@@ -1,5 +1,5 @@
 import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, uuid, numeric, uniqueIndex, index, pgSchema } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 
 // Define the auth schema to reference auth.users
 const authSchema = pgSchema('auth');
@@ -7,6 +7,28 @@ const authSchema = pgSchema('auth');
 // Reference to auth.users table (for foreign key purposes only)
 const authUsers = authSchema.table('users', {
   id: uuid('id').primaryKey(),
+});
+
+// Animal types table
+export const animalTypes = pgTable('animal_types', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  code: varchar('code', { length: 50 }).notNull().unique(),
+  name: varchar('name', { length: 100 }).notNull(),
+  personalityType: varchar('personality_type', { length: 4 }),
+  geniusType: varchar('genius_type', { length: 100 }),
+  description: text('description'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
+// Genius types table
+export const geniusTypes = pgTable('genius_types', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  code: varchar('code', { length: 50 }).notNull().unique(),
+  name: varchar('name', { length: 100 }).notNull(),
+  description: text('description'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
 
 // Profiles table (extends Supabase auth.users)
@@ -33,7 +55,7 @@ export const classes = pgTable('classes', {
   name: varchar('name', { length: 255 }).notNull(),
   subject: varchar('subject', { length: 100 }),
   gradeLevel: varchar('grade_level', { length: 50 }),
-  passportCode: varchar('passport_code', { length: 20 }).notNull().unique(),
+  classCode: varchar('class_code', { length: 20 }).notNull().unique(),
   schoolName: varchar('school_name', { length: 255 }),
   icon: varchar('icon', { length: 50 }).default('book'),
   backgroundColor: varchar('background_color', { length: 7 }).default('#829B79'),
@@ -45,7 +67,7 @@ export const classes = pgTable('classes', {
 }, (table) => {
   return {
     teacherIdIdx: index('idx_classes_teacher_id').on(table.teacherId),
-    activeIdx: index('idx_classes_active').on(table.teacherId).where("deleted_at IS NULL"),
+    activeIdx: index('idx_classes_active').on(table.teacherId).where(sql`deleted_at IS NULL`),
   };
 });
 
@@ -58,19 +80,21 @@ export const students = pgTable('students', {
   studentName: varchar('student_name', { length: 255 }),
   gradeLevel: varchar('grade_level', { length: 50 }),
   personalityType: varchar('personality_type', { length: 20 }),
-  animalType: varchar('animal_type', { length: 50 }),
-  animalGenius: varchar('animal_genius', { length: 50 }),
+  animalTypeId: uuid('animal_type_id').references(() => animalTypes.id, { onDelete: 'set null' }),
+  geniusTypeId: uuid('genius_type_id').references(() => geniusTypes.id, { onDelete: 'set null' }),
   learningStyle: varchar('learning_style', { length: 50 }),
   // Game state
   currencyBalance: integer('currency_balance').default(0),
   avatarData: jsonb('avatar_data').default({}),
   roomData: jsonb('room_data').default({ furniture: [] }),
+  roomVisibility: varchar('room_visibility', { length: 20 }).default('class'), // 'private', 'class', 'invite_only'
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => {
   return {
     classIdIdx: index('idx_students_class_id').on(table.classId),
     passportCodeIdx: index('idx_students_passport_code').on(table.passportCode),
+    uniqueClassStudent: uniqueIndex('unique_class_student').on(table.classId, table.studentName),
   };
 });
 
@@ -78,8 +102,8 @@ export const students = pgTable('students', {
 export const quizSubmissions = pgTable('quiz_submissions', {
   id: uuid('id').primaryKey().defaultRandom(),
   studentId: uuid('student_id').notNull().references(() => students.id, { onDelete: 'cascade' }),
-  animalType: varchar('animal_type', { length: 50 }).notNull(),
-  geniusType: varchar('genius_type', { length: 50 }).notNull(),
+  animalTypeId: uuid('animal_type_id').notNull().references(() => animalTypes.id, { onDelete: 'restrict' }),
+  geniusTypeId: uuid('genius_type_id').notNull().references(() => geniusTypes.id, { onDelete: 'restrict' }),
   answers: jsonb('answers').notNull(),
   coinsEarned: integer('coins_earned').default(0),
   completedAt: timestamp('completed_at', { withTimezone: true }).defaultNow(),
@@ -103,12 +127,23 @@ export const assets = pgTable('assets', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
 
+// Item types table
+export const itemTypes = pgTable('item_types', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  code: varchar('code', { length: 50 }).notNull().unique(),
+  name: varchar('name', { length: 255 }).notNull(),
+  category: varchar('category', { length: 50 }).notNull(),
+  description: text('description'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
 // Store items
 export const storeItems = pgTable('store_items', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: varchar('name', { length: 255 }).notNull(),
   description: text('description'),
-  itemType: varchar('item_type', { length: 50 }).notNull(),
+  itemTypeId: uuid('item_type_id').notNull().references(() => itemTypes.id, { onDelete: 'restrict' }),
   cost: integer('cost').notNull(),
   rarity: varchar('rarity', { length: 20 }).default('common'),
   isActive: boolean('is_active').default(true),
@@ -119,32 +154,32 @@ export const storeItems = pgTable('store_items', {
 }, (table) => {
   return {
     assetIdIdx: index('idx_store_items_asset_id').on(table.assetId),
-    activeIdx: index('idx_store_items_active').on(table.isActive).where("is_active = true"),
+    activeIdx: index('idx_store_items_active').on(table.isActive).where(sql`is_active = true`),
   };
 });
 
-// Purchase requests
-export const purchaseRequests = pgTable('purchase_requests', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  studentId: uuid('student_id').notNull().references(() => students.id, { onDelete: 'cascade' }),
-  storeItemId: uuid('store_item_id').notNull().references(() => storeItems.id, { onDelete: 'cascade' }),
-  // Historical snapshot fields (intentionally denormalized for audit purposes)
-  itemType: varchar('item_type', { length: 50 }), // Snapshot of item type at request time
-  cost: integer('cost'), // Snapshot of cost at request time
-  status: varchar('status', { length: 20 }).default('pending'),
-  requestedAt: timestamp('requested_at', { withTimezone: true }).defaultNow(),
-  processedAt: timestamp('processed_at', { withTimezone: true }),
-  processedBy: uuid('processed_by').references(() => profiles.id, { onDelete: 'set null' }),
-  notes: text('notes'),
-}, (table) => {
-  return {
-    studentIdIdx: index('idx_purchase_requests_student_id').on(table.studentId),
-    storeItemIdIdx: index('idx_purchase_requests_store_item_id').on(table.storeItemId),
-    processedByIdx: index('idx_purchase_requests_processed_by').on(table.processedBy),
-    statusIdx: index('idx_purchase_requests_status').on(table.status),
-    studentStatusIdx: index('idx_purchase_requests_student_status').on(table.studentId, table.status),
-  };
-});
+// Purchase requests - REMOVED (we no longer use a purchase request system)
+// export const purchaseRequests = pgTable('purchase_requests', {
+//   id: uuid('id').primaryKey().defaultRandom(),
+//   studentId: uuid('student_id').notNull().references(() => students.id, { onDelete: 'cascade' }),
+//   storeItemId: uuid('store_item_id').notNull().references(() => storeItems.id, { onDelete: 'cascade' }),
+//   // Historical snapshot fields (intentionally denormalized for audit purposes)
+//   itemType: varchar('item_type', { length: 50 }), // Snapshot of item type at request time
+//   cost: integer('cost'), // Snapshot of cost at request time
+//   status: varchar('status', { length: 20 }).default('pending'),
+//   requestedAt: timestamp('requested_at', { withTimezone: true }).defaultNow(),
+//   processedAt: timestamp('processed_at', { withTimezone: true }),
+//   processedBy: uuid('processed_by').references(() => profiles.id, { onDelete: 'set null' }),
+//   notes: text('notes'),
+// }, (table) => {
+//   return {
+//     studentIdIdx: index('idx_purchase_requests_student_id').on(table.studentId),
+//     storeItemIdIdx: index('idx_purchase_requests_store_item_id').on(table.storeItemId),
+//     processedByIdx: index('idx_purchase_requests_processed_by').on(table.processedBy),
+//     statusIdx: index('idx_purchase_requests_status').on(table.status),
+//     studentStatusIdx: index('idx_purchase_requests_student_status').on(table.studentId, table.status),
+//   };
+// });
 
 // Student inventory
 export const studentInventory = pgTable('student_inventory', {
@@ -177,26 +212,6 @@ export const currencyTransactions = pgTable('currency_transactions', {
   };
 });
 
-// Lesson progress
-export const lessonProgress = pgTable('lesson_progress', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  studentId: uuid('student_id').notNull().references(() => students.id, { onDelete: 'cascade' }),
-  lessonId: varchar('lesson_id', { length: 50 }).notNull(),
-  isCompleted: boolean('is_completed').default(false),
-  score: integer('score'),
-  attempts: integer('attempts').default(0),
-  lastAttemptedAt: timestamp('last_attempted_at', { withTimezone: true }),
-  completedAt: timestamp('completed_at', { withTimezone: true }),
-  teacherId: uuid('teacher_id').references(() => profiles.id, { onDelete: 'set null' }), // Made nullable to preserve history
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
-}, (table) => {
-  return {
-    uniqueStudentLesson: uniqueIndex('unique_student_lesson').on(table.studentId, table.lessonId),
-    studentIdIdx: index('idx_lesson_progress_student_id').on(table.studentId),
-    teacherIdIdx: index('idx_lesson_progress_teacher_id').on(table.teacherId),
-  };
-});
 
 // Store settings
 export const storeSettings = pgTable('store_settings', {
@@ -236,8 +251,8 @@ export const adminLogs = pgTable('admin_logs', {
 // Item animal positions
 export const itemAnimalPositions = pgTable('item_animal_positions', {
   id: uuid('id').primaryKey().defaultRandom(),
-  itemType: varchar('item_type', { length: 50 }).notNull(),
-  animalType: varchar('animal_type', { length: 50 }).notNull(),
+  itemTypeId: uuid('item_type_id').notNull().references(() => itemTypes.id, { onDelete: 'restrict' }),
+  animalTypeId: uuid('animal_type_id').notNull().references(() => animalTypes.id, { onDelete: 'restrict' }),
   xPosition: numeric('x_position', { precision: 5, scale: 2 }).default('50'),
   yPosition: numeric('y_position', { precision: 5, scale: 2 }).default('50'),
   scale: numeric('scale', { precision: 3, scale: 2 }).default('1.0'),
@@ -246,7 +261,7 @@ export const itemAnimalPositions = pgTable('item_animal_positions', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => {
   return {
-    uniqueItemAnimal: uniqueIndex('unique_item_animal').on(table.itemType, table.animalType),
+    uniqueItemAnimal: uniqueIndex('unique_item_animal').on(table.itemTypeId, table.animalTypeId),
   };
 });
 
@@ -255,9 +270,7 @@ export const profilesRelations = relations(profiles, ({ many }) => ({
   classes: many(classes),
   adminLogs: many(adminLogs),
   currencyTransactions: many(currencyTransactions),
-  lessonProgress: many(lessonProgress),
   storeSettings: many(storeSettings),
-  processedPurchases: many(purchaseRequests),
 }));
 
 export const classesRelations = relations(classes, ({ one, many }) => ({
@@ -274,10 +287,8 @@ export const studentsRelations = relations(students, ({ one, many }) => ({
     references: [classes.id],
   }),
   quizSubmissions: many(quizSubmissions),
-  purchaseRequests: many(purchaseRequests),
   inventory: many(studentInventory),
   currencyTransactions: many(currencyTransactions),
-  lessonProgress: many(lessonProgress),
 }));
 
 export const quizSubmissionsRelations = relations(quizSubmissions, ({ one }) => ({
@@ -296,24 +307,10 @@ export const storeItemsRelations = relations(storeItems, ({ one, many }) => ({
     fields: [storeItems.assetId],
     references: [assets.id],
   }),
-  purchaseRequests: many(purchaseRequests),
   studentInventory: many(studentInventory),
 }));
 
-export const purchaseRequestsRelations = relations(purchaseRequests, ({ one }) => ({
-  student: one(students, {
-    fields: [purchaseRequests.studentId],
-    references: [students.id],
-  }),
-  storeItem: one(storeItems, {
-    fields: [purchaseRequests.storeItemId],
-    references: [storeItems.id],
-  }),
-  processedByUser: one(profiles, {
-    fields: [purchaseRequests.processedBy],
-    references: [profiles.id],
-  }),
-}));
+// TODO: purchaseRequests table needs to be defined before enabling these relations
 
 export const studentInventoryRelations = relations(studentInventory, ({ one }) => ({
   student: one(students, {
@@ -337,16 +334,6 @@ export const currencyTransactionsRelations = relations(currencyTransactions, ({ 
   }),
 }));
 
-export const lessonProgressRelations = relations(lessonProgress, ({ one }) => ({
-  student: one(students, {
-    fields: [lessonProgress.studentId],
-    references: [students.id],
-  }),
-  teacher: one(profiles, {
-    fields: [lessonProgress.teacherId],
-    references: [profiles.id],
-  }),
-}));
 
 export const storeSettingsRelations = relations(storeSettings, ({ one }) => ({
   teacher: one(profiles, {
@@ -383,14 +370,12 @@ export type Asset = typeof assets.$inferSelect;
 export type NewAsset = typeof assets.$inferInsert;
 export type StoreItem = typeof storeItems.$inferSelect;
 export type NewStoreItem = typeof storeItems.$inferInsert;
-export type PurchaseRequest = typeof purchaseRequests.$inferSelect;
-export type NewPurchaseRequest = typeof purchaseRequests.$inferInsert;
+// export type PurchaseRequest = typeof purchaseRequests.$inferSelect;
+// export type NewPurchaseRequest = typeof purchaseRequests.$inferInsert;
 export type StudentInventory = typeof studentInventory.$inferSelect;
 export type NewStudentInventory = typeof studentInventory.$inferInsert;
 export type CurrencyTransaction = typeof currencyTransactions.$inferSelect;
 export type NewCurrencyTransaction = typeof currencyTransactions.$inferInsert;
-export type LessonProgress = typeof lessonProgress.$inferSelect;
-export type NewLessonProgress = typeof lessonProgress.$inferInsert;
 export type StoreSettings = typeof storeSettings.$inferSelect;
 export type NewStoreSettings = typeof storeSettings.$inferInsert;
 export type AdminLog = typeof adminLogs.$inferSelect;

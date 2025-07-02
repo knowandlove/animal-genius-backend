@@ -16,9 +16,9 @@ router.get('/public', async (req, res) => {
     const positions = await db
       .select({
         item_id: itemAnimalPositions.itemId,
-        animal_type: itemAnimalPositions.animalType,
-        position_x: itemAnimalPositions.positionX,
-        position_y: itemAnimalPositions.positionY,
+        animal_type: itemAnimalPositions.animalTypeId,
+        position_x: itemAnimalPositions.xPosition,
+        position_y: itemAnimalPositions.yPosition,
         scale: itemAnimalPositions.scale,
         rotation: itemAnimalPositions.rotation,
       })
