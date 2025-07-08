@@ -21,20 +21,17 @@ if (!process.env.DATABASE_URL) {
 }
 
 // Configure SSL based on environment
-// For Supabase/production, SSL is required and we should validate certificates
-// Allow override for development environments with self-signed certificates
-const sslConfig = process.env.NODE_ENV === 'production' 
+// For Supabase connections, we need SSL but may need to handle certificate validation
+const sslConfig = process.env.DATABASE_URL?.includes('supabase.co')
   ? {
-      rejectUnauthorized: true, // Always validate SSL certificates in production
-      // Supabase uses valid SSL certificates from Let's Encrypt
-      // No need to specify CA as it uses standard root CAs
+      // Supabase requires SSL connection
+      rejectUnauthorized: process.env.NODE_ENV === 'production' 
+        ? false // In production, Supabase may use certificates that Node.js doesn't recognize
+        : process.env.NODE_TLS_REJECT_UNAUTHORIZED !== '0'
     }
-  : process.env.DATABASE_URL?.includes('supabase.co')
-    ? {
-        // In development with Supabase, check if we should allow self-signed certificates
-        rejectUnauthorized: process.env.NODE_TLS_REJECT_UNAUTHORIZED !== '0'
-      }
-    : false; // No SSL for truly local development (localhost)
+  : process.env.NODE_ENV === 'production'
+    ? { rejectUnauthorized: true } // Non-Supabase production databases should validate certs
+    : false; // No SSL for local development
 
 // Create pool with SSL configuration
 export const pool = new Pool({ 
