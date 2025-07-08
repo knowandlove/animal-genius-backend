@@ -8,28 +8,21 @@ import StorageRouter from '../services/storage-router';
 import { storePurchaseLimiter, storeBrowsingLimiter } from '../middleware/rateLimiter';
 import { requireStudentSession } from '../middleware/student-auth';
 import { validateOwnDataAccess } from '../middleware/validate-student-class';
+import { getCache } from '../lib/cache-factory';
+import { createFishForStudent } from '../services/fishbowlService';
 
 const router = Router();
+const cache = getCache();
 
-// Simple in-memory cache for store catalog (shared with store.ts)
-interface CatalogCache {
-  data: any[];
-  timestamp: number;
-}
-
-let catalogCache: CatalogCache | null = null;
-const CATALOG_CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache
+// Cache configuration
+const CATALOG_CACHE_KEY = 'store:catalog:active';
+const CATALOG_CACHE_TTL = 300; // 5 minutes in seconds
 
 // Validation schemas
 const purchaseSchema = z.object({
-  passportCode: z.string().min(6).max(20),
   itemId: z.string().uuid()
 });
 
-// Helper to validate passport code format
-function isValidPassportCode(code: string): boolean {
-  return /^[A-Z]{3}-[A-Z0-9]{3}$/.test(code);
-}
 
 /**
  * GET /api/store-direct/catalog
@@ -38,9 +31,9 @@ function isValidPassportCode(code: string): boolean {
 router.get('/catalog', storeBrowsingLimiter, async (req, res) => {
   try {
     // Check cache first
-    const now = Date.now();
-    if (catalogCache && (now - catalogCache.timestamp) < CATALOG_CACHE_TTL) {
-      return res.json(catalogCache.data);
+    const cachedData = await cache.get<any[]>(CATALOG_CACHE_KEY);
+    if (cachedData) {
+      return res.json(cachedData);
     }
     
     const items = await db
@@ -52,11 +45,8 @@ router.get('/catalog', storeBrowsingLimiter, async (req, res) => {
     // Prepare items with proper image URLs
     const preparedItems = await StorageRouter.prepareStoreItemsResponse(items);
     
-    // Cache the result
-    catalogCache = {
-      data: preparedItems,
-      timestamp: now
-    };
+    // Cache the result in Redis/centralized cache
+    await cache.set(CATALOG_CACHE_KEY, preparedItems, CATALOG_CACHE_TTL);
     
     res.json(preparedItems);
   } catch (error) {
@@ -73,21 +63,16 @@ router.get('/catalog', storeBrowsingLimiter, async (req, res) => {
 router.post('/purchase', requireStudentSession, validateOwnDataAccess, storePurchaseLimiter, async (req, res) => {
   const purchaseStartTime = Date.now();
   const clientIP = req.ip || req.connection.remoteAddress;
+  const studentId = req.studentId; // Get from authenticated session
   
   try {
-    const { passportCode, itemId } = purchaseSchema.parse(req.body);
+    const { itemId } = purchaseSchema.parse(req.body);
     
-    console.log(`[PURCHASE ATTEMPT] ${new Date().toISOString()} - Student: ${passportCode}, Item: ${itemId}, IP: ${clientIP}`);
+    console.log(`[PURCHASE ATTEMPT] ${new Date().toISOString()} - Student: ${studentId}, Item: ${itemId}, IP: ${clientIP}`);
     
-    // Validate passport code format
-    if (!isValidPassportCode(passportCode)) {
-      console.log(`[PURCHASE FAILED] Invalid passport code format: ${passportCode}`);
-      return res.status(400).json({ message: 'Invalid passport code format' });
-    }
-    
-    // Execute purchase in a single transaction
+    // Execute purchase in a single transaction with row locking
     const result = await db.transaction(async (tx) => {
-      // Get student data
+      // Get student data with row lock to prevent concurrent purchases
       const [student] = await tx
         .select({
           id: students.id,
@@ -96,8 +81,9 @@ router.post('/purchase', requireStudentSession, validateOwnDataAccess, storePurc
           classId: students.classId
         })
         .from(students)
-        .where(eq(students.passportCode, passportCode))
-        .limit(1);
+        .where(eq(students.id, studentId))
+        .limit(1)
+        .for('update'); // Lock the student row to prevent race conditions
       
       if (!student) {
         throw new Error('Student not found');
@@ -122,7 +108,7 @@ router.post('/purchase', requireStudentSession, validateOwnDataAccess, storePurc
         .select()
         .from(studentInventory)
         .where(and(
-          eq(studentInventory.studentId, student.id),
+          eq(studentInventory.studentId, studentId),
           eq(studentInventory.storeItemId, itemId)
         ))
         .limit(1);
@@ -132,8 +118,9 @@ router.post('/purchase', requireStudentSession, validateOwnDataAccess, storePurc
       }
       
       // Check balance
-      if (student.currencyBalance < item.cost) {
-        throw new Error(`Insufficient funds. You have ${student.currencyBalance} coins but need ${item.cost}`);
+      const balance = student.currencyBalance || 0;
+      if (balance < item.cost) {
+        throw new Error(`Insufficient funds. You have ${balance} coins but need ${item.cost}`);
       }
       
       // Get teacher ID for the transaction record
@@ -184,6 +171,20 @@ router.post('/purchase', requireStudentSession, validateOwnDataAccess, storePurc
           description: `Purchase: ${item.name}`
         });
       
+      // Special handling for fishbowl purchases
+      let fishInfo = null;
+      if (item.name === 'Fish Bowl') {
+        console.log(`[FISHBOWL PURCHASE] Creating fish for student ${studentId}`);
+        try {
+          fishInfo = await createFishForStudent(tx, student.id);
+          console.log(`[FISHBOWL PURCHASE] Created ${fishInfo.fishColor} fish named "${fishInfo.fishName}"`);
+        } catch (fishError) {
+          console.error('[FISHBOWL PURCHASE] Error creating fish:', fishError);
+          // Don't fail the whole transaction if fish creation fails
+          // The student still gets the fishbowl
+        }
+      }
+      
       // Note: We don't create purchase_requests records in direct purchase mode
       // This is a simplified flow where coins are deducted immediately
       
@@ -195,43 +196,33 @@ router.post('/purchase', requireStudentSession, validateOwnDataAccess, storePurc
           itemType: item.itemTypeId,
           cost: item.cost
         },
-        newBalance: updatedStudent.currencyBalance
+        newBalance: updatedStudent.currencyBalance,
+        ...(fishInfo && { fishInfo }) // Include fish info if fishbowl was purchased
       };
     });
     
     const purchaseEndTime = Date.now();
-    console.log(`[PURCHASE SUCCESS] ${passportCode} bought ${result.item.name} for ${result.item.cost} coins in ${purchaseEndTime - purchaseStartTime}ms`);
+    console.log(`[PURCHASE SUCCESS] Student ${studentId} bought ${result.item.name} for ${result.item.cost} coins in ${purchaseEndTime - purchaseStartTime}ms`);
     
     res.json(result);
   } catch (error) {
     const purchaseEndTime = Date.now();
-    console.error(`[PURCHASE ERROR] ${req.body.passportCode || 'unknown'} - ${error instanceof Error ? error.message : 'Unknown error'} in ${purchaseEndTime - purchaseStartTime}ms`);
+    console.error(`[PURCHASE ERROR] Student ${studentId || 'unknown'} - ${error instanceof Error ? error.message : 'Unknown error'} in ${purchaseEndTime - purchaseStartTime}ms`);
     const message = error instanceof Error ? error.message : 'Failed to complete purchase';
     res.status(400).json({ message });
   }
 });
 
 /**
- * GET /api/store-direct/inventory/:passportCode
- * Get student's owned items
+ * GET /api/store-direct/inventory
+ * Get authenticated student's owned items
  */
-router.get('/inventory/:passportCode', storeBrowsingLimiter, async (req, res) => {
+router.get('/inventory', requireStudentSession, storeBrowsingLimiter, async (req, res) => {
   try {
-    const { passportCode } = req.params;
+    const studentId = req.studentId;
     
-    if (!isValidPassportCode(passportCode)) {
-      return res.status(400).json({ message: 'Invalid passport code format' });
-    }
-    
-    // Get student
-    const [student] = await db
-      .select({ id: students.id })
-      .from(students)
-      .where(eq(students.passportCode, passportCode))
-      .limit(1);
-    
-    if (!student) {
-      return res.status(404).json({ message: 'Student not found' });
+    if (!studentId) {
+      return res.status(401).json({ message: 'Authentication required' });
     }
     
     // Get owned items with details
@@ -248,7 +239,7 @@ router.get('/inventory/:passportCode', storeBrowsingLimiter, async (req, res) =>
       })
       .from(studentInventory)
       .innerJoin(storeItems, eq(studentInventory.storeItemId, storeItems.id))
-      .where(eq(studentInventory.studentId, student.id))
+      .where(eq(studentInventory.studentId, studentId))
       .orderBy(asc(studentInventory.acquiredAt));
     
     // Prepare items with image URLs

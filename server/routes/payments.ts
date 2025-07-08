@@ -75,6 +75,27 @@ router.post('/create-checkout-session', authenticateTeacher, async (req, res) =>
  */
 router.post('/mock/webhook-handler', async (req, res) => {
   try {
+    // Verify webhook signature
+    const signature = req.headers['stripe-signature'] || req.headers['x-webhook-signature'];
+    if (!signature || typeof signature !== 'string') {
+      return res.status(401).json({
+        success: false,
+        error: 'Missing webhook signature'
+      });
+    }
+    
+    // Get raw body for signature verification
+    const payload = JSON.stringify(req.body);
+    const isValid = PaymentService.verifyWebhookSignature(payload, signature);
+    
+    if (!isValid) {
+      console.error('Invalid webhook signature');
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid webhook signature'
+      });
+    }
+    
     const { sessionId, status } = req.body as MockWebhookRequest;
 
     // Validate input
@@ -84,9 +105,6 @@ router.post('/mock/webhook-handler', async (req, res) => {
         error: 'Invalid session ID or status'
       });
     }
-
-    // In production, we would verify the webhook signature here
-    // PaymentService.verifyWebhookSignature(req.body, req.headers['stripe-signature']);
 
     // Process the payment
     const result = await PaymentService.processMockWebhook(sessionId, status);

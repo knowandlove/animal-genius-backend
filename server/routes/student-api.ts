@@ -4,7 +4,6 @@ import { db } from "../db";
 import { 
   students, 
   classes, 
-  purchaseRequests, 
   currencyTransactions, 
   storeSettings, 
   storeItems, 
@@ -16,34 +15,42 @@ import {
 import { eq, and, desc, asc } from "drizzle-orm";
 import { TRANSACTION_REASONS } from "@shared/currency-types";
 import { z } from "zod";
-import * as cache from "../lib/cache";
+import { getCache } from "../lib/cache-factory";
+
+const cache = getCache();
 import StorageRouter from "../services/storage-router";
-import { authenticateToken } from "../middleware/auth";
+import { requireStudentSession } from "../middleware/student-auth";
+import { 
+  roomUpdateRequestSchema, 
+  avatarUpdateRequestSchema,
+  validateItemOwnership,
+  validateAvatarOwnership,
+  sanitizeRoomData,
+  sanitizeAvatarData
+} from "../validation/room-schemas";
 
 // Student authentication schemas
-const purchaseRequestSchema = z.object({
-  itemId: z.string().uuid(),
-});
 
 const equipItemSchema = z.object({
   slot: z.string(),
   itemId: z.string().uuid().optional(),
 });
 
-const avatarUpdateSchema = z.object({
-  avatarData: z.record(z.any()),
-});
-
-const roomUpdateSchema = z.object({
-  roomData: z.record(z.any()),
-});
-
 export function registerStudentApiRoutes(app: Express) {
   
   // Get student dashboard/room data
-  app.get("/api/student/dashboard", authenticateToken, async (req, res) => {
+  app.get("/api/student/dashboard", requireStudentSession, async (req, res) => {
     try {
-      const studentId = (req as any).studentId;
+      const studentId = req.studentId;
+      
+      // Check cache first
+      const cacheKey = `student:${studentId}:dashboard`;
+      const cached = await cache.get(cacheKey);
+      
+      if (cached) {
+        console.log(`Cache hit for student dashboard: ${studentId}`);
+        return res.json(cached);
+      }
 
       // 1. Get student data with class info and type lookups
       const studentData = await db
@@ -62,7 +69,6 @@ export function registerStudentApiRoutes(app: Express) {
           currencyBalance: students.currencyBalance,
           avatarData: students.avatarData,
           roomData: students.roomData,
-          passportCode: students.passportCode,
           className: classes.name,
           classId: classes.id,
           createdAt: students.createdAt,
@@ -155,21 +161,11 @@ export function registerStudentApiRoutes(app: Express) {
         }));
       }
 
-      // 4. Get purchase requests and calculate wallet
-      const studentPurchaseRequests = await db
-        .select()
-        .from(purchaseRequests)
-        .where(eq(purchaseRequests.studentId, student.id))
-        .orderBy(desc(purchaseRequests.requestedAt));
-      
-      const pendingTotal = studentPurchaseRequests
-        .filter(req => req.status === 'pending')
-        .reduce((sum, req) => sum + (req.cost || 0), 0);
-      
+      // 4. Calculate wallet (no pending in direct purchase system)
       const wallet = {
         total: student.currencyBalance || 0,
-        pending: pendingTotal,
-        available: (student.currencyBalance || 0) - pendingTotal
+        pending: 0,
+        available: student.currencyBalance || 0
       };
 
       // 5. Get inventory items
@@ -205,8 +201,8 @@ export function registerStudentApiRoutes(app: Express) {
         }))
       );
 
-      // Return consolidated response
-      res.json({
+      // Prepare response
+      const response = {
         success: true,
         data: {
           student: {
@@ -228,7 +224,6 @@ export function registerStudentApiRoutes(app: Express) {
             currencyBalance: student.currencyBalance || 0,
             avatarData: student.avatarData || {},
             roomData: student.roomData || { furniture: [] },
-            passportCode: student.passportCode,
             className: student.className,
             classId: student.classId
           },
@@ -236,9 +231,15 @@ export function registerStudentApiRoutes(app: Express) {
           catalog: storeCatalog,
           wallet: wallet,
           inventory: preparedInventory,
-          purchaseRequests: studentPurchaseRequests
         }
-      });
+      };
+      
+      // Cache the response for 5 minutes
+      await cache.set(cacheKey, response, 300);
+      console.log(`Cached student dashboard for: ${studentId}`);
+      
+      // Return response
+      res.json(response);
 
     } catch (error) {
       console.error("Error fetching student dashboard:", error);
@@ -249,87 +250,48 @@ export function registerStudentApiRoutes(app: Express) {
     }
   });
 
-  // Purchase item request
-  app.post("/api/student/purchase", authenticateToken, async (req, res) => {
-    try {
-      const studentId = (req as any).studentId;
-      const { itemId } = purchaseRequestSchema.parse(req.body);
-
-      // Get student and item info
-      const [student, item] = await Promise.all([
-        db.select().from(students).where(eq(students.id, studentId)).limit(1),
-        db.select().from(storeItems).where(eq(storeItems.id, itemId)).limit(1)
-      ]);
-
-      if (student.length === 0) {
-        return res.status(404).json({ message: "Student not found" });
-      }
-
-      if (item.length === 0) {
-        return res.status(404).json({ message: "Item not found" });
-      }
-
-      const studentData = student[0];
-      const itemData = item[0];
-
-      // Check if student has enough currency
-      if ((studentData.currencyBalance || 0) < itemData.cost) {
-        return res.status(400).json({ 
-          message: "Insufficient currency",
-          required: itemData.cost,
-          available: studentData.currencyBalance || 0
-        });
-      }
-
-      // Check if store is open (same logic as above)
-      const classStoreSettings = await db
-        .select()
-        .from(storeSettings)
-        .where(eq(storeSettings.classId, studentData.classId))
-        .limit(1);
-
-      if (classStoreSettings.length === 0 || !classStoreSettings[0].isOpen) {
-        return res.status(400).json({ message: "Store is currently closed" });
-      }
-
-      // Create purchase request
-      const [purchaseRequest] = await db
-        .insert(purchaseRequests)
-        .values({
-          studentId: studentId,
-          storeItemId: itemId,
-          itemType: itemData.name, // Snapshot for audit
-          cost: itemData.cost, // Snapshot for audit
-          status: 'pending'
-        })
-        .returning();
-
-      res.json({
-        success: true,
-        data: {
-          purchaseRequest,
-          message: "Purchase request submitted for teacher approval"
-        }
-      });
-
-    } catch (error) {
-      console.error("Error creating purchase request:", error);
-      res.status(500).json({ 
-        success: false, 
-        message: "Failed to create purchase request" 
-      });
-    }
-  });
 
   // Update avatar data
-  app.post("/api/student/avatar", authenticateToken, async (req, res) => {
+  app.post("/api/student/avatar", requireStudentSession, async (req, res) => {
     try {
-      const studentId = (req as any).studentId;
-      const { avatarData } = avatarUpdateSchema.parse(req.body);
+      const studentId = req.studentId;
+      
+      // Validate request body
+      const validationResult = avatarUpdateRequestSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid avatar data",
+          errors: validationResult.error.errors.map(e => e.message)
+        });
+      }
+      
+      const { avatarData } = validationResult.data;
+      
+      // Get student's owned items
+      const ownedItems = await db
+        .select({ itemId: studentInventory.storeItemId })
+        .from(studentInventory)
+        .where(eq(studentInventory.studentId, studentId));
+      
+      const ownedItemIds = ownedItems.map(item => item.itemId);
+      
+      // Validate ownership of equipped items
+      const ownershipValidation = validateAvatarOwnership(avatarData, ownedItemIds);
+      if (!ownershipValidation.valid) {
+        return res.status(400).json({
+          success: false,
+          message: "Cannot equip items you don't own",
+          errors: ownershipValidation.errors
+        });
+      }
+      
+      // Sanitize data before saving
+      const sanitizedData = sanitizeAvatarData(avatarData);
 
       await db
         .update(students)
-        .set({ avatarData })
+        .set({ avatarData: sanitizedData })
         .where(eq(students.id, studentId));
 
       res.json({
@@ -347,14 +309,46 @@ export function registerStudentApiRoutes(app: Express) {
   });
 
   // Update room data  
-  app.post("/api/student/room", authenticateToken, async (req, res) => {
+  app.post("/api/student/room", requireStudentSession, async (req, res) => {
     try {
-      const studentId = (req as any).studentId;
-      const { roomData } = roomUpdateSchema.parse(req.body);
+      const studentId = req.studentId;
+      
+      // Validate request body
+      const validationResult = roomUpdateRequestSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid room data",
+          errors: validationResult.error.errors.map(e => e.message)
+        });
+      }
+      
+      const { roomData } = validationResult.data;
+      
+      // Get student's owned items
+      const ownedItems = await db
+        .select({ itemId: studentInventory.storeItemId })
+        .from(studentInventory)
+        .where(eq(studentInventory.studentId, studentId));
+      
+      const ownedItemIds = ownedItems.map(item => item.itemId);
+      
+      // Validate ownership of room items
+      const ownershipValidation = await validateItemOwnership(studentId, roomData, ownedItemIds);
+      if (!ownershipValidation.valid) {
+        return res.status(400).json({
+          success: false,
+          message: "Cannot place items you don't own",
+          errors: ownershipValidation.errors
+        });
+      }
+      
+      // Sanitize data before saving
+      const sanitizedData = sanitizeRoomData(roomData);
 
       await db
         .update(students)
-        .set({ roomData })
+        .set({ roomData: sanitizedData })
         .where(eq(students.id, studentId));
 
       res.json({

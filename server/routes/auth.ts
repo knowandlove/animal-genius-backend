@@ -4,11 +4,20 @@ import { requireAuth } from '../middleware/auth';
 import { removeSession, getSessionCount } from '../middleware/session-tracker';
 import { getAuthMetrics } from '../middleware/auth-monitor';
 import { getCacheStats } from '../middleware/profile-cache';
+import { db } from '../db';
+import { profiles } from '@shared/schema';
+import { asyncWrapper } from '../utils/async-wrapper';
+import { AuthenticationError, ValidationError, ConflictError, NotFoundError, InternalError, ErrorCode } from '../utils/errors';
+import { createSecureLogger } from '../utils/secure-logger';
+
+const logger = createSecureLogger('AuthRoutes');
 
 // Debug: Check if supabase client is initialized
 if (process.env.NODE_ENV === 'development') {
-  console.log('Auth route loading, supabase client:', !!supabase);
-  console.log('Supabase auth object:', !!supabase?.auth);
+  logger.debug('Auth route loading', { 
+    supabaseClient: !!supabase,
+    supabaseAuth: !!supabase?.auth 
+  });
 }
 // import { insertUserSchema, updateUserProfileSchema, updatePasswordSchema } from '@shared/schema';
 import { getProfileById, updateLastLoginSupabase as updateLastLogin } from '../storage-supabase';
@@ -24,25 +33,13 @@ import {
 
 const router = Router();
 
-// Helper to create JWT for backward compatibility
-function createAppToken(user: any, profile: any) {
-  // For now, we'll return the Supabase session token
-  // Later we can create our own JWT if needed
-  return {
-    userId: user.id,
-    email: user.email,
-    isAdmin: profile.isAdmin || false
-  };
-}
-
 // Teacher registration - integrates with Supabase Auth
-router.post('/register', authLimiter, async (req, res) => {
-  try {
-    // Validate request body
-    const userData = registrationSchema.parse(req.body);
+router.post('/register', authLimiter, asyncWrapper(async (req, res, next) => {
+  // Validate request body
+  const userData = registrationSchema.parse(req.body);
     
     if (process.env.NODE_ENV === 'development') {
-      console.log('Registration attempt for:', userData.email);
+      logger.debug('Registration attempt', { email: userData.email });
     }
     
     // Create user in Supabase Auth
@@ -62,22 +59,27 @@ router.post('/register', authLimiter, async (req, res) => {
     });
 
     if (authError) {
-      console.error('Supabase auth error:', authError);
-      console.error('Full error details:', JSON.stringify(authError, null, 2));
+      logger.error('Supabase auth error during registration', { 
+        email: userData.email,
+        error: authError.message 
+      });
+      
       if (authError.message.includes('already registered')) {
-        return res.status(400).json({ message: "User already exists with this email" });
+        throw new ConflictError('User already exists with this email', ErrorCode.BIZ_006);
       }
-      return res.status(400).json({ message: authError.message });
+      
+      // Don't expose internal Supabase error messages
+      throw new ValidationError('Registration failed. Please check your email and password.', ErrorCode.AUTH_001);
     }
 
     if (!authData.user) {
-      return res.status(400).json({ message: "Registration failed" });
+      throw new ValidationError('Registration failed', ErrorCode.AUTH_001);
     }
 
     // Check if email confirmation is required
     if (!authData.session) {
       // User created but needs email verification
-      return res.json({
+      res.json({
         requiresEmailVerification: true,
         message: "Registration successful! Please check your email to verify your account.",
         user: {
@@ -85,10 +87,34 @@ router.post('/register', authLimiter, async (req, res) => {
           email: authData.user.email
         }
       });
+      return;
     }
 
-    // Get the created profile
-    const profile = await getProfileById(authData.user.id);
+    // Create profile in our database (Supabase doesn't auto-create it)
+    let profile;
+    try {
+      profile = await getProfileById(authData.user.id);
+    } catch (error) {
+      // Profile doesn't exist, create it
+      logger.debug('Creating new profile for user', { userId: authData.user.id });
+      
+      const [newProfile] = await db
+        .insert(profiles)
+        .values({
+          id: authData.user.id,
+          email: userData.email,
+          firstName: userData.firstName,
+          lastName: userData.lastName,
+          schoolOrganization: userData.schoolOrganization,
+          roleTitle: userData.roleTitle,
+          howHeardAbout: userData.howHeardAbout,
+          personalityAnimal: userData.personalityAnimal,
+          isAdmin: false
+        })
+        .returning();
+        
+      profile = newProfile;
+    }
     
     res.json({
       token: authData.session.access_token,
@@ -102,29 +128,15 @@ router.post('/register', authLimiter, async (req, res) => {
         isAdmin: profile.isAdmin
       }
     });
-  } catch (error) {
-    console.error("Registration error:", error);
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ 
-        message: "Invalid registration data", 
-        errors: error.errors.map(e => ({
-          field: e.path.join('.'),
-          message: e.message
-        }))
-      });
-    }
-    res.status(400).json({ message: "Registration failed" });
-  }
-});
+}));
 
 // Teacher login - uses Supabase Auth
-router.post('/login', authLimiter, async (req, res) => {
-  try {
-    // Validate request body
-    const { email, password } = loginSchema.parse(req.body);
+router.post('/login', authLimiter, asyncWrapper(async (req, res, next) => {
+  // Validate request body
+  const { email, password } = loginSchema.parse(req.body);
     
     if (process.env.NODE_ENV === 'development') {
-      console.log('Login attempt for:', email);
+      logger.debug('Login attempt', { email });
     }
     
     // Sign in with Supabase
@@ -134,26 +146,26 @@ router.post('/login', authLimiter, async (req, res) => {
     });
 
     if (authError) {
-      console.error('Login error:', authError);
-      console.error('Full error:', JSON.stringify(authError, null, 2));
+      logger.error('Login error', { email, error: authError.message });
       
       // Check for specific error cases
       if (authError.message?.includes('Email not confirmed')) {
-        return res.status(401).json({ 
-          message: "Please verify your email before logging in. Check your inbox for the verification link." 
-        });
+        throw new AuthenticationError(
+          'Please verify your email before logging in. Check your inbox for the verification link.',
+          ErrorCode.AUTH_001
+        );
       }
       
-      return res.status(401).json({ message: "Invalid credentials" });
+      throw new AuthenticationError('Invalid credentials', ErrorCode.AUTH_001);
     }
 
     if (!authData.user || !authData.session) {
-      console.error('No user or session in auth data');
-      return res.status(401).json({ message: "Login failed" });
+      logger.error('No user or session in auth data');
+      throw new AuthenticationError('Login failed', ErrorCode.AUTH_001);
     }
 
     if (process.env.NODE_ENV === 'development') {
-      console.log('Supabase login successful, getting profile for:', authData.user.id);
+      logger.debug('Supabase login successful, getting profile', { userId: authData.user.id });
     }
 
     // Get user profile
@@ -176,9 +188,7 @@ router.post('/login', authLimiter, async (req, res) => {
         }
       });
     } catch (profileError) {
-      if (process.env.NODE_ENV === 'development') {
-        console.error('Profile not found, using user metadata:', profileError);
-      }
+      logger.debug('Profile not found, using user metadata');
       
       // Profile doesn't exist yet, use the metadata from Supabase
       const metadata = authData.user.user_metadata || {};
@@ -196,167 +206,106 @@ router.post('/login', authLimiter, async (req, res) => {
         }
       });
     }
-  } catch (error) {
-    console.error("Login error:", error);
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ 
-        message: "Invalid login data", 
-        errors: error.errors.map(e => ({
-          field: e.path.join('.'),
-          message: e.message
-        }))
-      });
-    }
-    res.status(500).json({ message: "Login failed" });
-  }
-});
+}));
 
 // Refresh token - uses Supabase Auth
-router.post('/refresh-token', async (req, res) => {
-  try {
-    // Validate request body
-    const { refreshToken } = refreshTokenSchema.parse(req.body);
-    
-    // Refresh session with Supabase
-    const { data: authData, error: authError } = await supabase.auth.refreshSession({
-      refresh_token: refreshToken
-    });
+router.post('/refresh-token', asyncWrapper(async (req, res, next) => {
+  // Validate request body
+  const { refreshToken } = refreshTokenSchema.parse(req.body);
+  
+  // Refresh session with Supabase
+  const { data: authData, error: authError } = await supabase.auth.refreshSession({
+    refresh_token: refreshToken
+  });
 
-    if (authError || !authData.session) {
-      return res.status(401).json({ message: "Invalid refresh token" });
-    }
-    
-    res.json({
-      token: authData.session.access_token,
-      refreshToken: authData.session.refresh_token
-    });
-  } catch (error) {
-    console.error("Token refresh error:", error);
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ 
-        message: "Invalid request data", 
-        errors: error.errors.map(e => ({
-          field: e.path.join('.'),
-          message: e.message
-        }))
-      });
-    }
-    res.status(401).json({ message: "Invalid refresh token" });
+  if (authError || !authData.session) {
+    throw new AuthenticationError('Invalid refresh token', ErrorCode.AUTH_002);
   }
-});
+  
+  res.json({
+    token: authData.session.access_token,
+    refreshToken: authData.session.refresh_token
+  });
+}));
 
 // Logout - invalidates Supabase session
-router.post('/logout', requireAuth, async (req, res) => {
-  try {
-    const token = req.headers.authorization?.split(' ')[1];
+router.post('/logout', requireAuth, asyncWrapper(async (req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  
+  if (token) {
+    // Get the current session to find the user
+    const { data: { user }, error: getUserError } = await supabase.auth.getUser(token);
     
-    if (token) {
-      // Get the current session to find the user
-      const { data: { user }, error: getUserError } = await supabase.auth.getUser(token);
+    if (user && !getUserError) {
+      // Clean up session tracking
+      if (req.sessionId) {
+        removeSession(user.id, req.sessionId);
+      }
       
-      if (user && !getUserError) {
-        // Clean up session tracking
-        if (req.sessionId) {
-          removeSession(user.id, req.sessionId);
-        }
-        
-        // Sign out the user using their JWT token
-        const { error: signOutError } = await supabase.auth.signOut();
-        
-        if (signOutError) {
-          console.error("Sign out error:", signOutError);
-        }
+      // Sign out the user using their JWT token
+      const { error: signOutError } = await supabase.auth.signOut();
+      
+      if (signOutError) {
+        logger.error('Sign out error', { error: signOutError.message });
       }
     }
-    
-    res.json({ message: "Logged out successfully" });
-  } catch (error) {
-    console.error("Logout error:", error);
-    // Still return success to clear client-side session
-    res.json({ message: "Logged out successfully" });
   }
-});
+  
+  res.json({ message: "Logged out successfully" });
+}));
 
 // Password reset request
-router.post('/forgot-password', passwordResetLimiter, async (req, res) => {
-  try {
-    // Validate request body
-    const { email } = forgotPasswordSchema.parse(req.body);
-    
-    // Send password reset email via Supabase
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${process.env.FRONTEND_URL}/reset-password`
-    });
-    
-    if (error) {
-      console.error('Password reset error:', error);
-      // Don't reveal if email exists or not
-    }
-    
-    res.json({ message: "If the email exists, a password reset link has been sent" });
-  } catch (error) {
-    console.error("Password reset error:", error);
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ 
-        message: "Invalid request data", 
-        errors: error.errors.map(e => ({
-          field: e.path.join('.'),
-          message: e.message
-        }))
-      });
-    }
-    res.status(500).json({ message: "Failed to process password reset" });
+router.post('/forgot-password', passwordResetLimiter, asyncWrapper(async (req, res, next) => {
+  // Validate request body
+  const { email } = forgotPasswordSchema.parse(req.body);
+  
+  // Send password reset email via Supabase
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${process.env.FRONTEND_URL}/reset-password`
+  });
+  
+  if (error) {
+    logger.error('Password reset error', { email, error: error.message });
+    // Don't reveal if email exists or not
   }
-});
+  
+  res.json({ message: "If the email exists, a password reset link has been sent" });
+}));
 
 // Update password with reset token
-router.post('/reset-password', async (req, res) => {
-  try {
-    // Validate request body
-    const { token, password } = resetPasswordSchema.parse(req.body);
-    
-    // First, we need to exchange the recovery token for a session
-    const { data: sessionData, error: sessionError } = await supabase.auth.verifyOtp({
-      token_hash: token,
-      type: 'recovery',
-    });
-    
-    if (sessionError || !sessionData.session) {
-      console.error('Session verification error:', sessionError);
-      return res.status(400).json({ message: "Invalid or expired reset token" });
-    }
-    
-    // Now update the password using the admin client with the user's ID
-    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
-      sessionData.user.id,
-      { password: password }
-    );
-    
-    if (updateError) {
-      console.error('Password update error:', updateError);
-      return res.status(400).json({ message: "Failed to update password" });
-    }
-    
-    res.json({ message: "Password updated successfully" });
-  } catch (error) {
-    console.error("Password reset error:", error);
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ 
-        message: "Invalid request data", 
-        errors: error.errors.map(e => ({
-          field: e.path.join('.'),
-          message: e.message
-        }))
-      });
-    }
-    res.status(500).json({ message: "Failed to reset password" });
+router.post('/reset-password', asyncWrapper(async (req, res, next) => {
+  // Validate request body
+  const { token, password } = resetPasswordSchema.parse(req.body);
+  
+  // First, we need to exchange the recovery token for a session
+  const { data: sessionData, error: sessionError } = await supabase.auth.verifyOtp({
+    token_hash: token,
+    type: 'recovery',
+  });
+  
+  if (sessionError || !sessionData.session) {
+    logger.error('Session verification error', { error: sessionError?.message });
+    throw new AuthenticationError('Invalid or expired reset token', ErrorCode.AUTH_002);
   }
-});
+  
+  // Now update the password using the admin client with the user's ID
+  const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
+    sessionData.user.id,
+    { password: password }
+  );
+  
+  if (updateError) {
+    logger.error('Password update error', { userId: sessionData.user.id, error: updateError.message });
+    throw new InternalError('Failed to update password', ErrorCode.SYS_001);
+  }
+  
+  res.json({ message: "Password updated successfully" });
+}));
 
 // Performance metrics endpoint (admin only, development only)
-router.get('/metrics', requireAuth, async (req, res) => {
+router.get('/metrics', requireAuth, asyncWrapper(async (req, res, next) => {
   if (process.env.NODE_ENV !== 'development' || !req.user?.isAdmin) {
-    return res.status(404).json({ message: 'Not found' });
+    throw new NotFoundError('Resource not found', ErrorCode.RES_001);
   }
   
   const authMetrics = getAuthMetrics();
@@ -371,6 +320,6 @@ router.get('/metrics', requireAuth, async (req, res) => {
     },
     timestamp: new Date().toISOString()
   });
-});
+}));
 
 export default router;

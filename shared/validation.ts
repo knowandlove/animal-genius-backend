@@ -82,12 +82,6 @@ export const animalTypeSchema = z
   .min(1, "Animal type is required")
   .max(50, "Animal type must be less than 50 characters");
 
-// Purchase request validation
-export const purchaseRequestSchema = z.object({
-  studentId: uuidSchema,
-  storeItemId: uuidSchema,
-  notes: z.string().optional()
-});
 
 // Currency transaction validation
 export const currencyTransactionSchema = z.object({

@@ -17,8 +17,6 @@ export type ItemType =
   | 'room_wallpaper'
   | 'room_flooring';
 
-// Purchase request status
-export type PurchaseStatus = 'pending' | 'approved' | 'denied';
 
 // Store catalog interface
 export interface StoreItem {
@@ -135,20 +133,6 @@ export function canAffordItem(balance: number, itemCost: number): boolean {
   return balance >= itemCost;
 }
 
-// Validate purchase request
-export function validatePurchaseRequest(itemId: string, balance: number): { valid: boolean; error?: string } {
-  if (!itemId) {
-    return { valid: false, error: "Item ID is required" };
-  }
-  
-  if (balance < 0) {
-    return { valid: false, error: "Invalid balance" };
-  }
-  
-  // Note: Since we moved to database-based items, we can't validate the item here
-  // The server will need to fetch the item from the database and validate
-  return { valid: true };
-}
 
 // Transaction reason templates
 export const TRANSACTION_REASONS = {

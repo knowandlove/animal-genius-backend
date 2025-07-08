@@ -5,10 +5,14 @@ config();
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import * as schema from "@shared/schema";
+import { CONFIG } from './config/constants';
 
 // Debug: Check if DATABASE_URL is set
-console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL);
-console.log('NODE_ENV:', process.env.NODE_ENV);
+if (process.env.NODE_ENV === 'development') {
+  console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL);
+  console.log('NODE_ENV:', process.env.NODE_ENV);
+  console.log('SSL validation enabled:', process.env.DATABASE_URL?.includes('supabase.co') || process.env.NODE_ENV === 'production');
+}
 
 if (!process.env.DATABASE_URL) {
   throw new Error(
@@ -17,29 +21,47 @@ if (!process.env.DATABASE_URL) {
 }
 
 // Configure SSL based on environment
-// For Supabase, SSL is required in production but the certificate is managed by them
+// For Supabase/production, SSL is required and we should validate certificates
+// Allow override for development environments with self-signed certificates
 const sslConfig = process.env.NODE_ENV === 'production' 
   ? {
-      rejectUnauthorized: false, // Supabase uses self-signed certificates
-      // If you have a CA certificate from Supabase, you can use:
-      // ca: fs.readFileSync('./path/to/ca-certificate.crt').toString(),
+      rejectUnauthorized: true, // Always validate SSL certificates in production
+      // Supabase uses valid SSL certificates from Let's Encrypt
+      // No need to specify CA as it uses standard root CAs
     }
-  : false; // No SSL for local development
+  : process.env.DATABASE_URL?.includes('supabase.co')
+    ? {
+        // In development with Supabase, check if we should allow self-signed certificates
+        rejectUnauthorized: process.env.NODE_TLS_REJECT_UNAUTHORIZED !== '0'
+      }
+    : false; // No SSL for truly local development (localhost)
 
 // Create pool with SSL configuration
 export const pool = new Pool({ 
   connectionString: process.env.DATABASE_URL,
   ssl: sslConfig,
-  max: 25, // Increased for 20-30 concurrent users + buffer
-  min: 5,  // Maintain minimum connections for quick response
-  idleTimeoutMillis: 30000, // Increased idle timeout
-  connectionTimeoutMillis: 8000, // Slightly increased timeout
-  acquireTimeoutMillis: 10000, // Max wait time for acquiring connection
+  max: CONFIG.DATABASE.POOL_MAX,
+  min: CONFIG.DATABASE.POOL_MIN,
+  idleTimeoutMillis: CONFIG.DATABASE.IDLE_TIMEOUT_MS,
+  connectionTimeoutMillis: CONFIG.DATABASE.CONNECTION_TIMEOUT_MS,
+  acquireTimeoutMillis: CONFIG.DATABASE.ACQUIRE_TIMEOUT_MS,
 });
 
 // Add error handling for pool
 pool.on('error', (err) => {
   console.error('Database pool error:', err);
+  
+  // Provide helpful error messages for common SSL issues
+  if (err.message?.includes('self signed certificate') || 
+      err.message?.includes('unable to verify') ||
+      err.message?.includes('certificate')) {
+    console.error('\n⚠️  SSL Certificate Error Detected!');
+    console.error('This usually means the database SSL certificate cannot be validated.');
+    console.error('For production, ensure you\'re connecting to a database with valid SSL certificates.');
+    console.error('\nIf this is a development environment with a self-signed certificate,');
+    console.error('you may need to temporarily set NODE_TLS_REJECT_UNAUTHORIZED=0');
+    console.error('but NEVER do this in production!\n');
+  }
 });
 
 // Connection pool monitoring for classroom load
@@ -54,8 +76,11 @@ pool.on('acquire', (client) => {
   }
 });
 
+// Import cleanup utilities if available
+let dbMonitorInterval: NodeJS.Timeout;
+
 // Log pool stats every 30 seconds during operation
-setInterval(() => {
+const monitorDbPool = () => {
   const stats = {
     total: pool.totalCount,
     idle: pool.idleCount,
@@ -72,6 +97,16 @@ setInterval(() => {
   if (stats.total > (stats.max * 0.8)) {
     console.warn(`⚠️ Database pool at ${Math.round((stats.total/stats.max)*100)}% capacity!`);
   }
-}, 30000);
+};
+
+// Use managed interval if available, fallback to regular interval
+if (process.env.NODE_ENV !== 'test') {
+  import('./lib/resource-cleanup').then(({ createManagedInterval }) => {
+    dbMonitorInterval = createManagedInterval(monitorDbPool, 30000, 'db-pool-monitor');
+  }).catch(() => {
+    // Fallback to regular interval
+    dbMonitorInterval = setInterval(monitorDbPool, 30000);
+  });
+}
 
 export const db = drizzle(pool, { schema });

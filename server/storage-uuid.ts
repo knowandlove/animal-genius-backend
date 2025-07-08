@@ -39,7 +39,8 @@ import { db } from "./db";
 import { eq, desc, count, and, sql, inArray } from "drizzle-orm";
 import { createClient } from '@supabase/supabase-js';
 import { getAnimalTypeId, getGeniusTypeId } from './type-lookup';
-import { generateClassPassportCode } from './passport-generator';
+import { generateClassPassportCode, generateAnimalPassportCode } from './passport-generator';
+import { getClassAnalyticsOptimized } from './storage-uuid-optimized';
 
 // Initialize Supabase client
 const supabaseUrl = process.env.SUPABASE_URL || '';
@@ -73,10 +74,6 @@ export interface IUUIDStorage {
   getClassAnalytics(classId: string): Promise<ClassAnalyticsStudent[]>;
   
   // Purchase and inventory operations
-  // TODO: Uncomment when purchaseRequests table is defined
-  // createPurchaseRequest(request: NewPurchaseRequest): Promise<PurchaseRequest>;
-  // getPurchaseRequestsByClassId(classId: string): Promise<PurchaseRequest[]>;
-  // updatePurchaseRequest(id: string, status: string, processedBy: string): Promise<PurchaseRequest>;
   addToInventory(item: NewStudentInventory): Promise<StudentInventory>;
   getStudentInventory(studentId: string): Promise<StudentInventory[]>;
   
@@ -201,6 +198,14 @@ export class UUIDStorage implements IUUIDStorage {
     return classRecord;
   }
 
+  async getStudentCountForClass(classId: string): Promise<number> {
+    const result = await db
+      .select({ count: sql<number>`COUNT(*)`.as('count') })
+      .from(students)
+      .where(eq(students.classId, classId));
+    return result[0]?.count || 0;
+  }
+
   async deleteClass(id: string): Promise<void> {
     // Soft delete by setting deletedAt timestamp
     await db
@@ -214,8 +219,7 @@ export class UUIDStorage implements IUUIDStorage {
 
   // Student operations
   async createStudent(studentData: StudentData): Promise<Student> {
-    // Import the animal passport code generator
-    const { generateAnimalPassportCode } = await import('./passport-generator');
+    // Generate passport code using the imported function
     const passportCode = await generateAnimalPassportCode(studentData.animalType || 'Unknown');
     
     // Look up the UUIDs for animal and genius types
@@ -242,8 +246,6 @@ export class UUIDStorage implements IUUIDStorage {
   }
 
   async upsertStudent(studentData: StudentData): Promise<Student> {
-    // Import the animal passport code generator
-    const { generateAnimalPassportCode } = await import('./passport-generator');
     
     const animalTypeId = await getAnimalTypeId(studentData.animalType || 'meerkat');
     const geniusTypeId = await getGeniusTypeId(studentData.geniusType || studentData.animalGenius || 'Feeler');
@@ -387,7 +389,12 @@ export class UUIDStorage implements IUUIDStorage {
   }
 
   async getClassAnalytics(classId: string): Promise<ClassAnalyticsStudent[]> {
-    // Get all students with their latest submission and balance in a single query
+    // Use optimized version that avoids complex window functions
+    return getClassAnalyticsOptimized(classId);
+  }
+
+  async getClassAnalyticsOld(classId: string): Promise<ClassAnalyticsStudent[]> {
+    // Original implementation kept for reference
     const studentsWithData = await db
       .select({
         studentId: students.id,
@@ -472,39 +479,6 @@ export class UUIDStorage implements IUUIDStorage {
   }
 
   // Purchase and inventory operations
-  // TODO: Uncomment when purchaseRequests table is defined
-  /*
-  async createPurchaseRequest(request: NewPurchaseRequest): Promise<PurchaseRequest> {
-    const [purchaseRequest] = await db
-      .insert(purchaseRequests)
-      .values(request)
-      .returning();
-    return purchaseRequest;
-  }
-
-  async getPurchaseRequestsByClassId(classId: string): Promise<PurchaseRequest[]> {
-    return await db
-      .select()
-      .from(purchaseRequests)
-      .innerJoin(students, eq(purchaseRequests.studentId, students.id))
-      .where(eq(students.classId, classId))
-      .orderBy(desc(purchaseRequests.requestedAt));
-  }
-
-  async updatePurchaseRequest(id: string, status: string, processedBy: string): Promise<PurchaseRequest> {
-    const [request] = await db
-      .update(purchaseRequests)
-      .set({ 
-        status, 
-        processedBy,
-        processedAt: new Date()
-      })
-      .where(eq(purchaseRequests.id, id))
-      .returning();
-    if (!request) throw new Error("Purchase request not found");
-    return request;
-  }
-  */
 
   async addToInventory(item: NewStudentInventory): Promise<StudentInventory> {
     const [inventoryItem] = await db
@@ -561,8 +535,29 @@ export class UUIDStorage implements IUUIDStorage {
     transactionType: string;
     description: string;
   }): Promise<{ transaction: CurrencyTransaction; newBalance: number }> {
-    // Use a transaction to ensure atomicity
+    // Use a transaction with row locking to ensure atomicity and prevent race conditions
     return await db.transaction(async (tx) => {
+      // First, lock the student row for update to prevent concurrent modifications
+      const [student] = await tx
+        .select({
+          id: students.id,
+          currencyBalance: students.currencyBalance
+        })
+        .from(students)
+        .where(eq(students.id, params.studentId))
+        .limit(1)
+        .for('update'); // Pessimistic locking to prevent race conditions
+      
+      if (!student) {
+        throw new Error('Student not found');
+      }
+      
+      // Check if the student has sufficient funds for deductions
+      const currentBalance = student.currencyBalance || 0;
+      if (params.amount < 0 && currentBalance + params.amount < 0) {
+        throw new Error('Insufficient funds');
+      }
+      
       // Create the currency transaction
       const [currencyTx] = await tx
         .insert(currencyTransactions)
@@ -575,38 +570,16 @@ export class UUIDStorage implements IUUIDStorage {
         })
         .returning();
       
-      // Update the student's balance atomically
-      // For deductions (negative amounts), ensure balance doesn't go negative
+      // Update the student's balance - now we can use the exact value we read
+      const newBalance = currentBalance + params.amount;
       const [updatedStudent] = await tx
         .update(students)
         .set({
-          currencyBalance: sql`${students.currencyBalance} + ${params.amount}`,
+          currencyBalance: newBalance,
           updatedAt: new Date()
         })
-        .where(
-          params.amount >= 0 
-            ? eq(students.id, params.studentId) // For additions, just check student exists
-            : and(
-                eq(students.id, params.studentId),
-                sql`${students.currencyBalance} + ${params.amount} >= 0` // For deductions, ensure no negative balance
-              )
-        )
+        .where(eq(students.id, params.studentId))
         .returning({ currencyBalance: students.currencyBalance });
-      
-      if (!updatedStudent) {
-        // Check if the student exists to provide a more specific error
-        const [studentExists] = await tx
-          .select({ id: students.id })
-          .from(students)
-          .where(eq(students.id, params.studentId))
-          .limit(1);
-          
-        if (!studentExists) {
-          throw new Error('Student not found');
-        }
-        // If we get here, it means the balance check failed
-        throw new Error('Insufficient funds');
-      }
       
       return {
         transaction: currencyTx,

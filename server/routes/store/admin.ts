@@ -1,13 +1,16 @@
 // Store Admin Routes - Database-driven store management
 import type { Express } from "express";
 import { db } from "../../db";
-import { storeItems, itemTypes } from "@shared/schema";
+import { storeItems, itemTypes, patterns } from "@shared/schema";
 import { eq, desc, asc } from "drizzle-orm";
-import { requireAuth, authenticateAdmin as requireAdmin } from "../../middleware/auth";
-import { validateUUID } from "../../middleware/validate-uuid";
+import { requireAuth, requireAdmin } from "../../middleware/auth";
+import { validateUUID } from "../../middleware/validateUUID";
 import { z } from "zod";
 import multer from "multer";
-import StorageService from "../../services/storage-service";
+import StorageRouter from "../../services/storage-router";
+import { getCache } from "../../lib/cache-factory";
+
+const cache = getCache();
 
 // Configure multer for memory storage
 const upload = multer({
@@ -38,9 +41,12 @@ const createItemSchema = z.object({
     'room_flooring'
   ]),
   cost: z.number().int().min(0),
-  rarity: z.enum(['common', 'rare', 'legendary']).default('common'),
+  rarity: z.enum(['common', 'rare', 'epic', 'legendary']).default('common'),
   isActive: z.boolean().default(true),
-  sortOrder: z.number().int().default(0)
+  sortOrder: z.number().int().default(0),
+  assetType: z.enum(['image', 'rive']).optional(),
+  thumbnailUrl: z.string().optional(),
+  riveUrl: z.string().optional()
 });
 
 const updateItemSchema = createItemSchema.partial();
@@ -66,6 +72,8 @@ export function registerStoreAdminRoutes(app: Express) {
           isActive: storeItems.isActive,
           sortOrder: storeItems.sortOrder,
           assetId: storeItems.assetId,
+          assetType: storeItems.assetType,
+          thumbnailUrl: storeItems.thumbnailUrl, // ADD THIS LINE
           createdAt: storeItems.createdAt,
           updatedAt: storeItems.updatedAt
         })
@@ -76,9 +84,6 @@ export function registerStoreAdminRoutes(app: Express) {
       console.log('=== ADMIN STORE ITEMS DEBUG ===');
       console.log('Raw items from DB:', items.length);
       console.log('First item:', JSON.stringify(items[0], null, 2));
-      
-      // Import StorageRouter to prepare items with image URLs
-      const StorageRouter = (await import('../../services/storage-router')).default;
       
       // Prepare items with proper image URLs
       const preparedItems = await StorageRouter.prepareStoreItemsResponse(items);
@@ -114,23 +119,31 @@ export function registerStoreAdminRoutes(app: Express) {
         throw validationError;
       }
       
-      // Get assetId from request body (required)
+      // Get assetId and URLs from request body
       const assetId = req.body.assetId;
       const imageUrl = req.body.imageUrl;
+      const thumbnailUrl = req.body.thumbnailUrl;
+      const assetType = req.body.assetType || 'image';
+      const riveUrl = req.body.riveUrl;
       
-      // Ensure we have an assetId (required by schema)
-      if (!assetId) {
+      // For wallpaper and flooring, asset ID is optional since they can use patterns
+      const isPatternItem = ['room_wallpaper', 'room_flooring'].includes(validatedData.itemType);
+      
+      // Ensure we have an assetId for non-pattern items
+      if (!assetId && !isPatternItem) {
         return res.status(400).json({ 
-          message: "Asset ID is required. Please upload an image first." 
+          message: "Asset ID is required. Please upload an asset first." 
         });
       }
       
-      // Validate assetId is a UUID
-      const assetIdValidation = z.string().uuid().safeParse(assetId);
-      if (!assetIdValidation.success) {
-        return res.status(400).json({ 
-          message: "Invalid asset ID format" 
-        });
+      // Validate assetId is a UUID if provided
+      if (assetId) {
+        const assetIdValidation = z.string().uuid().safeParse(assetId);
+        if (!assetIdValidation.success) {
+          return res.status(400).json({ 
+            message: "Invalid asset ID format" 
+          });
+        }
       }
       
       // Look up the item type UUID from the code sent by frontend
@@ -154,7 +167,43 @@ export function registerStoreAdminRoutes(app: Express) {
         });
       }
       
-      // Now create the store item with the asset ID
+      // For pattern items (wallpaper/flooring), create a pattern record first
+      let patternId = null;
+      if (isPatternItem && imageUrl) {
+        // Generate a unique pattern code
+        const patternPrefix = itemTypeCode === 'room_wallpaper' ? 'wallpaper' : 'flooring';
+        const patternCode = `${patternPrefix}_${validatedData.name.toLowerCase().replace(/\s+/g, '_')}_${Date.now()}`;
+        
+        // Determine surface type based on item type
+        const surfaceType = itemTypeCode === 'room_wallpaper' ? 'background' : 'texture';
+        
+        console.log('Creating pattern record:', {
+          code: patternCode,
+          surfaceType,
+          imageUrl
+        });
+        
+        // Create pattern record
+        const [pattern] = await db
+          .insert(patterns)
+          .values({
+            code: patternCode,
+            name: validatedData.name,
+            description: validatedData.description || null,
+            surfaceType: surfaceType,
+            patternType: 'image', // Since we're using uploaded images
+            patternValue: imageUrl, // The image URL
+            theme: null, // Can be set later if needed
+            thumbnailUrl: thumbnailUrl || imageUrl, // Use thumbnail or fall back to main image
+            isActive: validatedData.isActive,
+          })
+          .returning();
+          
+        patternId = pattern.id;
+        console.log('Created pattern with ID:', patternId);
+      }
+      
+      // Now create the store item with the asset ID and new fields
       const [newItem] = await db
         .insert(storeItems)
         .values({
@@ -163,11 +212,18 @@ export function registerStoreAdminRoutes(app: Express) {
           itemTypeId: itemType.id, // Use the UUID from item_types table
           cost: validatedData.cost,
           rarity: validatedData.rarity,
-          isActive: validatedData.isActive,
+          isActive: validatedData.isActive ?? true, // Force true if undefined
           sortOrder: validatedData.sortOrder,
-          assetId: assetId, // Use the asset ID
+          assetId: assetId || null, // Use the asset ID if provided
+          assetType: assetType, // image or rive
+          thumbnailUrl: thumbnailUrl || null, // Save thumbnail URL
+          patternId: patternId, // Link to pattern if this is a pattern item
         })
         .returning();
+      
+      // Clear store catalog cache
+      cache.del('store-catalog:active:v4');
+      console.log('🗑️ Cleared store catalog cache after creating item');
       
       res.json(newItem);
     } catch (error) {
@@ -186,10 +242,19 @@ export function registerStoreAdminRoutes(app: Express) {
       const { id } = req.params;
       const validatedData = updateItemSchema.parse(req.body);
       
-      // If imageUrl is provided, include it in the update
+      // Handle additional fields in update
       const updateData: any = { ...validatedData, updatedAt: new Date() };
       if (req.body.imageUrl !== undefined) {
         updateData.imageUrl = req.body.imageUrl;
+      }
+      if (req.body.thumbnailUrl !== undefined) {
+        updateData.thumbnailUrl = req.body.thumbnailUrl;
+      }
+      if (req.body.assetType !== undefined) {
+        updateData.assetType = req.body.assetType;
+      }
+      if (req.body.riveUrl !== undefined) {
+        updateData.riveUrl = req.body.riveUrl;
       }
       
       const [updatedItem] = await db
@@ -201,6 +266,10 @@ export function registerStoreAdminRoutes(app: Express) {
       if (!updatedItem) {
         return res.status(404).json({ message: "Item not found" });
       }
+      
+      // Clear store catalog cache
+      cache.del('store-catalog:active:v4');
+      console.log('🗑️ Cleared store catalog cache after updating item');
       
       res.json(updatedItem);
     } catch (error) {
@@ -232,8 +301,7 @@ export function registerStoreAdminRoutes(app: Express) {
       // Delete associated asset FIRST if it exists
       if (item.assetId) {
         try {
-          // Import StorageRouter to handle deletion
-          const StorageRouter = (await import('../../services/storage-router')).default;
+          // Handle deletion
           await StorageRouter.deleteFile(item.assetId);
         } catch (error: any) {
           console.error(`Failed to delete asset ${item.assetId} for store item ${id}:`, error);
@@ -256,6 +324,10 @@ export function registerStoreAdminRoutes(app: Express) {
         .delete(storeItems)
         .where(eq(storeItems.id, id));
       
+      // Clear store catalog cache
+      cache.del('store-catalog:active:v4');
+      console.log('🗑️ Cleared store catalog cache after deleting item');
+      
       res.json({ message: "Item and associated asset deleted successfully" });
     } catch (error) {
       console.error("Delete store item error:", error);
@@ -276,12 +348,16 @@ export function registerStoreAdminRoutes(app: Express) {
         }
         
         // Upload to Supabase Storage
-        const { url, path } = await StorageService.uploadImage(req.file, {
-          bucket: 'store-uploads',
-          optimize: true,
-          maxWidth: 800,
-          maxHeight: 800
-        });
+        const { url, path } = await StorageRouter.uploadFile(
+          req.file.buffer,
+          req.file.originalname,
+          {
+            bucket: 'store-items',
+            folder: 'uploads',
+            type: 'item',
+            mimeType: req.file.mimetype
+          }
+        );
         
         res.json({ 
           imageUrl: url,

@@ -3,6 +3,7 @@ import { db } from "../db";
 import { quizSubmissions, classes } from "../../shared/schema";
 import { eq } from "drizzle-orm";
 import multer from "multer";
+import { canEditClass, hasCollaboratorPermission } from "../db/collaborators";
 
 // Configure multer for file uploads
 const upload = multer({ 
@@ -157,10 +158,13 @@ export async function handleImportStudents(req: Request, res: Response) {
     
     const classData = classResult[0];
     
-    // Check if teacher owns this class
+    // Check if teacher can edit this class and manage students
     const userId = (req as any).user?.userId;
-    if (classData.teacherId !== userId) {
-      return res.status(403).json({ message: "Unauthorized" });
+    const canEdit = await canEditClass(userId, classId);
+    const canManageStudents = await hasCollaboratorPermission(userId, classId, 'can_manage_students');
+    
+    if (!canEdit || !canManageStudents) {
+      return res.status(403).json({ message: "You do not have permission to import students to this class" });
     }
     
     // Parse CSV from uploaded file

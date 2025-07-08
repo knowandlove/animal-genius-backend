@@ -4,6 +4,7 @@ import { uuidStorage } from '../storage-uuid';
 import { quizSubmissions } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { requireAuth } from '../middleware/auth';
+import { canEditClass } from '../db/collaborators';
 
 const router = Router();
 
@@ -25,7 +26,13 @@ router.delete('/:id', requireAuth, async (req: Request, res: Response) => {
     
     // Get class info to verify teacher access
     const classRecord = await uuidStorage.getClassById(student.classId);
-    if (!classRecord || classRecord.teacherId !== req.user!.userId) {
+    if (!classRecord) {
+      return res.status(404).json({ message: "Class not found" });
+    }
+    
+    // Check if user can edit this class (owner or editor collaborator)
+    const hasEditAccess = await canEditClass(req.user!.userId, student.classId);
+    if (!hasEditAccess) {
       return res.status(403).json({ message: "Access denied" });
     }
     

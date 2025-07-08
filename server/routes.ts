@@ -1,32 +1,26 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { Request, Response } from "express";
-import { GameWebSocketServer } from "./websocket-server";
-import { gameSessionManager } from "./game-session-manager";
-import { getRandomQuestions } from "@shared/animal-facts-questions";
-import { GameSettings } from "@shared/game-types";
-import { authLimiter, gameCreationLimiter } from "./middleware/rateLimiter";
+import { authLimiter } from "./middleware/rateLimiter";
 import { handleImportStudents, uploadCSV } from "./routes/import-students";
-import { wsAuthManager } from "./websocket-auth";
 import { metricsService } from "./monitoring/metrics-service";
+import { metricsEndpoint } from "./middleware/observability";
 import { registerRoomRoutes } from "./routes/room";
 import { registerSecureRoomRoutes } from "./routes/room-secure";
 import { registerRoomSettingsRoutes } from "./routes/room-settings";
 import { registerClassIslandRoutes } from "./routes/class-island";
-import { registerPurchaseApprovalRoutes } from "./routes/purchase-approvals";
 import { registerStoreManagementRoutes } from "./routes/store-management";
 import { registerItemPositionRoutes } from "./routes/item-positions";
 import { registerNormalizedItemPositionRoutes } from "./routes/item-positions-normalized";
 import { registerStoreAdminRoutes } from "./routes/store/admin";
-import { requireAuth, authenticateAdmin } from "./middleware/auth";
+import { requireAuth, requireAdmin } from "./middleware/auth";
 import authRoutes from "./routes/auth";
+import unifiedAuthRoutes from "./routes/unified-auth";
 import meRoutes from './routes/me';
 import assetsRouter from './routes/admin/assets-direct';
 import storeRouter from './routes/store';
 import adminUploadRoutes from "./routes/admin/upload-asset";
-import monitoringRoutes from "./routes/admin/monitoring";
 import quickStatsRoutes from "./routes/admin/quick-stats";
-import debugStoreRouter from './routes/debug-store';
 import storeDirectRouter from './routes/store-direct';
 import classesRouter from './routes/classes';
 import quizRouter from './routes/quiz';
@@ -34,24 +28,36 @@ import analyticsRouter from './routes/analytics';
 import currencyRouter from './routes/currency';
 import adminRouter from './routes/admin';
 import submissionsRouter from './routes/submissions';
+import collaboratorsRouter from './routes/collaborators';
+import patternsRouter from './routes/patterns';
+import { registerStudentApiRoutes } from './routes/student-api';
+import lessonsRouter from './routes/lessons';
+import petsRouter from './routes/pets';
+import adminPetsRouter from './routes/admin/pets';
+import { registerRoomViewerRoutes } from './routes/room-viewers';
+import healthRouter from './routes/health';
+import jobsRouter from './routes/jobs';
+import monitoringRouter from './routes/monitoring';
+import httpMetricsRouter from './routes/admin/http-metrics';
 
 // Feature flags to disable unused features
 const FEATURE_FLAGS = {
-  GAMES_ENABLED: process.env.GAMES_ENABLED !== 'false',
-  WEBSOCKET_ENABLED: process.env.WEBSOCKET_ENABLED !== 'false',
   METRICS_ENABLED: process.env.METRICS_ENABLED !== 'false',
-  STORE_APPROVAL_REQUIRED: process.env.STORE_APPROVAL_REQUIRED === 'true', // Default to false (direct purchase)
 };
 
 export async function registerRoutes(app: Express): Promise<Server> {
 
-  // Health check endpoint
-  app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", websocket: "ready" });
-  });
+  // Health check endpoints
+  app.use('/api/health', healthRouter);
+  
+  // Background job status endpoints
+  app.use('/api/jobs', jobsRouter);
 
   // Register student room routes (no auth required)
   registerRoomRoutes(app);
+  
+  // Register room viewer tracking routes
+  registerRoomViewerRoutes(app);
   
   // Register secure student room routes (session-based auth)
   registerSecureRoomRoutes(app);
@@ -62,11 +68,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Register class island routes
   registerClassIslandRoutes(app);
   
+  // Register student API routes
+  registerStudentApiRoutes(app);
+  
   // Register the new /api/me endpoint
   app.use('/api', meRoutes);
   
   // Use new Supabase auth routes
   app.use('/api/auth', authRoutes);
+  
+  // Unified auth routes (JIT provisioning)
+  app.use('/api/unified-auth', unifiedAuthRoutes);
   
   // Test endpoint to verify auth is working
   app.get("/api/test-auth", requireAuth, async (req: Request, res: Response) => {
@@ -102,17 +114,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Submissions routes
   app.use('/api/submissions', submissionsRouter);
   
+  // Collaborators routes
+  app.use('/api/classes', collaboratorsRouter);
+  app.use('/api', collaboratorsRouter); // For invitation endpoints
+  
+  // Lessons routes
+  app.use('/api/classes', lessonsRouter);
+  
   // ==================== LEGACY ROUTES ====================
   
   // Import students from CSV (special case with upload middleware)
   app.post("/api/classes/:id/import-students", requireAuth, uploadCSV, handleImportStudents);
 
   // ==================== STORE ROUTES ====================
-  
-  if (FEATURE_FLAGS.STORE_APPROVAL_REQUIRED) {
-    // Register purchase approval routes (teacher auth required)
-    registerPurchaseApprovalRoutes(app);
-  }
   
   // Register store management routes (teacher auth required)
   registerStoreManagementRoutes(app);
@@ -135,14 +149,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Register direct store routes (no approval required)
   app.use('/api/store-direct', storeDirectRouter);
   
-  // Debug route for testing
-  app.use('/api/debug/store', debugStoreRouter);
+  // Register patterns routes
+  app.use('/api/patterns', patternsRouter);
+  
+  // Register pet routes
+  console.log('📍 Registering pets router at /api/pets');
+  app.use('/api/pets', petsRouter);
+  console.log('✅ Pets router registered');
+  
+  // Register admin pet management routes
+  app.use('/api/admin/pets', adminPetsRouter);
   
   // Register admin upload routes
   app.use('/api/admin', adminUploadRoutes);
-  
-  // Register monitoring routes
-  app.use('/api/admin', monitoringRoutes);
   
   // Register quick stats routes
   app.use('/api/admin', quickStatsRoutes);
@@ -151,111 +170,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Get WebSocket performance metrics (admin only) - if enabled
   if (FEATURE_FLAGS.METRICS_ENABLED) {
-    app.get("/api/admin/metrics", authenticateAdmin, async (req: any, res) => {
-      try {
-        const metrics = metricsService.getCurrentMetrics();
-        res.json(metrics);
-      } catch (error) {
-        console.error("Get metrics error:", error);
-        res.status(500).json({ message: "Failed to get performance metrics" });
-      }
-    });
+    app.get("/api/admin/metrics", requireAuth, requireAdmin, metricsEndpoint);
 
-    app.get("/api/admin/metrics/summary", authenticateAdmin, async (req: any, res) => {
-      try {
-        const summary = metricsService.getMetricsSummary();
-        res.json({ summary });
-      } catch (error) {
-        console.error("Get metrics summary error:", error);
-        res.status(500).json({ message: "Failed to get metrics summary" });
-      }
-    });
-  }
-
-  // ==================== QUIZ GAME ROUTES ====================
-  
-  if (FEATURE_FLAGS.GAMES_ENABLED) {
-    // Get WebSocket authentication ticket
-    app.post("/api/ws/auth", requireAuth, async (req: any, res) => {
-      try {
-        const { gameId } = req.body;
-        
-        // Generate ticket for authenticated user
-        const wsTicket = wsAuthManager.generateTicket(req.user.userId, gameId);
-        
-        res.json({
-          wsTicket,
-          expiresIn: 30 // seconds
-        });
-      } catch (error) {
-        console.error("WebSocket auth error:", error);
-        res.status(500).json({ message: "Failed to generate WebSocket ticket" });
-      }
+    app.get("/api/admin/metrics/summary", requireAuth, requireAdmin, (req: any, res) => {
+      const summary = metricsService.getMetricsSummary();
+      res.json({ summary });
     });
     
-    // Create a new game session
-    app.post("/api/games/create", requireAuth, gameCreationLimiter, async (req: any, res) => {
-      try {
-        const { mode = 'team', questionCount = 16 } = req.body;
-        
-        // Validate inputs
-        if (!['team', 'individual'].includes(mode)) {
-          return res.status(400).json({ message: "Invalid game mode" });
-        }
-        
-        const validatedQuestionCount = Math.min(Math.max(parseInt(questionCount) || 16, 5), 30);
-        
-        const settings: GameSettings = {
-          mode,
-          questionCount: validatedQuestionCount,
-          timePerQuestion: 20
-        };
-
-        // Get random questions
-        const questions = getRandomQuestions(validatedQuestionCount);
-        
-        // Create game session
-        const game = await gameSessionManager.createGame(req.user.userId, settings, questions);
-        
-        // Generate WebSocket authentication ticket
-        const wsTicket = wsAuthManager.generateTicket(req.user.userId, game.id);
-        
-        res.json({
-          gameId: game.id,
-          gameCode: game.code,
-          settings: game.settings,
-          wsTicket
-        });
-      } catch (error) {
-        console.error("Create game error:", error);
-        res.status(500).json({ message: "Failed to create game" });
-      }
-    });
-
-    // Other game routes...
-  } else {
-    // Return 503 Service Unavailable for game endpoints when disabled
-    app.use("/api/games", (req, res) => {
-      res.status(503).json({ message: "Game features are currently disabled" });
-    });
-    app.use("/api/ws", (req, res) => {
-      res.status(503).json({ message: "WebSocket features are currently disabled" });
-    });
+    // HTTP metrics sub-routes
+    app.use('/api/admin/metrics', httpMetricsRouter);
   }
+  
+  // Error tracking routes (moved to admin)
+  app.use('/api/admin/errors', monitoringRouter);
+  
+  // Health check routes
+  app.use('/api/health', healthRouter);
+  
+  // Job status routes (for background tasks)
+  app.use('/api/jobs', jobsRouter);
+
 
   const httpServer = createServer(app);
-  
-  // Conditionally initialize WebSocket server based on feature flag
-  if (FEATURE_FLAGS.WEBSOCKET_ENABLED && FEATURE_FLAGS.GAMES_ENABLED) {
-    const gameWebSocketServer = new GameWebSocketServer(httpServer);
-    
-    // Store reference for cleanup
-    (app as any).gameWebSocketServer = gameWebSocketServer;
-    
-    console.log('✅ WebSocket server enabled for games');
-  } else {
-    console.log('⏸️  WebSocket server disabled');
-  }
   
   return httpServer;
 }

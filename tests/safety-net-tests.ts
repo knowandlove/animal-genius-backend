@@ -101,7 +101,7 @@ describe('Core Student Journey Tests', () => {
 // [ ] Receives 50 coins automatically
 // [ ] Can access island with passport code
 // [ ] Teacher can give/take coins
-// [ ] Store purchases work (request → approve → own)
+// [ ] Store purchases work (direct purchase → own)
 // [ ] Wallet shows correct available balance
 // 
 // If all these work, we're safe to proceed!

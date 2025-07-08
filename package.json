@@ -17,12 +17,17 @@
     "backfill:avatar": "tsx run-avatar-backfill.ts",
     "lint": "eslint . --ext .ts",
     "typecheck": "tsc --noEmit",
-    "typecheck:baseline": "node scripts/check-types-with-baseline.js"
+    "typecheck:baseline": "node scripts/check-types-with-baseline.js",
+    "test": "vitest",
+    "test:coverage": "vitest --coverage",
+    "test:currency-constraints": "tsx scripts/test-currency-constraints.ts",
+    "test:infrastructure": "vitest run server/tests/infrastructure/"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",
     "@supabase/supabase-js": "^2.39.0",
     "bcrypt": "^6.0.0",
+    "bull": "^4.16.5",
     "connect-pg-simple": "^10.0.0",
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",
@@ -42,8 +47,9 @@
     "openid-client": "^6.5.1",
     "passport": "^0.7.0",
     "passport-local": "^1.0.0",
-    "sharp": "^0.33.1",
-    "ws": "^8.18.0",
+    "redis": "^5.5.6",
+    "sharp": "^0.33.5",
+    "uuid": "^11.1.0",
     "zod": "^3.24.2",
     "zod-validation-error": "^3.4.0"
   },
@@ -62,16 +68,18 @@
     "@types/node-cache": "^4.1.3",
     "@types/passport": "^1.0.16",
     "@types/passport-local": "^1.0.38",
-    "@types/ws": "^8.5.13",
+    "@types/supertest": "^6.0.2",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
+    "@vitest/coverage-v8": "^1.2.0",
+    "axios": "^1.10.0",
     "drizzle-kit": "^0.30.4",
     "esbuild": "^0.25.5",
     "eslint": "^8.57.0",
+    "supertest": "^6.3.4",
     "tsx": "^4.19.1",
-    "typescript": "5.6.3"
+    "typescript": "5.6.3",
+    "vitest": "^1.2.0"
   },
-  "optionalDependencies": {
-    "bufferutil": "^4.0.8"
-  }
+  "optionalDependencies": {}
 }

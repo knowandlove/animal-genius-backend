@@ -7,6 +7,9 @@ import { eq } from 'drizzle-orm';
 import { getCachedProfile } from './profile-cache';
 import { sessionTracker } from './session-tracker';
 import { authPerformanceMonitor } from './auth-monitor';
+import { createSecureLogger, sanitizeError } from '../utils/secure-logger';
+
+const logger = createSecureLogger('Auth');
 
 // Extend Request type to include user
 declare global {
@@ -94,7 +97,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       
       next();
     } catch (dbError) {
-      console.error('Database error:', dbError);
+      logger.error('Database error:', sanitizeError(dbError));
       return res.status(500).json({ message: "Database error" });
     }
   } catch (err) {
@@ -105,57 +108,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   }
 }
 
-// Alias for backward compatibility
-export const authenticateToken = requireAuth;
 
-// Admin authentication middleware
-export async function authenticateAdmin(req: Request, res: Response, next: NextFunction) {
-  const token = req.headers.authorization?.split(' ')[1];
-  
-  if (!token) {
-    return res.status(401).json({ message: "Access token required" });
-  }
-  
-  try {
-    // Verify token with Supabase using anon client
-    const { data: { user }, error } = await supabaseAnon.auth.getUser(token);
-    
-    if (error || !user) {
-      return res.status(403).json({ message: "Invalid token" });
-    }
-    
-    // Get user profile to check admin status using cached lookup
-    try {
-      const profile = await getCachedProfile(user.id);
-      
-      if (!profile?.isAdmin) {
-        return res.status(403).json({ message: "Admin access required" });
-      }
-      
-      // Set user data on request
-      req.user = {
-        userId: user.id, // UUID from Supabase
-        email: user.email || profile.email,
-        isAdmin: true
-      };
-      
-      req.profile = profile;
-      
-      // Track session after admin authentication
-      sessionTracker(req, res, () => {});
-      
-      next();
-    } catch (dbError) {
-      console.error('Database error:', dbError);
-      return res.status(500).json({ message: "Database error" });
-    }
-  } catch (err) {
-    if (process.env.NODE_ENV === 'development') {
-      console.error("Admin auth verification error:", err instanceof Error ? err.message : err);
-    }
-    return res.status(403).json({ message: "Invalid token" });
-  }
-}
 
 // Helper middleware to optionally authenticate
 export async function optionalAuth(req: Request, res: Response, next: NextFunction) {

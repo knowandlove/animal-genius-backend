@@ -1,7 +1,9 @@
 import { db } from "../db";
-import { students, classes, purchaseRequests, storeSettings, storeItems, studentInventory, animalTypes, geniusTypes, itemTypes } from "@shared/schema";
+import { students, classes, storeSettings, storeItems, studentInventory, animalTypes, geniusTypes, itemTypes } from "@shared/schema";
 import { eq, and, desc, asc, sql } from "drizzle-orm";
-import * as cache from "../lib/cache";
+import { getCache } from "../lib/cache-factory";
+
+const cache = getCache();
 import StorageRouter from "../services/storage-router";
 
 // Cache management service for cleaner invalidation
@@ -24,8 +26,7 @@ class StudentCacheManager {
     
     if (studentId) {
       keys.push(
-        `student-inventory:${studentId}`,
-        `student-purchases:${studentId}`
+        `student-inventory:${studentId}`
       );
     }
     
@@ -33,21 +34,21 @@ class StudentCacheManager {
   }
   
   // Invalidate all caches for a student
-  invalidateStudent(passportCode: string, studentId?: string): void {
+  async invalidateStudent(passportCode: string, studentId?: string): Promise<void> {
     const keys = this.getStudentCacheKeys(passportCode, studentId);
-    keys.forEach(key => cache.del(key));
+    await Promise.all(keys.map(key => cache.del(key)));
     console.log(`🧹 Invalidated ${keys.length} cache keys for ${passportCode}`);
   }
   
   // Invalidate store catalog cache
-  invalidateStoreCatalog(): void {
-    cache.del('store-catalog:active');
+  async invalidateStoreCatalog(): Promise<void> {
+    await cache.del('store-catalog:active');
     console.log('🧹 Invalidated store catalog cache');
   }
   
   // Invalidate class-specific caches
-  invalidateClass(classId: string): void {
-    cache.del(`store-status:${classId}`);
+  async invalidateClass(classId: string): Promise<void> {
+    await cache.del(`store-status:${classId}`);
     console.log(`🧹 Invalidated class cache for ${classId}`);
   }
 }
@@ -65,7 +66,7 @@ export class RoomDataService {
   static async getStudentRoomData(passportCode: string) {
     // Try to get from cache first
     const cacheKey = `room-page-data:${passportCode}`;
-    const cached = cache.get(cacheKey);
+    const cached = await cache.get(cacheKey);
     if (cached) {
       console.log(`✅ Cache hit for ${cacheKey}`);
       return cached;
@@ -132,24 +133,16 @@ export class RoomDataService {
     }
     
     // Parallel fetch remaining data
-    const [storeCatalog, purchaseRequests, inventoryData] = await Promise.all([
+    const [storeCatalog, inventoryData] = await Promise.all([
       // Store catalog (only if open)
       isStoreOpen ? this.getStoreCatalog() : [],
-      
-      // Purchase requests
-      db.select()
-        .from(purchaseRequests)
-        .where(eq(purchaseRequests.studentId, student.id))
-        .orderBy(desc(purchaseRequests.requestedAt)),
       
       // Inventory with batch image URL processing
       this.getStudentInventory(student.id)
     ]);
     
-    // Calculate wallet
-    const pendingTotal = purchaseRequests
-      .filter(req => req.status === 'pending')
-      .reduce((sum, req) => sum + (req.cost || 0), 0);
+    // No pending purchases - direct purchase system
+    const pendingTotal = 0;
     
     // Build response
     const pageData = {
@@ -189,12 +182,11 @@ export class RoomDataService {
         openedAt: student.storeOpenedAt,
         closesAt: student.storeClosesAt
       },
-      storeCatalog,
-      purchaseRequests
+      storeCatalog
     };
     
     // Cache for 2 minutes (balances freshness with performance under load)
-    cache.set(cacheKey, pageData, 120);
+    await cache.set(cacheKey, pageData, 120);
     console.log(`💾 Cached island data for ${cacheKey}`);
     
     return pageData;
@@ -203,7 +195,7 @@ export class RoomDataService {
   // Get store catalog with efficient caching
   private static async getStoreCatalog() {
     const catalogCacheKey = 'store-catalog:active';
-    const cached = cache.get<any[]>(catalogCacheKey);
+    const cached = await cache.get<any[]>(catalogCacheKey);
     
     if (cached) {
       return cached;
@@ -238,7 +230,7 @@ export class RoomDataService {
     }));
     
     // Cache for 10 minutes
-    cache.set(catalogCacheKey, catalog, 600);
+    await cache.set(catalogCacheKey, catalog, 600);
     return catalog;
   }
   

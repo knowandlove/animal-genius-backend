@@ -4,9 +4,12 @@ import { db } from "../db";
 import { storeSettings, classes } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth";
-import { verifyClassOwnership } from "../middleware/ownership";
+import { verifyClassEditAccess } from "../middleware/ownership-collaborator";
+import { requireManageStore } from "../middleware/permission-check";
 import { z } from "zod";
-import * as cache from "../lib/cache";
+import { getCache } from "../lib/cache-factory";
+
+const cache = getCache();
 import { validateUUID } from "../middleware/validateUUID";
 import { uuidSchema } from "@shared/validation";
 
@@ -33,13 +36,13 @@ const storeHoursSchema = z.object({
 export function registerStoreManagementRoutes(app: Express) {
   
   // Toggle store open/closed status
-  app.post("/api/currency/store/toggle", requireAuth, verifyClassOwnership, async (req: any, res) => {
+  app.post("/api/currency/store/toggle", requireAuth, verifyClassEditAccess, requireManageStore, async (req: any, res) => {
     try {
       console.log('[STORE TOGGLE] Request body:', JSON.stringify(req.body));
       console.log('[STORE TOGGLE] User:', req.user);
       
       const { classId, isOpen } = storeToggleSchema.parse(req.body);
-      const teacherId = req.user?.userId || req.user?.id;
+      const teacherId = req.user?.userId;
       
       if (!teacherId) {
         console.error('[STORE TOGGLE] No teacher ID found');
@@ -80,8 +83,8 @@ export function registerStoreManagementRoutes(app: Express) {
       }
 
       const message = isOpen 
-        ? "Store is now open! Students can start making purchase requests." 
-        : "Store is now closed. Students cannot make new purchase requests.";
+        ? "Store is now open! Students can start making purchases." 
+        : "Store is now closed. Students cannot make new purchases.";
 
       // Invalidate the cache for this class
       const cacheKey = `store-status:${classId}`;
@@ -111,10 +114,10 @@ export function registerStoreManagementRoutes(app: Express) {
   });
 
   // Get current store status for a class
-  app.get("/api/classes/:classId/store-status", requireAuth, validateUUID('classId'), verifyClassOwnership, async (req: any, res) => {
+  app.get("/api/classes/:classId/store-status", requireAuth, validateUUID('classId'), verifyClassEditAccess, requireManageStore, async (req: any, res) => {
     try {
       const { classId } = req.params;
-      const teacherId = req.user?.userId || req.user?.id;
+      const teacherId = req.user?.userId;
       
       console.log('[STORE STATUS] ClassId:', classId);
       console.log('[STORE STATUS] TeacherId:', teacherId);
@@ -170,10 +173,10 @@ export function registerStoreManagementRoutes(app: Express) {
   });
 
   // Set auto-approval threshold
-  app.post("/api/currency/store/auto-approval", requireAuth, verifyClassOwnership, async (req: any, res) => {
+  app.post("/api/currency/store/auto-approval", requireAuth, verifyClassEditAccess, requireManageStore, async (req: any, res) => {
     try {
       const { classId, threshold } = autoApprovalSchema.parse(req.body);
-      const teacherId = req.user?.userId || req.user?.id;
+      const teacherId = req.user?.userId;
 
       // Check if store settings exist
       const existingSettings = await db
@@ -223,10 +226,10 @@ export function registerStoreManagementRoutes(app: Express) {
   });
 
   // Set store hours (future feature)
-  app.post("/api/currency/store/hours", requireAuth, verifyClassOwnership, async (req: any, res) => {
+  app.post("/api/currency/store/hours", requireAuth, verifyClassEditAccess, async (req: any, res) => {
     try {
       const { classId, openTime, closeTime, timezone } = storeHoursSchema.parse(req.body);
-      const teacherId = req.user?.userId || req.user?.id;
+      const teacherId = req.user?.userId;
 
       // This is a placeholder for future store hours functionality
       res.json({

@@ -1,0 +1,1 @@
+Please continue your review. Also, I need your opinion on whether I should fix these issues immediately before moving on to the next Week 1 task (room data schema validation for XSS prevention), or if I should continue with the planned tasks and circle back to these improvements later.

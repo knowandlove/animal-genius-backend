@@ -3,7 +3,7 @@ import { db } from '../db';
 import { uuidStorage } from '../storage-uuid';
 import { students, quizSubmissions, currencyTransactions, /* purchaseRequests, */ classes } from '@shared/schema';
 import { eq, inArray } from 'drizzle-orm';
-import { authenticateAdmin, requireAuth } from '../middleware/auth';
+import { requireAuth, requireAdmin } from '../middleware/auth';
 
 const router = Router();
 
@@ -64,7 +64,7 @@ router.delete('/classes/:id/force', requireAuth, async (req: Request, res: Respo
 });
 
 // Get all teachers/profiles
-router.get('/teachers', authenticateAdmin, async (req: any, res) => {
+router.get('/teachers', requireAuth, requireAdmin, async (req: any, res) => {
   try {
     const teachers = await uuidStorage.getAllProfiles();
     res.json(teachers);
@@ -75,7 +75,7 @@ router.get('/teachers', authenticateAdmin, async (req: any, res) => {
 });
 
 // Update admin status
-router.put('/teachers/:id/admin', authenticateAdmin, async (req: any, res) => {
+router.put('/teachers/:id/admin', requireAuth, requireAdmin, async (req: any, res) => {
   try {
     const teacherId = req.params.id;
     const { isAdmin } = req.body;
@@ -101,7 +101,7 @@ router.put('/teachers/:id/admin', authenticateAdmin, async (req: any, res) => {
 });
 
 // Get all classes
-router.get('/classes', authenticateAdmin, async (req: any, res) => {
+router.get('/classes', requireAuth, requireAdmin, async (req: any, res) => {
   try {
     const classes = await uuidStorage.getAllClassesWithStats();
     res.json(classes);
@@ -112,7 +112,7 @@ router.get('/classes', authenticateAdmin, async (req: any, res) => {
 });
 
 // Get admin stats
-router.get('/stats', authenticateAdmin, async (req: any, res) => {
+router.get('/stats', requireAuth, requireAdmin, async (req: any, res) => {
   try {
     const stats = await uuidStorage.getAdminStats();
     res.json(stats);

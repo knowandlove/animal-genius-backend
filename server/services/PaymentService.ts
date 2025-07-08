@@ -1,7 +1,7 @@
 import { db } from '../db';
 import { teacherPayments, classes } from '../../shared/schema';
 import { eq, and, sql } from 'drizzle-orm';
-import { randomUUID } from 'crypto';
+import { randomUUID, createHmac, timingSafeEqual } from 'crypto';
 
 export class PaymentService {
   private static PRICE_PER_STUDENT_CENTS = 200; // $2.00 per student
@@ -172,7 +172,7 @@ export class PaymentService {
 
       if (!payment.class) {
         // This indicates a data integrity issue
-        console.error(`Data integrity issue: Payment ${sessionId} is missing its associated class.`);
+        logger.error(`Data integrity issue: Payment ${sessionId} is missing its associated class.`);
         throw new Error('Associated class data for this payment is missing.');
       }
 
@@ -192,12 +192,78 @@ export class PaymentService {
   }
 
   /**
-   * Placeholder for future Stripe webhook verification
+   * Verify webhook signature using HMAC-SHA256
+   * This can be used with Stripe or any other payment provider
    */
   static verifyWebhookSignature(payload: string, signature: string): boolean {
-    // TODO: In production, verify the Stripe webhook signature here
-    // const event = stripe.webhooks.constructEvent(payload, signature, process.env.STRIPE_WEBHOOK_SECRET);
-    console.log('Mock webhook verification - always returns true');
-    return true;
+    const webhookSecret = process.env.WEBHOOK_SECRET;
+    
+    if (!webhookSecret) {
+      console.error('WEBHOOK_SECRET not configured - rejecting webhook');
+      return false;
+    }
+    
+    try {
+      // For Stripe-style signatures (t=timestamp,v1=signature)
+      if (signature.includes('t=') && signature.includes('v1=')) {
+        const elements = signature.split(',');
+        let timestamp = '';
+        let signatures: string[] = [];
+        
+        for (const element of elements) {
+          const [key, value] = element.split('=');
+          if (key === 't') {
+            timestamp = value;
+          } else if (key === 'v1') {
+            signatures.push(value);
+          }
+        }
+        
+        if (!timestamp || signatures.length === 0) {
+          return false;
+        }
+        
+        // Verify timestamp is within 5 minutes
+        const currentTime = Math.floor(Date.now() / 1000);
+        const webhookTime = parseInt(timestamp, 10);
+        if (Math.abs(currentTime - webhookTime) > 300) {
+          console.error('Webhook timestamp too old');
+          return false;
+        }
+        
+        // Compute expected signature
+        const signedPayload = `${timestamp}.${payload}`;
+        const expectedSignature = createHmac('sha256', webhookSecret)
+          .update(signedPayload)
+          .digest('hex');
+        
+        // Compare signatures in constant time
+        for (const sig of signatures) {
+          const sigBuffer = Buffer.from(sig, 'hex');
+          const expectedBuffer = Buffer.from(expectedSignature, 'hex');
+          
+          if (sigBuffer.length === expectedBuffer.length && 
+              timingSafeEqual(sigBuffer, expectedBuffer)) {
+            return true;
+          }
+        }
+        
+        return false;
+      } else {
+        // Simple HMAC verification for other providers
+        const expectedSignature = createHmac('sha256', webhookSecret)
+          .update(payload)
+          .digest('hex');
+        
+        const sigBuffer = Buffer.from(signature, 'hex');
+        const expectedBuffer = Buffer.from(expectedSignature, 'hex');
+        
+        return sigBuffer.length === expectedBuffer.length && 
+               timingSafeEqual(sigBuffer, expectedBuffer);
+      }
+    } catch (error) {
+      console.error('Error verifying webhook signature:', error);
+      return false;
+    }
   }
 }

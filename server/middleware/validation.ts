@@ -53,7 +53,7 @@ export const schemas = {
   }),
 
   // Game settings
-  gameSettings: z.object({
+  // gameSettings: z.object({ // Removed - game features moved to different server
     timePerQuestion: z.number().int().min(5).max(120, "Time per question must be between 5-120 seconds"),
     showResults: z.boolean().optional(),
     randomizeQuestions: z.boolean().optional()

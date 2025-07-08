@@ -1,0 +1,14 @@
+_game-system-backup/docs/integrated-code/game-constants.ts
+_game-system-backup/docs/integrated-code/websocket-setup.ts
+_game-system-backup/scripts/test-websocket-limits.js
+_game-system-backup/server/db/schema/game-sessions.ts
+_game-system-backup/server/game-session-manager.ts
+_game-system-backup/server/lib/redis-game-session-store.ts
+_game-system-backup/server/routes/quiz.ts
+_game-system-backup/server/services/quizSubmissionService.ts
+_game-system-backup/server/tests/financial/quiz-rewards.test.ts
+_game-system-backup/server/websocket-auth.ts
+_game-system-backup/server/websocket-server.ts
+_game-system-backup/server/websocket-validation.ts
+_game-system-backup/shared/game-types.ts
+_game-system-backup/shared/quiz-questions.ts

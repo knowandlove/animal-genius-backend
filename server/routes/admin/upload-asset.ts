@@ -1,17 +1,19 @@
 import { Router } from 'express';
-import { authenticateAdmin } from '../../middleware/auth';
+import { requireAuth, requireAdmin } from '../../middleware/auth';
 import StorageRouter from '../../services/storage-router';
 import multer from 'multer';
 import { z } from 'zod';
 import rateLimit from 'express-rate-limit';
 import sharp from 'sharp';
+import path from 'path';
+import { CONFIG } from '../../config/constants';
 
 const router = Router();
 
 // Rate limiting for upload endpoint
 const uploadLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // limit each IP to 5 uploads per window (more restrictive)
+  windowMs: CONFIG.RATE_LIMITS.UPLOAD.WINDOW_MS,
+  max: CONFIG.RATE_LIMITS.UPLOAD.MAX_REQUESTS,
   message: 'Too many upload attempts, please try again later',
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
@@ -19,7 +21,7 @@ const uploadLimiter = rateLimit({
   // Store rate limit data in memory (consider Redis for production)
   keyGenerator: (req) => {
     // Use both IP and user ID for rate limiting
-    const userId = req.user?.id || 'anonymous';
+    const userId = req.user?.userId || 'anonymous';
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
     return `${ip}:${userId}`;
   }
@@ -29,7 +31,7 @@ const uploadLimiter = rateLimit({
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit
+    fileSize: CONFIG.FILE_LIMITS.MAX_UPLOAD_SIZE,
   },
   fileFilter: (req, file, cb) => {
     // Accept only safe image formats
@@ -63,7 +65,7 @@ const uploadAssetSchema = z.object({
  * - name: Display name for the asset
  * - bucket: Target bucket (defaults to 'store-items')
  */
-router.post('/upload-asset', authenticateAdmin, uploadLimiter, upload.single('file'), async (req, res) => {
+router.post('/upload-asset', requireAuth, requireAdmin, uploadLimiter, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ 
@@ -154,9 +156,13 @@ router.post('/upload-asset', authenticateAdmin, uploadLimiter, upload.single('fi
       });
     }
 
+    // Sanitize filename to prevent path traversal
+    const sanitizedFilename = path.basename(req.file.originalname);
+    
     // Log upload attempt
     console.log('Admin upload request:', {
-      fileName: req.file.originalname,
+      fileName: sanitizedFilename,
+      originalFileName: req.file.originalname,
       mimeType: req.file.mimetype,
       size: req.file.size,
       type,
@@ -164,18 +170,18 @@ router.post('/upload-asset', authenticateAdmin, uploadLimiter, upload.single('fi
       bucket,
       cloudStorageEnabled: StorageRouter.isCloudStorageEnabled()
     });
-
+    
     // Upload using storage router (respects feature flag)
     const uploadResult = await StorageRouter.uploadFile(
       optimizedBuffer, // Use optimized buffer instead of original
-      req.file.originalname,
+      sanitizedFilename,
       {
         bucket,
         folder: category || itemType || 'misc',
         type,
         category: category || itemType,
         itemType,
-        name: name || req.file.originalname,
+        name: name || sanitizedFilename,
         mimeType: finalMimeType // Pass the final mime type
       }
     );
@@ -215,7 +221,7 @@ router.post('/upload-asset', authenticateAdmin, uploadLimiter, upload.single('fi
  * DELETE /api/admin/delete-asset/:assetId
  * Delete an asset (only for cloud storage)
  */
-router.delete('/delete-asset/:assetId', authenticateAdmin, async (req, res) => {
+router.delete('/delete-asset/:assetId', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { assetId } = req.params;
 
@@ -246,7 +252,7 @@ router.delete('/delete-asset/:assetId', authenticateAdmin, async (req, res) => {
  * GET /api/admin/storage-stats
  * Get storage usage statistics
  */
-router.get('/storage-stats', authenticateAdmin, async (req, res) => {
+router.get('/storage-stats', requireAuth, requireAdmin, async (req, res) => {
   try {
     const stats = await StorageRouter.getStorageStats();
     
@@ -269,7 +275,7 @@ router.get('/storage-stats', authenticateAdmin, async (req, res) => {
  * GET /api/admin/storage-status
  * Check storage configuration and feature flag status
  */
-router.get('/storage-status', authenticateAdmin, async (req, res) => {
+router.get('/storage-status', requireAuth, requireAdmin, async (req, res) => {
   const status = {
     cloudStorageEnabled: StorageRouter.isCloudStorageEnabled(),
     supabaseConfigured: !!(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY),

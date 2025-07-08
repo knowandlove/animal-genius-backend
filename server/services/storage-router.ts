@@ -1,5 +1,4 @@
 import EnhancedStorageService from './enhanced-storage-service';
-import StorageService from './storage-service';
 import type { UploadFile, UploadResult } from './enhanced-storage-service';
 import { db } from '../db';
 import { storeItems, assets } from '@shared/schema';
@@ -38,17 +37,27 @@ export class StorageRouter {
       mimeType?: string;
     } = {}
   ): Promise<{ url: string; assetId: string; path: string }> {
+    // Sanitize fileName to prevent path traversal
+    const sanitizedFileName = path.basename(fileName);
+    
+    // Sanitize folder to prevent directory traversal
+    const sanitizedFolder = (options.folder || options.itemType || 'misc')
+      .replace(/\.\./g, '')
+      .replace(/[\/\\]/g, '-')
+      .replace(/^[\-\.]+/, '')
+      .replace(/[\-\.]+$/, '');
+    
     // Always use cloud storage
     const uploadFile: UploadFile = {
       buffer,
       metadata: {
         bucket: options.bucket || 'store-items',
-        folder: options.folder || options.itemType || 'misc',
-        fileName,
-        mimeType: options.mimeType || mime.lookup(fileName) || 'application/octet-stream',
+        folder: sanitizedFolder,
+        fileName: sanitizedFileName,
+        mimeType: options.mimeType || mime.lookup(sanitizedFileName) || 'application/octet-stream',
         type: options.type || 'item',
         category: options.category || options.itemType,
-        name: options.name || fileName
+        name: options.name || sanitizedFileName
       }
     };
 
@@ -96,12 +105,20 @@ export class StorageRouter {
     itemType: string,
     itemName: string
   ): Promise<{ url: string; assetId?: string }> {
-    return this.uploadFile(buffer, fileName, {
+    // Sanitize inputs
+    const sanitizedFileName = path.basename(fileName);
+    const sanitizedItemType = itemType
+      .replace(/\.\./g, '')
+      .replace(/[\/\\]/g, '-')
+      .replace(/^[\-\.]+/, '')
+      .replace(/[\-\.]+$/, '');
+    
+    return this.uploadFile(buffer, sanitizedFileName, {
       bucket: 'store-items',
-      folder: itemType,
+      folder: sanitizedItemType,
       type: 'item',
-      category: itemType,
-      itemType,
+      category: sanitizedItemType,
+      itemType: sanitizedItemType,
       name: itemName
     });
   }
@@ -178,12 +195,39 @@ export class StorageRouter {
       });
     }
 
-    // Return clean items with single imageUrl
-    return items.map(item => ({
-      ...item,
-      imageUrl: this.getImageUrl(item),
-      asset: undefined // Don't expose internal asset object
-    }));
+    // Return clean items with appropriate URLs based on asset type
+    return items.map(item => {
+      const baseItem: any = {
+        ...item,
+        assetType: item.assetType || 'image', // Use consistent naming
+        asset: undefined // Don't expose internal asset object
+      };
+      
+      // Handle URLs based on asset type
+      if (baseItem.assetType === 'rive' && item.asset) {
+        // For RIVE assets, the main URL is the .riv file
+        baseItem.riveUrl = this.getImageUrl(item);
+        
+        // Use thumbnailUrl if available, otherwise use imageUrl as fallback
+        if (item.thumbnailUrl) {
+          baseItem.imageUrl = item.thumbnailUrl;
+          baseItem.thumbnailUrl = item.thumbnailUrl;
+        } else {
+          // Fallback for items without thumbnails
+          baseItem.imageUrl = this.getImageUrl(item);
+        }
+      } else {
+        // Regular static image items
+        baseItem.imageUrl = this.getImageUrl(item);
+        
+        // Use thumbnailUrl if available
+        if (item.thumbnailUrl) {
+          baseItem.thumbnailUrl = item.thumbnailUrl;
+        }
+      }
+      
+      return baseItem;
+    });
   }
 }
 

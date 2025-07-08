@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticateAdmin } from '../../middleware/auth';
+import { requireAuth, requireAdmin } from '../../middleware/auth';
 import { db } from '../../db';
 import { 
   profiles, 
@@ -10,6 +10,9 @@ import {
   students 
 } from '@shared/schema';
 import { sql, count, avg, desc, and, gte, eq } from 'drizzle-orm';
+import { errorTracker } from '../../monitoring/error-tracker';
+import { getHttpMetrics } from '../../middleware/observability';
+import { metricsService } from '../../monitoring/metrics-service';
 
 const router = Router();
 
@@ -17,7 +20,7 @@ const router = Router();
  * GET /api/admin/quick-stats
  * Get quick statistics for the admin dashboard
  */
-router.get('/quick-stats', authenticateAdmin, async (req, res) => {
+router.get('/quick-stats', requireAuth, requireAdmin, async (req, res) => {
   try {
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -101,6 +104,28 @@ router.get('/quick-stats', authenticateAdmin, async (req, res) => {
     const trend = newTeachersThisWeek[0].count > (previousWeekTeachers[0]?.count || 0) ? 'up' : 
                   newTeachersThisWeek[0].count < (previousWeekTeachers[0]?.count || 0) ? 'down' : 'stable';
 
+    // Get performance metrics
+    const httpMetrics = getHttpMetrics();
+    const errorSummary = errorTracker.getErrorSummary();
+    const systemMetrics = metricsService.getMetrics();
+    
+    // Calculate alerts
+    const alerts = [];
+    if (errorSummary.errorRate > 5) {
+      alerts.push({
+        level: 'warning',
+        message: `High error rate: ${errorSummary.errorRate.toFixed(2)} errors/minute`,
+        metric: 'errorRate'
+      });
+    }
+    if (httpMetrics.averageResponseTime > 1000) {
+      alerts.push({
+        level: 'warning',
+        message: `Slow average response time: ${httpMetrics.averageResponseTime.toFixed(0)}ms`,
+        metric: 'responseTime'
+      });
+    }
+    
     const response = {
       teachers: {
         total: teacherStats[0]?.total || 0,
@@ -128,7 +153,22 @@ router.get('/quick-stats', authenticateAdmin, async (req, res) => {
         weeklyActiveUsers: weeklyActive[0]?.count || 0,
         averageSessionTime: '12m 34s', // Would need session tracking
         peakHours
-      }
+      },
+      // New performance section
+      performance: {
+        uptime: Math.floor(systemMetrics.system.uptime / 60), // minutes
+        errorRate: errorSummary.errorRate,
+        errorsToday: errorSummary.errorsToday,
+        avgResponseTime: Math.round(httpMetrics.averageResponseTime),
+        slowestEndpoints: httpMetrics.slowestEndpoints.slice(0, 3)
+      },
+      alerts,
+      recentErrors: errorSummary.recentErrors.slice(0, 5).map(err => ({
+        timestamp: err.timestamp,
+        code: err.code,
+        message: err.message,
+        endpoint: err.endpoint
+      }))
     };
 
     res.json(response);

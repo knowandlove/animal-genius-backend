@@ -1,9 +1,15 @@
 import { Router } from 'express';
 import { db } from '../db';
 import { storeItems } from '@shared/schema';
-import { eq, asc, inArray } from 'drizzle-orm';
+import { eq, asc, inArray, sql } from 'drizzle-orm';
 import StorageRouter from '../services/storage-router';
 import { storeBrowsingLimiter } from '../middleware/rateLimiter';
+import { getPaginationParams, createPaginatedResponse, setPaginationHeaders } from '../utils/pagination';
+import { asyncWrapper } from '../utils/async-wrapper';
+import { InternalError, ErrorCode } from '../utils/errors';
+import { createSecureLogger } from '../utils/secure-logger';
+
+const logger = createSecureLogger('StoreRoutes');
 
 const router = Router();
 
@@ -18,21 +24,20 @@ const CATALOG_CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache
 
 /**
  * GET /api/store/catalog
- * Get all active store items for students (with caching)
+ * Get active store items with pagination
+ * Query params: ?page=1&limit=20
  */
-router.get('/catalog', storeBrowsingLimiter, async (req, res) => {
-  try {
-    console.log('=== STORE CATALOG ENDPOINT HIT ===');
-    
+router.get('/catalog', storeBrowsingLimiter, asyncWrapper(async (req, res, next) => {
+  const { page, limit, offset } = getPaginationParams(req);
+  
+  // For backward compatibility, if no pagination params provided, return all items from cache
+  if (!req.query.page && !req.query.limit) {
     // Check cache first
     const now = Date.now();
     if (catalogCache && (now - catalogCache.timestamp) < CATALOG_CACHE_TTL) {
-      console.log('Returning cached catalog data');
-      return res.json(catalogCache.data);
+      res.json(catalogCache.data);
+      return;
     }
-    
-    console.log('Cache miss - fetching fresh data');
-    console.log('Cloud storage enabled?', StorageRouter.isCloudStorageEnabled());
     
     const items = await db
       .select()
@@ -40,13 +45,8 @@ router.get('/catalog', storeBrowsingLimiter, async (req, res) => {
       .where(eq(storeItems.isActive, true))
       .orderBy(asc(storeItems.sortOrder), asc(storeItems.name));
     
-    console.log(`Found ${items.length} items`);
-    console.log('Raw first item:', JSON.stringify(items[0], null, 2));
-    
     // Prepare items with proper image URLs using StorageRouter
     const preparedItems = await StorageRouter.prepareStoreItemsResponse(items);
-    
-    console.log('Prepared first item:', JSON.stringify(preparedItems[0], null, 2));
     
     // Cache the result
     catalogCache = {
@@ -55,40 +55,61 @@ router.get('/catalog', storeBrowsingLimiter, async (req, res) => {
     };
     
     res.json(preparedItems);
-  } catch (error) {
-    console.error('Error fetching store catalog:', error);
-    res.status(500).json({ error: 'Failed to fetch store catalog' });
+    return;
   }
-});
+  
+  // Paginated response
+  // Get total count
+  const [{ count }] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(storeItems)
+    .where(eq(storeItems.isActive, true));
+  
+  // Get paginated items
+  const items = await db
+    .select()
+    .from(storeItems)
+    .where(eq(storeItems.isActive, true))
+    .orderBy(asc(storeItems.sortOrder), asc(storeItems.name))
+    .limit(limit)
+    .offset(offset);
+  
+  // Prepare items with proper image URLs
+  const preparedItems = await StorageRouter.prepareStoreItemsResponse(items);
+  
+  // Create paginated response
+  const response = createPaginatedResponse(preparedItems, page, limit, Number(count));
+  
+  // Set pagination headers
+  setPaginationHeaders(res, page, limit, Number(count));
+  
+  res.json(response);
+}));
 
 /**
  * POST /api/store/items/batch
  * Get multiple items by IDs (for loading owned items)
  */
-router.post('/items/batch', storeBrowsingLimiter, async (req, res) => {
-  try {
-    const { itemIds } = req.body;
-    
-    if (!Array.isArray(itemIds) || itemIds.length === 0) {
-      return res.json([]);
-    }
-    
-    // Limit to prevent abuse
-    const limitedIds = itemIds.slice(0, 100);
-    
-    const items = await db
-      .select()
-      .from(storeItems)
-      .where(inArray(storeItems.id, limitedIds));
-    
-    // Prepare items with proper image URLs
-    const preparedItems = await StorageRouter.prepareStoreItemsResponse(items);
-    
-    res.json(preparedItems);
-  } catch (error) {
-    console.error('Error fetching items by IDs:', error);
-    res.status(500).json({ error: 'Failed to fetch items' });
+router.post('/items/batch', storeBrowsingLimiter, asyncWrapper(async (req, res, next) => {
+  const { itemIds } = req.body;
+  
+  if (!Array.isArray(itemIds) || itemIds.length === 0) {
+    res.json([]);
+    return;
   }
-});
+  
+  // Limit to prevent abuse
+  const limitedIds = itemIds.slice(0, 100);
+  
+  const items = await db
+    .select()
+    .from(storeItems)
+    .where(inArray(storeItems.id, limitedIds));
+  
+  // Prepare items with proper image URLs
+  const preparedItems = await StorageRouter.prepareStoreItemsResponse(items);
+  
+  res.json(preparedItems);
+}));
 
 export default router;

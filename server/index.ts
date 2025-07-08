@@ -5,6 +5,15 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { startPerformanceLogging } from "./middleware/auth-monitor";
 import cookieParser from "cookie-parser";
+import { db, pool } from "./db";
+import { sql } from "drizzle-orm";
+import { metricsService } from "./monitoring/metrics-service";
+import { cleanupManager, registerProcessHandlers } from "./lib/resource-cleanup";
+import { apiLimiter } from "./middleware/rateLimiter";
+import cors from "cors";
+import { setCacheHeaders } from "./middleware/cache-headers";
+import { requestIdMiddleware, errorHandler, notFoundHandler } from "./middleware/error-handler";
+import { httpMetricsMiddleware } from "./middleware/observability";
 // Vite imports removed - frontend is now separate
 
 // Get __dirname equivalent in ES modules
@@ -21,9 +30,51 @@ function log(message: string) {
   });
   console.log(`${formattedTime} [express] ${message}`);
 }
-import { apiLimiter } from "./middleware/rateLimiter";
-import cors from "cors";
-import { setCacheHeaders } from "./middleware/cache-headers";
+
+// Register all cleanup handlers
+function registerCleanupHandlers(server: any, app: Express) {
+  // Database pool cleanup
+  cleanupManager.register({
+    name: 'database-pool',
+    priority: 100, // Close late to allow other handlers to use DB
+    handler: async () => {
+      log('Closing database pool...');
+      await pool.end();
+      log('Database pool closed');
+    },
+    timeout: 5000
+  });
+
+
+  // Metrics service cleanup
+  cleanupManager.register({
+    name: 'metrics-service',
+    priority: 40,
+    handler: () => {
+      log('Cleaning up metrics service...');
+      metricsService.cleanup();
+    }
+  });
+
+  // HTTP server cleanup
+  cleanupManager.register({
+    name: 'http-server',
+    priority: 90, // Close near the end
+    handler: () => new Promise<void>((resolve, reject) => {
+      log('Closing HTTP server...');
+      server.close((err?: Error) => {
+        if (err) {
+          log('Error closing server: ' + err.message);
+          reject(err);
+        } else {
+          log('HTTP server closed');
+          resolve();
+        }
+      });
+    }),
+    timeout: 8000
+  });
+}
 
 // Load environment variables
 config();
@@ -31,27 +82,36 @@ config();
 const app = express();
 
 // Configure CORS
+// SECURITY: Only allow specific origins in production
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:5174',
+  'http://localhost:5175',
   'https://animal-genius-frontend.vercel.app',
   'https://animal-genius-quiz-pro.vercel.app',
   process.env.FRONTEND_URL
 ].filter(Boolean);
 
+if (process.env.NODE_ENV === 'production') {
+  console.log('CORS configured for production with origins:', allowedOrigins);
+}
+
 app.use(cors({
   credentials: true, // Allow cookies to be sent
   origin: (origin, callback) => {
-    // Log the origin for debugging
-    console.log('CORS check - Origin:', origin);
-    console.log('CORS check - Allowed origins:', allowedOrigins);
+    // Log the origin for debugging in development only
+    if (process.env.NODE_ENV === 'development') {
+      console.log('CORS check - Origin:', origin);
+      console.log('CORS check - Allowed origins:', allowedOrigins);
+    }
     
     // Allow requests with no origin (like mobile apps or Postman)
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      // For local development, allow file:// protocol
-      if (origin && origin.startsWith('file://')) {
+      // For local development ONLY, allow file:// protocol
+      if (process.env.NODE_ENV === 'development' && origin && origin.startsWith('file://')) {
+        console.log('CORS allowed file:// origin in development mode');
         callback(null, true);
       } else {
         console.log('CORS BLOCKED:', origin);
@@ -70,8 +130,14 @@ app.set('trust proxy', 1);
 // Cookie parsing middleware (MUST be before routes that use cookies)
 app.use(cookieParser());
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: false, limit: '10mb' }));
+
+// Add request ID middleware early in the chain
+app.use(requestIdMiddleware);
+
+// Add observability middleware for metrics and structured logging
+app.use(httpMetricsMiddleware);
 
 // Apply cache headers middleware
 app.use(setCacheHeaders);
@@ -95,18 +161,8 @@ app.use((req, res, next) => {
 
   res.on("finish", () => {
     const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "…";
-      }
-
-      log(logLine);
-    }
+    // Observability middleware now handles logging
+    // Remove duplicate logging here
   });
 
   next();
@@ -114,22 +170,21 @@ app.use((req, res, next) => {
 
 (async () => {
   try {
+    // Register process handlers early
+    registerProcessHandlers();
+    
     // Test database connection before starting server
     log("Testing database connection...");
-    const { db } = await import("./db");
-    const { sql } = await import("drizzle-orm");
     await db.execute(sql`SELECT 1`);
     log("Database connection successful");
 
     const server = await registerRoutes(app);
 
-    app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-      const status = err.status || err.statusCode || 500;
-      const message = err.message || "Internal Server Error";
+    // 404 handler - must come after all routes
+    app.use(notFoundHandler);
 
-      log(`Error: ${message}`);
-      res.status(status).json({ message });
-    });
+    // Global error handler - must be last
+    app.use(errorHandler);
 
     // Frontend is now served separately via Vite dev server or Vercel
     // No need to serve static files from backend
@@ -158,50 +213,10 @@ app.use((req, res, next) => {
       // Start authentication performance monitoring
       startPerformanceLogging();
       log('Authentication performance monitoring started');
-    });
-    
-    // Graceful shutdown handling
-    const gracefulShutdown = async () => {
-      log('Starting graceful shutdown...');
       
-      try {
-        // Import and cleanup game session manager
-        const { gameSessionManager } = await import("./game-session-manager");
-        gameSessionManager.cleanup();
-        log('Game session manager cleaned up');
-        
-        // Cleanup WebSocket server if available
-        const wsServer = (app as any).gameWebSocketServer;
-        if (wsServer && typeof wsServer.cleanup === 'function') {
-          wsServer.cleanup();
-          log('WebSocket server cleaned up');
-        }
-        
-        // Cleanup metrics service
-        const { metricsService } = await import("./monitoring/metrics-service");
-        metricsService.cleanup();
-        log('Metrics service cleaned up');
-        
-        // Close server
-        server.close(() => {
-          log('Server closed');
-          process.exit(0);
-        });
-        
-        // Force exit after 10 seconds
-        setTimeout(() => {
-          log('Forcing shutdown after timeout');
-          process.exit(1);
-        }, 10000);
-      } catch (error) {
-        log('Error during shutdown:', error instanceof Error ? error.message : 'Unknown error');
-        process.exit(1);
-      }
-    };
-    
-    // Handle shutdown signals
-    process.on('SIGTERM', gracefulShutdown);
-    process.on('SIGINT', gracefulShutdown);
+      // Register cleanup handlers
+      registerCleanupHandlers(server, app);
+    });
   } catch (error) {
     console.error("Failed to start server:", error);
     

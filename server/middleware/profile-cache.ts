@@ -2,16 +2,11 @@ import type { Profile } from '@shared/schema';
 import { db } from '../db';
 import { profiles } from '@shared/schema';
 import { eq } from 'drizzle-orm';
+import { getCache } from '../lib/cache-factory';
+import { CONFIG } from '../config/constants';
 
-// Simple in-memory cache for profiles
-const profileCache = new Map<string, {
-  profile: Profile;
-  timestamp: number;
-  ttl: number;
-}>();
-
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-const MAX_CACHE_SIZE = 1000; // Limit cache size
+const cache = getCache();
+const CACHE_TTL = CONFIG.CACHE.PROFILE_TTL;
 
 /**
  * Get profile with caching
@@ -19,12 +14,12 @@ const MAX_CACHE_SIZE = 1000; // Limit cache size
  * @returns Profile or null if not found
  */
 export async function getCachedProfile(userId: string): Promise<Profile | null> {
-  const now = Date.now();
-  const cached = profileCache.get(userId);
+  const cacheKey = `profile:${userId}`;
   
-  // Check if cached and not expired
-  if (cached && (now - cached.timestamp) < cached.ttl) {
-    return cached.profile;
+  // Try to get from cache first
+  const cached = await cache.get<Profile>(cacheKey);
+  if (cached) {
+    return cached;
   }
   
   // Fetch from database
@@ -39,24 +34,7 @@ export async function getCachedProfile(userId: string): Promise<Profile | null> 
   }
   
   // Cache the result
-  profileCache.set(userId, {
-    profile,
-    timestamp: now,
-    ttl: CACHE_TTL
-  });
-  
-  // Simple cache size management - Maps preserve insertion order
-  if (profileCache.size > MAX_CACHE_SIZE) {
-    // Remove oldest 10% of entries (first inserted)
-    const toRemoveCount = Math.floor(profileCache.size * 0.1) || 1;
-    const keys = profileCache.keys();
-    for (let i = 0; i < toRemoveCount; i++) {
-      const keyToRemove = keys.next().value;
-      if (keyToRemove) {
-        profileCache.delete(keyToRemove);
-      }
-    }
-  }
+  await cache.set(cacheKey, profile, CACHE_TTL);
   
   return profile;
 }
@@ -65,24 +43,25 @@ export async function getCachedProfile(userId: string): Promise<Profile | null> 
  * Invalidate cached profile
  * @param userId User ID to invalidate
  */
-export function invalidateProfile(userId: string): void {
-  profileCache.delete(userId);
+export async function invalidateProfile(userId: string): Promise<void> {
+  const cacheKey = `profile:${userId}`;
+  await cache.del(cacheKey);
 }
 
 /**
  * Clear all cached profiles
  */
-export function clearProfileCache(): void {
-  profileCache.clear();
+export async function clearProfileCache(): Promise<void> {
+  await cache.flush();
 }
 
 /**
  * Get cache statistics
  */
-export function getCacheStats() {
+export async function getCacheStats() {
+  const stats = await cache.getStats();
   return {
-    size: profileCache.size,
-    maxSize: MAX_CACHE_SIZE,
+    ...stats,
     ttl: CACHE_TTL
   };
 }

@@ -5,7 +5,9 @@ import { students, classes, animalTypes, geniusTypes } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { isValidPassportCode } from "@shared/currency-types";
 import { roomBrowsingLimiter } from "../middleware/rateLimiter";
-import * as cache from "../lib/cache";
+import { getCache } from "../lib/cache-factory";
+
+const cache = getCache();
 
 export function registerPublicRoomRoutes(app: Express) {
   // Public endpoint for viewing any student's room (READ ONLY)

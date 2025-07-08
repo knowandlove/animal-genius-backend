@@ -5,7 +5,9 @@ import { students, classes, animalTypes, geniusTypes, quizSubmissions } from "@s
 import { eq, and, sql } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth";
 import { requireStudentSession } from "../middleware/student-auth";
-import * as cache from "../lib/cache";
+import { getCache } from "../lib/cache-factory";
+
+const cache = getCache();
 
 interface ClassIslandStudent {
   id: string;

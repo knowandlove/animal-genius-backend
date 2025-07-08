@@ -1,6 +1,7 @@
 import { db } from "../db";
 import { quizSubmissions } from "@shared/schema";
 import { eq, and, lte, isNull } from "drizzle-orm";
+import { typeLookup } from "./typeLookupService";
 
 /**
  * Simple async task manager for quiz processing
@@ -90,26 +91,17 @@ export class AsyncTaskManager {
     console.log(`⚠️ Found ${stuckSubmissions.length} stuck submissions`);
     
     for (const submission of stuckSubmissions) {
-      // Import the processing function to avoid circular dependencies
-      const { processQuizRewards } = await import("./quizSubmissionService");
+      // Note: Since processQuizRewards doesn't exist and submissions are now processed
+      // synchronously in createQuizSubmissionFast, this recovery process is no longer needed.
+      // Stuck submissions should not occur with the current synchronous implementation.
+      console.log(`⚠️ Found stuck submission ${submission.id} - this should not happen with synchronous processing`);
       
-      await this.executeWithRetry(
-        `quiz-recovery-${submission.id}`,
-        `Quiz recovery for ${submission.studentName}`,
-        async () => {
-          // Generate passport code from animal type
-          const animalTypeCode = await this.getAnimalTypeCode(submission.animalTypeId);
-          const passportCode = this.generateRecoveryPassportCode(animalTypeCode);
-          
-          await processQuizRewards(
-            submission.id,
-            submission,
-            passportCode,
-            submission.animalTypeId,
-            submission.geniusTypeId
-          );
-        }
-      );
+      // Log the issue for investigation
+      console.error('Stuck submission found:', {
+        submissionId: submission.id,
+        studentName: submission.studentName,
+        completedAt: submission.completedAt
+      });
     }
   }
   
@@ -117,7 +109,6 @@ export class AsyncTaskManager {
    * Get animal type code for recovery
    */
   private async getAnimalTypeCode(animalTypeId: string): Promise<string> {
-    const { typeLookup } = await import("./typeLookupService");
     return typeLookup.getAnimalTypeCode(animalTypeId) || 'unknown';
   }
   

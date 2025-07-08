@@ -32,7 +32,7 @@ export const supabaseAnon = createClient(supabaseUrl, supabaseAnonKey, {
   }
 });
 
-console.log('Supabase clients initialized successfully');
-console.log('URL:', supabaseUrl.substring(0, 30) + '...');
-console.log('Anon key:', supabaseAnonKey.substring(0, 30) + '...');
-console.log('Service key:', supabaseServiceKey.substring(0, 30) + '...');
+if (process.env.NODE_ENV === 'development') {
+  console.log('Supabase clients initialized successfully');
+  // Never log keys, even partial ones
+}

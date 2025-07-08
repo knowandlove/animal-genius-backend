@@ -4,11 +4,12 @@ import type { Express } from "express";
 import { db } from "../db";
 import { quizSubmissions, students, classes, purchaseRequests, currencyTransactions, storeSettings, storeItems, animalTypes, geniusTypes } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
-import { isValidPassportCode, validatePurchaseRequest, TRANSACTION_REASONS } from "@shared/currency-types";
+import { isValidPassportCode, TRANSACTION_REASONS } from "@shared/currency-types";
 import { z } from "zod";
 import { requireStudentSession, generateStudentSession } from "../middleware/student-auth";
 import { authLimiter } from "../middleware/rateLimiter";
 import { checkPassportLockout, trackFailedAttempt, clearFailedAttempts } from "../middleware/passport-lockout";
+import { sanitizeAvatarData, avatarDataSchema } from "../validation/room-schemas";
 
 // Passport code validation schema
 const passportCodeSchema = z.string().regex(/^[A-Z]{3}-[A-Z0-9]{3,4}$/, "Invalid passport code format");
@@ -43,7 +44,7 @@ export function registerSecureRoomRoutes(app: Express) {
         .select({
           id: students.id,
           studentName: students.studentName,
-          passportCode: students.passportCode,
+          // passportCode removed for security
           classId: students.classId
         })
         .from(students)
@@ -190,8 +191,7 @@ export function registerSecureRoomRoutes(app: Express) {
 
       res.json({ 
         authenticated: true,
-        studentName: student.studentName,
-        passportCode: student.passportCode
+        studentName: student.studentName
       });
     } catch (error) {
       console.error("Session check error:", error);
@@ -219,7 +219,7 @@ export function registerSecureRoomRoutes(app: Express) {
           avatarData: students.avatarData,
           roomData: students.roomData,
           createdAt: students.createdAt,
-          passportCode: students.passportCode,
+          // passportCode removed for security
           // Class info
           className: classes.name,
           classId: classes.id
@@ -240,7 +240,6 @@ export function registerSecureRoomRoutes(app: Express) {
       // Format response for student room
       const roomData = {
         id: student.id,
-        passportCode: student.passportCode,
         studentName: student.studentName,
         gradeLevel: student.gradeLevel,
         animalType: student.animalType || student.animalTypeId,
@@ -296,20 +295,6 @@ export function registerSecureRoomRoutes(app: Express) {
     }
   });
 
-  // Create purchase request (secure version - redirects to direct)
-  app.post("/api/room/me/purchase", requireStudentSession, async (req, res) => {
-    // Direct to the store-direct endpoint
-    return res.status(400).json({ 
-      error: "Please use /api/store-direct/purchase instead.",
-      redirect: "/api/store-direct/purchase"
-    });
-  });
-
-  // Get student's purchase requests (secure version)
-  app.get("/api/room/me/purchases", requireStudentSession, async (req, res) => {
-    // Purchase requests no longer exist in direct purchase system
-    res.json([]);
-  });
 
   // Equip/unequip items endpoint (secure version)
   app.post("/api/room/me/equip", requireStudentSession, async (req, res) => {
@@ -336,7 +321,7 @@ export function registerSecureRoomRoutes(app: Express) {
       }
       
       const student = studentData[0];
-      const currentAvatarData = student.avatarData || {};
+      const currentAvatarData = student.avatarData as any || {};
       const ownedItems = currentAvatarData.owned || [];
       const equippedItems = currentAvatarData.equipped || {};
       
@@ -354,14 +339,28 @@ export function registerSecureRoomRoutes(app: Express) {
         delete newEquipped[slot];
       }
       
+      // Create new avatar data with updated equipment
+      const newAvatarData = {
+        ...currentAvatarData,
+        equipped: newEquipped
+      };
+      
+      // Validate and sanitize the new avatar data
+      const validationResult = avatarDataSchema.safeParse(newAvatarData);
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          error: "Invalid avatar data",
+          details: validationResult.error.errors 
+        });
+      }
+      
+      const sanitizedData = sanitizeAvatarData(validationResult.data);
+      
       // Update database
       await db
         .update(students)
         .set({
-          avatarData: {
-            ...currentAvatarData,
-            equipped: newEquipped
-          }
+          avatarData: sanitizedData
         })
         .where(eq(students.id, student.id));
       

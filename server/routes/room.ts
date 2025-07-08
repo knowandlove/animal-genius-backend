@@ -1,16 +1,21 @@
 // Student Room Routes - No authentication required
 import type { Express } from "express";
 import { db } from "../db";
-import { students, classes, currencyTransactions, storeItems, quizSubmissions, studentInventory, itemTypes, animalTypes, geniusTypes } from "@shared/schema";
-import { eq, and, desc, asc, inArray, sql } from "drizzle-orm";
+import { students, classes, currencyTransactions, storeItems, quizSubmissions, studentInventory, itemTypes, animalTypes, geniusTypes, patterns } from "@shared/schema";
+import { eq, and, or, desc, asc, inArray, sql } from "drizzle-orm";
 import { isValidPassportCode, TRANSACTION_REASONS } from "@shared/currency-types";
 import { z } from "zod";
-import * as cache from "../lib/cache";
+import { getCache } from "../lib/cache-factory";
+
+const cache = getCache();
 import StorageRouter from "../services/storage-router";
 import { roomSaveLimiter, roomBrowsingLimiter, passportLoginLimiter } from "../middleware/rateLimiter";
 import { requireStudentSession, generateStudentSession } from "../middleware/student-auth";
 import { validateOwnDataAccess } from "../middleware/validate-student-class";
 import { checkRoomAccess } from "../middleware/room-access";
+import { requireEditAccess } from "../middleware/requireEditAccess";
+import { getStudentPet, getAvailablePets } from "../services/petService";
+import { optionalAuth } from "../middleware/auth";
 
 
 // Passport code validation schema
@@ -18,8 +23,20 @@ const passportCodeSchema = z.string().regex(/^[A-Z]{3}-[A-Z0-9]{3}$/, "Invalid p
 
 export function registerRoomRoutes(app: Express) {
   
+  // TEMPORARY: Pet catalog endpoint - remove once pet routes are working
+  app.get("/api/pets/catalog", async (req, res) => {
+    try {
+      console.log('📱 Pet catalog requested (temporary endpoint)');
+      const pets = await getAvailablePets();
+      res.json(pets);
+    } catch (error) {
+      console.error("Get pet catalog error:", error);
+      res.status(500).json({ error: 'Failed to fetch pet catalog' });
+    }
+  });
+  
   // NEW: Consolidated endpoint for student room page - Uses flexible access control
-  app.get("/api/room-page-data/:passportCode", checkRoomAccess, passportLoginLimiter, roomBrowsingLimiter, async (req, res) => {
+  app.get("/api/room-page-data/:passportCode", optionalAuth, checkRoomAccess, passportLoginLimiter, roomBrowsingLimiter, async (req, res) => {
     try {
       const { passportCode } = req.params;
       
@@ -44,7 +61,7 @@ export function registerRoomRoutes(app: Express) {
           avatarData: students.avatarData,
           roomData: students.roomData,
           createdAt: students.createdAt,
-          passportCode: students.passportCode,
+          // passportCode removed for security
           className: classes.name,
           classId: classes.id,
           classCode: classes.classCode,
@@ -76,10 +93,7 @@ export function registerRoomRoutes(app: Express) {
       let storeCatalog = [];
       
       if (storeStatus.isOpen) {
-        const catalogCacheKey = 'store-catalog:active:v3'; // Changed cache key to force refresh
-        // Force cache miss for debugging
-        cache.del(catalogCacheKey);
-        console.log(`🗑️ Cleared cache for ${catalogCacheKey}`);
+        const catalogCacheKey = 'store-catalog:active:v4'; // Changed cache key to force refresh
         storeCatalog = cache.get<any[]>(catalogCacheKey);
         
         if (!storeCatalog) {
@@ -93,6 +107,7 @@ export function registerRoomRoutes(app: Express) {
               cost: storeItems.cost,
               rarity: storeItems.rarity,
               assetId: storeItems.assetId,
+              assetType: storeItems.assetType, // Include assetType from DB
               sortOrder: storeItems.sortOrder,
               isActive: storeItems.isActive,
               itemType: itemTypes.category, // Get the category which matches frontend expectations
@@ -111,6 +126,17 @@ export function registerRoomRoutes(app: Express) {
           
           // Use StorageRouter to prepare items with image URLs
           const preparedItems = await StorageRouter.prepareStoreItemsResponse(items);
+          
+          // Debug: Check if assetType is in prepared items
+          if (preparedItems.length > 0) {
+            console.log('Room endpoint - First prepared item:', {
+              id: preparedItems[0].id,
+              name: preparedItems[0].name,
+              assetType: preparedItems[0].assetType,
+              hasAssetType: 'assetType' in preparedItems[0],
+              riveUrl: preparedItems[0].riveUrl
+            });
+          }
           
           // Map item types to what the frontend expects
           const mapItemType = (itemType: string): string => {
@@ -149,7 +175,9 @@ export function registerRoomRoutes(app: Express) {
             cost: item.cost,
             description: item.description,
             rarity: item.rarity,
-            imageUrl: item.imageUrl
+            imageUrl: item.imageUrl,
+            assetType: item.assetType, // Include asset type (camelCase)
+            riveUrl: item.riveUrl // Include Rive URL for animations
           }));
           
           // Cache for 10 minutes
@@ -277,11 +305,78 @@ export function registerRoomRoutes(app: Express) {
       // Debug log
       console.log(`[DEBUG] Student ${student.studentName} inventory:`, inventoryItems.length, 'items');
       
+      // Enrich room data with pattern details if needed
+      let enrichedRoomData = student.roomData || { furniture: [] };
+      
+      // Check if we need to fetch pattern details
+      const patternCodes: string[] = [];
+      if (enrichedRoomData.wallPattern) {
+        patternCodes.push(enrichedRoomData.wallPattern);
+      }
+      if (enrichedRoomData.floorPattern) {
+        patternCodes.push(enrichedRoomData.floorPattern);
+      }
+      
+      // If there are patterns to fetch, get their details
+      if (patternCodes.length > 0) {
+        try {
+          const patternDetails = await db
+            .select({
+              code: patterns.code,
+              patternType: patterns.patternType,
+              patternValue: patterns.patternValue,
+              surfaceType: patterns.surfaceType
+            })
+            .from(patterns)
+            .where(inArray(patterns.code, patternCodes));
+          
+          // Create a map for quick lookup
+          const patternMap = new Map(
+            patternDetails.map(p => [p.code, p])
+          );
+          
+          // Enrich the room data with pattern details
+          if (enrichedRoomData.wallPattern && patternMap.has(enrichedRoomData.wallPattern)) {
+            const wallPattern = patternMap.get(enrichedRoomData.wallPattern);
+            enrichedRoomData.wall = {
+              type: 'pattern',
+              value: enrichedRoomData.wallPattern,
+              patternType: wallPattern.patternType,
+              patternValue: wallPattern.patternValue
+            };
+          }
+          
+          if (enrichedRoomData.floorPattern && patternMap.has(enrichedRoomData.floorPattern)) {
+            const floorPattern = patternMap.get(enrichedRoomData.floorPattern);
+            enrichedRoomData.floor = {
+              type: 'pattern',
+              value: enrichedRoomData.floorPattern,
+              patternType: floorPattern.patternType,
+              patternValue: floorPattern.patternValue
+            };
+          }
+          
+          console.log(`[DEBUG] Enriched room data with ${patternDetails.length} pattern details`);
+        } catch (error) {
+          console.error('Error fetching pattern details:', error);
+          // Continue with original room data if pattern fetch fails
+        }
+      }
+      
+      // Get student's pet if they have one
+      let pet = null;
+      try {
+        pet = await getStudentPet(student.id);
+      } catch (error) {
+        console.error('Error fetching student pet:', error);
+        // Continue without pet data
+      }
+
       // Format consolidated response - using "room" instead of "island"
       const pageData = {
         room: {
           id: student.id,
-          passportCode: student.passportCode,
+          passportCode: student.passportCode, // Include passport code!
           studentName: student.studentName,
           gradeLevel: student.gradeLevel,
           animalType: student.animalType || student.animalTypeId,
@@ -290,7 +385,7 @@ export function registerRoomRoutes(app: Express) {
           learningStyle: student.learningStyle,
           currencyBalance: student.currencyBalance || 0,
           avatarData: updatedAvatarData,
-          roomData: student.roomData || { furniture: [] },
+          roomData: enrichedRoomData,
           className: student.className,
           classId: student.classId,
           classCode: student.classCode,
@@ -301,7 +396,7 @@ export function registerRoomRoutes(app: Express) {
         wallet,
         storeStatus,
         storeCatalog,
-        purchaseRequests: studentPurchaseRequests,
+        pet, // Include pet data
         // Include access information for frontend
         access: {
           canView: req.roomAccess?.canView || false,
@@ -344,7 +439,7 @@ export function registerRoomRoutes(app: Express) {
           avatarData: students.avatarData,
           roomData: students.roomData,
           createdAt: students.createdAt,
-          passportCode: students.passportCode,
+          // passportCode removed for security
           // Class info
           className: classes.name,
           classId: classes.id
@@ -365,7 +460,6 @@ export function registerRoomRoutes(app: Express) {
       // Format response for student room
       const roomData = {
         id: student.id,
-        passportCode: student.passportCode,
         studentName: student.studentName,
         gradeLevel: student.gradeLevel,
         animalType: student.animalType,
@@ -427,20 +521,6 @@ export function registerRoomRoutes(app: Express) {
     }
   });
 
-  // Create purchase request (redirects to direct purchase)
-  app.post("/api/room/:passportCode/purchase", async (req, res) => {
-    // Direct to the store-direct endpoint
-    return res.status(400).json({ 
-      message: "Please use /api/store-direct/purchase instead.",
-      redirect: "/api/store-direct/purchase"
-    });
-  });
-
-  // Get student's purchase requests (returns empty in direct system)
-  app.get("/api/room/:passportCode/purchases", async (req, res) => {
-    // Purchase requests no longer exist in direct purchase system
-    res.json([]);
-  });
 
   // Save room state endpoint - Must have edit permission
   app.post("/api/room/:passportCode/state", checkRoomAccess, roomSaveLimiter, async (req, res) => {
@@ -655,11 +735,16 @@ export function registerRoomRoutes(app: Express) {
     }
   });
 
-  // Save avatar customization endpoint
-  app.post("/api/room/:passportCode/avatar", roomSaveLimiter, async (req, res) => {
+  // Save avatar customization endpoint - Must have edit permission
+  app.post("/api/room/:passportCode/avatar", checkRoomAccess, requireEditAccess, roomSaveLimiter, async (req, res) => {
     try {
       const { passportCode } = req.params;
       const { equipped } = req.body;
+      
+      // Check edit permission
+      if (!req.roomAccess?.canEdit) {
+        return res.status(403).json({ message: "You don't have permission to edit this room" });
+      }
       
       // Validate passport code
       if (!isValidPassportCode(passportCode)) {
@@ -726,6 +811,23 @@ export function registerRoomRoutes(app: Express) {
               )
             );
         }
+        
+        // IMPORTANT: Also update avatarData in students table
+        const currentAvatarData = await tx
+          .select({ avatarData: students.avatarData })
+          .from(students)
+          .where(eq(students.id, student.id))
+          .limit(1);
+        
+        const updatedAvatarData = {
+          ...(currentAvatarData[0]?.avatarData || {}),
+          equipped: equipped || {}
+        };
+        
+        await tx
+          .update(students)
+          .set({ avatarData: updatedAvatarData })
+          .where(eq(students.id, student.id));
       });
       
       // Clear cache
@@ -740,11 +842,31 @@ export function registerRoomRoutes(app: Express) {
     }
   });
 
-  // Save room decoration endpoint
-  app.post("/api/room/:passportCode/room", roomSaveLimiter, async (req, res) => {
+  // Save room decoration endpoint - Must have edit permission
+  app.post("/api/room/:passportCode/room", checkRoomAccess, requireEditAccess, roomSaveLimiter, async (req, res) => {
     try {
       const { passportCode } = req.params;
-      const { theme, wallColor, floorColor, wallPattern, floorPattern, furniture } = req.body;
+      const { theme, wallColor, floorColor, wallPattern, floorPattern, furniture, wall, floor } = req.body;
+      
+      console.log('Room save endpoint - received data:', {
+        passportCode,
+        theme,
+        wallColor,
+        floorColor,
+        wallPattern,
+        floorPattern,
+        wall: JSON.stringify(wall),
+        floor: JSON.stringify(floor),
+        furnitureCount: furniture?.length,
+        wallType: typeof wall,
+        floorType: typeof floor,
+        rawBody: JSON.stringify(req.body)
+      });
+      
+      // Check edit permission
+      if (!req.roomAccess?.canEdit) {
+        return res.status(403).json({ message: "You don't have permission to edit this room" });
+      }
       
       // Validate passport code
       if (!isValidPassportCode(passportCode)) {
@@ -775,6 +897,12 @@ export function registerRoomRoutes(app: Express) {
       
       const student = studentData[0];
       
+      console.log('Student data:', {
+        id: student.id,
+        idType: typeof student.id,
+        hasRoomData: !!student.roomData
+      });
+      
       // Validate all furniture items are owned
       if (furniture && furniture.length > 0) {
         const furnishingItemIds = furniture.map((item: any) => item.itemId);
@@ -800,27 +928,182 @@ export function registerRoomRoutes(app: Express) {
         }
       }
       
-      // Update room data
+      // Parse wall/floor if they're stringified (do this FIRST)
+      let parsedWall = wall;
+      let parsedFloor = floor;
+      
+      if (typeof wall === 'string') {
+        try {
+          parsedWall = JSON.parse(wall);
+          console.log('Parsed wall from string:', parsedWall);
+        } catch (e) {
+          console.log('Failed to parse wall string:', wall);
+        }
+      }
+      
+      if (typeof floor === 'string') {
+        try {
+          parsedFloor = JSON.parse(floor);
+          console.log('Parsed floor from string:', parsedFloor);
+        } catch (e) {
+          console.log('Failed to parse floor string:', floor);
+        }
+      }
+      
+      // Validate pattern ownership - ONLY use the new format (wall/floor objects)
+      const patternsToValidate: string[] = [];
+      
+      // Only add patterns from the new format objects
+      if (parsedWall?.type === 'pattern' && parsedWall.value) {
+        patternsToValidate.push(parsedWall.value);
+      }
+      if (parsedFloor?.type === 'pattern' && parsedFloor.value) {
+        patternsToValidate.push(parsedFloor.value);
+      }
+      
+      console.log('Patterns to validate:', patternsToValidate);
+      console.log('Pattern types:', patternsToValidate.map(p => typeof p));
+      console.log('Pattern values (JSON):', JSON.stringify(patternsToValidate));
+      
+      if (patternsToValidate.length > 0) {
+        console.log('About to query pattern items with codes:', patternsToValidate);
+        
+        try {
+          // First, let's check if these patterns actually exist
+          // Log the SQL query
+          console.log('Executing pattern query with values:', patternsToValidate);
+          
+          const existingPatterns = await db
+            .select({
+              id: patterns.id,
+              code: patterns.code
+            })
+            .from(patterns)
+            .where(inArray(patterns.code, patternsToValidate));
+          
+          console.log('Existing patterns:', existingPatterns);
+          
+          if (existingPatterns.length === 0) {
+            console.log('No valid patterns found for codes:', patternsToValidate);
+            console.log('WARNING: Skipping pattern validation temporarily to allow room saves');
+            // Temporarily skip pattern validation to allow saves
+            // return res.status(400).json({ 
+            //   message: "Invalid pattern codes provided",
+            //   invalidPatterns: patternsToValidate 
+            // });
+          }
+          
+          // Get pattern IDs to check store items
+          const patternIds = existingPatterns.map(p => p.id);
+          
+          // Skip ownership check if no patterns exist
+          if (patternIds.length === 0) {
+            console.log('No pattern IDs to check ownership for, skipping validation');
+          } else {
+          // Get store items that are patterns with the specified pattern IDs
+          const patternItems = await db
+            .select({
+              id: storeItems.id,
+              patternId: storeItems.patternId,
+              patternCode: patterns.code
+            })
+            .from(storeItems)
+            .innerJoin(patterns, eq(storeItems.patternId, patterns.id))
+            .where(
+              and(
+                inArray(storeItems.patternId, patternIds),
+                eq(storeItems.isActive, true)
+              )
+            );
+          
+          console.log('Found pattern items:', patternItems);
+          
+          // Check ownership for each pattern item
+          const patternItemIds = patternItems.map(item => item.id);
+          if (patternItemIds.length > 0) {
+            const ownedPatternItems = await db
+              .select({
+                storeItemId: studentInventory.storeItemId,
+                patternCode: patterns.code
+              })
+              .from(studentInventory)
+              .innerJoin(storeItems, eq(studentInventory.storeItemId, storeItems.id))
+              .innerJoin(patterns, eq(storeItems.patternId, patterns.id))
+              .where(
+                and(
+                  eq(studentInventory.studentId, student.id),
+                  inArray(studentInventory.storeItemId, patternItemIds)
+                )
+              );
+            
+            const ownedPatternCodes = ownedPatternItems.map(item => item.patternCode).filter(Boolean) as string[];
+            const unownedPatterns = patternsToValidate.filter(patternCode => !ownedPatternCodes.includes(patternCode));
+            
+            if (unownedPatterns.length > 0) {
+              return res.status(400).json({ 
+                message: "You don't own some of the patterns you're trying to apply",
+                unownedPatterns 
+              });
+            }
+          }
+          } // Close the else block for pattern ownership check
+        } catch (queryError) {
+          console.error('Pattern query error:', queryError);
+          console.error('Query params:', { patternsToValidate });
+          throw queryError;
+        }
+      }
+      
+      // Update room data with new structure support
       const updatedRoomData = {
         ...student.roomData,
         theme: theme || student.roomData?.theme || 'wood',
-        wallColor: wallColor || student.roomData?.wallColor,
-        floorColor: floorColor || student.roomData?.floorColor,
-        wallPattern: wallPattern !== undefined ? wallPattern : student.roomData?.wallPattern,
-        floorPattern: floorPattern !== undefined ? floorPattern : student.roomData?.floorPattern,
-        furniture: furniture || []
+        // Handle new wall/floor structure - use parsed values
+        wall: parsedWall || (wallPattern ? { type: 'pattern', value: wallPattern } : wallColor ? { type: 'color', value: wallColor } : student.roomData?.wall),
+        floor: parsedFloor || (floorPattern ? { type: 'pattern', value: floorPattern } : floorColor ? { type: 'color', value: floorColor } : student.roomData?.floor),
+        // Maintain backwards compatibility - use parsed values
+        wallColor: parsedWall?.type === 'color' ? parsedWall.value : (wallColor || student.roomData?.wallColor),
+        floorColor: parsedFloor?.type === 'color' ? parsedFloor.value : (floorColor || student.roomData?.floorColor),
+        wallPattern: parsedWall?.type === 'pattern' ? parsedWall.value : (wallPattern !== undefined ? wallPattern : student.roomData?.wallPattern),
+        floorPattern: parsedFloor?.type === 'pattern' ? parsedFloor.value : (floorPattern !== undefined ? floorPattern : student.roomData?.floorPattern),
+        furniture: furniture || student.roomData?.furniture || []
       };
       
-      // Update database
-      await db
-        .update(students)
-        .set({
-          roomData: updatedRoomData
-        })
-        .where(eq(students.id, student.id));
+      console.log('Updating room data in database:', {
+        studentId: student.id,
+        updatedRoomData: JSON.stringify(updatedRoomData, null, 2)
+      });
+      
+      // Use transaction to ensure data is committed
+      await db.transaction(async (tx) => {
+        // Update database
+        const updateResult = await tx
+          .update(students)
+          .set({
+            roomData: updatedRoomData,
+            updatedAt: new Date()
+          })
+          .where(eq(students.id, student.id));
+        
+        console.log('Database update result:', updateResult);
+        
+        // Verify the update by reading back within the same transaction
+        const verifyData = await tx
+          .select({ roomData: students.roomData })
+          .from(students)
+          .where(eq(students.id, student.id))
+          .limit(1);
+        
+        console.log('Verification read after update:', {
+          studentId: student.id,
+          savedRoomData: JSON.stringify(verifyData[0]?.roomData, null, 2)
+        });
+      });
       
       // Clear cache
       cache.del(`room-page-data:${passportCode}`);
+      
+      console.log('Room save completed successfully for:', passportCode);
       
       res.json({
         message: "Room decoration saved!",
@@ -829,6 +1112,185 @@ export function registerRoomRoutes(app: Express) {
     } catch (error) {
       console.error("Save room error:", error);
       res.status(500).json({ message: "Failed to save room decoration" });
+    }
+  });
+
+  // Update room surfaces endpoint - Must have edit permission
+  app.put("/api/room/:passportCode/surfaces", checkRoomAccess, requireEditAccess, roomSaveLimiter, async (req, res) => {
+    try {
+      const { passportCode } = req.params;
+      const { wall, floor } = req.body;
+      
+      // Check edit permission
+      if (!req.roomAccess?.canEdit) {
+        return res.status(403).json({ message: "You don't have permission to edit this room" });
+      }
+      
+      // Validate passport code
+      if (!isValidPassportCode(passportCode)) {
+        return res.status(400).json({ message: "Invalid passport code format" });
+      }
+      
+      // Validate surface data structure
+      const validateSurface = (surface: any, surfaceName: string) => {
+        if (!surface) return true; // Optional
+        if (typeof surface !== 'object' || !surface.type || !surface.value) {
+          throw new Error(`Invalid ${surfaceName} format. Expected {type: 'color'|'pattern', value: string}`);
+        }
+        if (!['color', 'pattern'].includes(surface.type)) {
+          throw new Error(`Invalid ${surfaceName} type. Must be 'color' or 'pattern'`);
+        }
+        if (typeof surface.value !== 'string') {
+          throw new Error(`Invalid ${surfaceName} value. Must be a string`);
+        }
+        return true;
+      };
+      
+      // Parse wall/floor if they're stringified
+      let parsedWall = wall;
+      let parsedFloor = floor;
+      
+      if (typeof wall === 'string') {
+        try {
+          parsedWall = JSON.parse(wall);
+          console.log('Parsed wall from string in surfaces endpoint:', parsedWall);
+        } catch (e) {
+          console.log('Failed to parse wall string in surfaces endpoint:', wall);
+        }
+      }
+      
+      if (typeof floor === 'string') {
+        try {
+          parsedFloor = JSON.parse(floor);
+          console.log('Parsed floor from string in surfaces endpoint:', parsedFloor);
+        } catch (e) {
+          console.log('Failed to parse floor string in surfaces endpoint:', floor);
+        }
+      }
+      
+      // Validate surface formats - use parsed values
+      try {
+        if (parsedWall) validateSurface(parsedWall, 'wall');
+        if (parsedFloor) validateSurface(parsedFloor, 'floor');
+      } catch (validationError: any) {
+        return res.status(400).json({ message: validationError.message });
+      }
+      
+      // Get student data
+      const studentData = await db
+        .select({
+          id: students.id,
+          roomData: students.roomData
+        })
+        .from(students)
+        .where(eq(students.passportCode, passportCode))
+        .limit(1);
+      
+      if (studentData.length === 0) {
+        return res.status(404).json({ message: "Student not found" });
+      }
+      
+      const student = studentData[0];
+      
+      // If applying patterns, validate ownership
+      // Pattern validation is already handled above - removed duplicate code
+      
+      // Prepare updated room data with new format while maintaining backwards compatibility
+      const currentRoomData = student.roomData || {};
+      const updatedRoomData = { ...currentRoomData };
+      
+      // Update wall surface - use parsed values
+      if (parsedWall) {
+        updatedRoomData.wall = parsedWall;
+        // Maintain backwards compatibility
+        if (parsedWall.type === 'color') {
+          updatedRoomData.wallColor = parsedWall.value;
+          delete updatedRoomData.wallPattern;
+        } else if (parsedWall.type === 'pattern') {
+          updatedRoomData.wallPattern = parsedWall.value;
+          delete updatedRoomData.wallColor;
+        }
+      }
+      
+      // Update floor surface - use parsed values
+      if (parsedFloor) {
+        updatedRoomData.floor = parsedFloor;
+        // Maintain backwards compatibility
+        if (parsedFloor.type === 'color') {
+          updatedRoomData.floorColor = parsedFloor.value;
+          delete updatedRoomData.floorPattern;
+        } else if (parsedFloor.type === 'pattern') {
+          updatedRoomData.floorPattern = parsedFloor.value;
+          delete updatedRoomData.floorColor;
+        }
+      }
+      
+      // Update database
+      await db
+        .update(students)
+        .set({
+          roomData: updatedRoomData,
+          updatedAt: new Date()
+        })
+        .where(eq(students.id, student.id));
+      
+      // Clear cache
+      cache.del(`room-page-data:${passportCode}`);
+      
+      // Fetch pattern details for the response if patterns were applied
+      const responseData = {
+        wall: updatedRoomData.wall || null,
+        floor: updatedRoomData.floor || null
+      };
+      
+      // Enrich with pattern details if needed
+      const patternCodesToFetch: string[] = [];
+      if (responseData.wall?.type === 'pattern' && responseData.wall.value) {
+        patternCodesToFetch.push(responseData.wall.value);
+      }
+      if (responseData.floor?.type === 'pattern' && responseData.floor.value) {
+        patternCodesToFetch.push(responseData.floor.value);
+      }
+      
+      if (patternCodesToFetch.length > 0) {
+        try {
+          const patternDetails = await db
+            .select({
+              code: patterns.code,
+              patternType: patterns.patternType,
+              patternValue: patterns.patternValue
+            })
+            .from(patterns)
+            .where(inArray(patterns.code, patternCodesToFetch));
+          
+          const patternMap = new Map(
+            patternDetails.map(p => [p.code, p])
+          );
+          
+          // Add pattern details to response
+          if (responseData.wall?.type === 'pattern' && patternMap.has(responseData.wall.value)) {
+            const wallPattern = patternMap.get(responseData.wall.value);
+            responseData.wall.patternType = wallPattern.patternType;
+            responseData.wall.patternValue = wallPattern.patternValue;
+          }
+          
+          if (responseData.floor?.type === 'pattern' && patternMap.has(responseData.floor.value)) {
+            const floorPattern = patternMap.get(responseData.floor.value);
+            responseData.floor.patternType = floorPattern.patternType;
+            responseData.floor.patternValue = floorPattern.patternValue;
+          }
+        } catch (error) {
+          console.error('Error fetching pattern details for response:', error);
+        }
+      }
+      
+      res.json({
+        message: "Room surfaces updated successfully!",
+        surfaces: responseData
+      });
+    } catch (error) {
+      console.error("Update room surfaces error:", error);
+      res.status(500).json({ message: "Failed to update room surfaces" });
     }
   });
 

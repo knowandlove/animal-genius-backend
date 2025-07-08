@@ -1,5 +1,5 @@
-// Enhanced logging utility for WebSocket operations
-import { WSErrorCode } from '../../shared/error-codes';
+// Enhanced logging utility
+// import { WSErrorCode } from '../../shared/error-codes'; // Commented out - WebSocket features removed
 
 export enum LogLevel {
   DEBUG = 0,
@@ -9,11 +9,9 @@ export enum LogLevel {
 }
 
 export interface LogContext {
-  gameId?: string;
-  playerId?: string;
-  userId?: number;
+  userId?: string | number;
   action?: string;
-  errorCode?: WSErrorCode;
+  errorCode?: string;
   [key: string]: any;
 }
 
@@ -70,27 +68,27 @@ class Logger {
     }
   }
   
-  // WebSocket specific logging methods
-  wsConnection(event: 'connect' | 'disconnect' | 'error', context: LogContext): void {
-    const message = `WebSocket ${event}`;
-    if (event === 'error') {
-      this.error(message, undefined, context);
-    } else {
-      this.info(message, context);
-    }
-  }
+  // WebSocket specific logging methods - commented out as WebSocket features are removed
+  // wsConnection(event: 'connect' | 'disconnect' | 'error', context: LogContext): void {
+  //   const message = `WebSocket ${event}`;
+  //   if (event === 'error') {
+  //     this.error(message, undefined, context);
+  //   } else {
+  //     this.info(message, context);
+  //   }
+  // }
   
-  wsMessage(type: string, direction: 'in' | 'out', context: LogContext): void {
-    this.debug(`WS ${direction}: ${type}`, context);
-  }
+  // wsMessage(type: string, direction: 'in' | 'out', context: LogContext): void {
+  //   this.debug(`WS ${direction}: ${type}`, context);
+  // }
   
-  wsError(code: WSErrorCode, context: LogContext): void {
-    this.warn(`WebSocket error: ${code}`, { ...context, errorCode: code });
-  }
+  // wsError(code: WSErrorCode, context: LogContext): void {
+  //   this.warn(`WebSocket error: ${code}`, { ...context, errorCode: code });
+  // }
   
-  gameEvent(event: string, context: LogContext): void {
-    this.info(`Game event: ${event}`, context);
-  }
+  // gameEvent(event: string, context: LogContext): void {
+  //   this.info(`Game event: ${event}`, context);
+  // }
   
   // Performance logging
   startTimer(label: string): () => void {

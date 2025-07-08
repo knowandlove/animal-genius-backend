@@ -1,18 +1,15 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { createSecureLogger, sanitizeError } from '../utils/secure-logger';
+
+const logger = createSecureLogger('StudentAuth');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
 if (!JWT_SECRET) {
   console.error("FATAL ERROR: JWT_SECRET is not defined in environment variables.");
   console.error("Server cannot start without JWT_SECRET. Please check your .env file.");
-  // Use a fallback for development, but never for production
-  if (process.env.NODE_ENV === 'development') {
-    console.warn("Using temporary fallback JWT secret for development only!");
-    // Don't exit in development, but log warning
-  } else {
-    process.exit(1);
-  }
+  process.exit(1);
 }
 
 export interface StudentSessionPayload {
@@ -33,24 +30,25 @@ declare global {
  * Used for all /api/island/me/* endpoints
  */
 export function requireStudentSession(req: Request, res: Response, next: NextFunction) {
-  console.log('Student auth middleware - cookies:', req.cookies);
+  logger.debug('Student auth middleware - endpoint:', req.path);
+  logger.debug('Student auth middleware - cookies present:', !!req.cookies);
   const token = req.cookies.student_session;
 
   if (!token) {
-    console.log('No student_session cookie found');
+    logger.debug('No student_session cookie found');
     return res.status(401).json({ error: 'No session found. Please enter your passport code.' });
   }
 
   try {
-    if (!JWT_SECRET) {
-      return res.status(500).json({ error: 'Server configuration error' });
-    }
-    const decoded = jwt.verify(token, JWT_SECRET);
+    // JWT_SECRET is guaranteed to exist by the check at module load
+    const decoded = jwt.verify(token, JWT_SECRET!);
     const payload = decoded as unknown as StudentSessionPayload;
+    logger.debug('Decoded student session:', { studentId: payload.studentId });
     req.studentId = payload.studentId;
     next();
   } catch (error) {
     // Token expired or invalid
+    logger.error('Token verification failed:', sanitizeError(error));
     res.clearCookie('student_session');
     return res.status(401).json({ error: 'Session expired. Please enter your passport code again.' });
   }
@@ -66,10 +64,8 @@ export function generateStudentSession(studentId: string): string {
     studentId
   };
 
-  if (!JWT_SECRET) {
-    throw new Error('JWT_SECRET not configured');
-  }
-  return jwt.sign(payload, JWT_SECRET, {
+  // JWT_SECRET is guaranteed to exist by the check at module load
+  return jwt.sign(payload, JWT_SECRET!, {
     expiresIn: '24h' // Session expires after 24 hours
   });
 }

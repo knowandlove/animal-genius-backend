@@ -1,5 +1,19 @@
 // Animal Facts Question Bank
-import { GameQuestion } from './game-types';
+// This file is kept for future use when game features are re-implemented on a different server
+
+// Temporarily define GameQuestion type locally
+interface GameQuestion {
+  id: number;
+  question: string;
+  options: {
+    A: string;
+    B: string;
+    C: string;
+    D: string;
+  };
+  correctAnswer: 'A' | 'B' | 'C' | 'D';
+  category: 'habitat' | 'diet' | 'behavior' | 'facts';
+}
 
 export const animalFactsQuestions: GameQuestion[] = [
   // Habitat Questions
@@ -311,15 +325,3 @@ export const animalFactsQuestions: GameQuestion[] = [
   }
 ];
 
-// Function to get random questions for a game
-export function getRandomQuestions(count: number): GameQuestion[] {
-  const shuffled = [...animalFactsQuestions].sort(() => Math.random() - 0.5);
-  return shuffled.slice(0, count);
-}
-
-// Function to get questions by category
-export function getQuestionsByCategory(category: GameQuestion['category'], count: number): GameQuestion[] {
-  const filtered = animalFactsQuestions.filter(q => q.category === category);
-  const shuffled = filtered.sort(() => Math.random() - 0.5);
-  return shuffled.slice(0, count);
-}

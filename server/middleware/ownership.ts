@@ -2,6 +2,12 @@ import { Request, Response, NextFunction } from 'express';
 import { db } from '../db';
 import { classes, students } from '@shared/schema';
 import { and, eq } from 'drizzle-orm';
+import { createSecureLogger } from '../utils/secure-logger';
+
+const logger = createSecureLogger('Ownership');
+
+// UUID validation regex
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Middleware to verify that the authenticated teacher owns the specified class.
@@ -14,13 +20,22 @@ import { and, eq } from 'drizzle-orm';
  */
 export const verifyClassOwnership = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // Get class ID from various sources
-    const classId = req.params.classId || req.params.id || req.body.classId;
-    const teacherId = req.user?.userId || req.user?.id;
+    // SECURITY: Only accept class ID from URL params to prevent IDOR attacks
+    // Body parameters can be manipulated more easily
+    const classId = req.params.classId || req.params.id;
+    const teacherId = req.user?.userId;
 
     if (!classId) {
       return res.status(400).json({ 
-        message: "Class ID is required" 
+        message: "Class ID is required in URL parameters" 
+      });
+    }
+
+    // Validate UUID format to prevent SQL injection
+    if (!UUID_REGEX.test(classId)) {
+      logger.warn('Invalid class ID format attempted', { classId, teacherId });
+      return res.status(400).json({ 
+        message: "Invalid class ID format" 
       });
     }
 
@@ -41,6 +56,12 @@ export const verifyClassOwnership = async (req: Request, res: Response, next: Ne
       .limit(1);
 
     if (!classData) {
+      // Log potential IDOR attempt
+      logger.warn('Class ownership verification failed', { 
+        classId, 
+        teacherId,
+        endpoint: req.originalUrl 
+      });
       return res.status(403).json({ 
         message: "Access denied: You do not have permission to access this class" 
       });
@@ -49,7 +70,7 @@ export const verifyClassOwnership = async (req: Request, res: Response, next: Ne
     // Class ownership verified, proceed to the route handler
     next();
   } catch (error) {
-    console.error("Class ownership verification failed:", error);
+    logger.error("Class ownership verification failed:", error);
     res.status(500).json({ 
       message: "Internal server error" 
     });
@@ -64,12 +85,21 @@ export const verifyClassOwnership = async (req: Request, res: Response, next: Ne
  */
 export const verifyStudentClassOwnership = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const studentId = req.params.studentId || req.body.studentId;
-    const teacherId = req.user?.userId || req.user?.id;
+    // SECURITY: Only accept student ID from URL params to prevent IDOR attacks
+    const studentId = req.params.studentId;
+    const teacherId = req.user?.userId;
 
     if (!studentId) {
       return res.status(400).json({ 
-        message: "Student ID is required" 
+        message: "Student ID is required in URL parameters" 
+      });
+    }
+
+    // Validate UUID format
+    if (!UUID_REGEX.test(studentId)) {
+      logger.warn('Invalid student ID format attempted', { studentId, teacherId });
+      return res.status(400).json({ 
+        message: "Invalid student ID format" 
       });
     }
 
@@ -103,6 +133,13 @@ export const verifyStudentClassOwnership = async (req: Request, res: Response, n
       .limit(1);
 
     if (!classData) {
+      // Log potential IDOR attempt
+      logger.warn('Student class ownership verification failed', { 
+        studentId, 
+        teacherId,
+        classId: student.classId,
+        endpoint: req.originalUrl 
+      });
       return res.status(403).json({ 
         message: "Access denied: You do not have permission to access this student" 
       });
@@ -113,7 +150,7 @@ export const verifyStudentClassOwnership = async (req: Request, res: Response, n
 
     next();
   } catch (error) {
-    console.error("Student class ownership verification failed:", error);
+    logger.error("Student class ownership verification failed:", error);
     res.status(500).json({ 
       message: "Internal server error" 
     });

@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
+import { CONFIG } from '../config/constants';
 
 interface AuthMetrics {
   totalRequests: number;
@@ -18,8 +19,8 @@ const authMetrics: AuthMetrics = {
   recentResponses: []
 };
 
-const SLOW_REQUEST_THRESHOLD = 1000; // 1 second
-const ROLLING_WINDOW_SIZE = 100;
+const SLOW_REQUEST_THRESHOLD = CONFIG.TIMEOUTS.SLOW_REQUEST_THRESHOLD;
+const ROLLING_WINDOW_SIZE = CONFIG.MONITORING.METRICS_ROLLING_WINDOW;
 
 /**
  * Middleware to monitor authentication performance
@@ -133,6 +134,6 @@ export function startPerformanceLogging() {
           p99: `${metrics.p99ResponseTime}ms`
         });
       }
-    }, 60000); // Log every minute
+    }, CONFIG.MONITORING.PERFORMANCE_LOG_INTERVAL);
   }
 }

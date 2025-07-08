@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
+import { CONFIG } from '../config/constants';
 
 // Track failed attempts per passport code
 const failedAttempts = new Map<string, {
@@ -8,10 +9,10 @@ const failedAttempts = new Map<string, {
   lockedUntil?: number;
 }>();
 
-const MAX_ATTEMPTS = 5;
-const LOCKOUT_DURATION = 15 * 60 * 1000; // 15 minutes
-const ATTEMPT_WINDOW = 15 * 60 * 1000; // 15 minutes
-const CLEANUP_INTERVAL = 60 * 60 * 1000; // 1 hour
+const MAX_ATTEMPTS = CONFIG.LOCKOUT.MAX_ATTEMPTS;
+const LOCKOUT_DURATION = CONFIG.LOCKOUT.DURATION_MS;
+const ATTEMPT_WINDOW = CONFIG.LOCKOUT.ATTEMPT_WINDOW_MS;
+const CLEANUP_INTERVAL = CONFIG.LOCKOUT.CLEANUP_INTERVAL_MS;
 
 /**
  * Track failed authentication attempt
@@ -153,5 +154,5 @@ if (process.env.NODE_ENV === 'development') {
     if (failedAttempts.size > 0) {
       console.log(`📊 Passport lockout status: ${failedAttempts.size} codes being tracked`);
     }
-  }, 5 * 60 * 1000); // Every 5 minutes
+  }, CONFIG.LOCKOUT.STATS_LOG_INTERVAL_MS);
 }

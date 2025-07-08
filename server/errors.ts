@@ -1,29 +1,20 @@
-// Custom error classes for better error handling
+/**
+ * Re-export error classes from the new comprehensive error system
+ * This maintains backward compatibility while using the new error infrastructure
+ */
 
-export class ValidationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ValidationError';
-  }
-}
-
-export class NotFoundError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'NotFoundError';
-  }
-}
-
-export class AuthenticationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'AuthenticationError';
-  }
-}
-
-export class AuthorizationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'AuthorizationError';
-  }
-}
+export {
+  ValidationError,
+  NotFoundError,
+  AuthenticationError,
+  AuthorizationError,
+  AppError,
+  BusinessError,
+  ConflictError,
+  InternalError,
+  RateLimitError,
+  ErrorCode,
+  ErrorStatus,
+  normalizeError,
+  type ErrorResponse
+} from './utils/errors';

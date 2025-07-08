@@ -1,9 +1,12 @@
 import { Router } from 'express';
-import { authenticateAdmin } from '../../middleware/auth';
+import { requireAuth, requireAdmin } from '../../middleware/auth';
 import multer from 'multer';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 import path from 'path';
+import sharp from 'sharp';
+import { db } from '../../db';
+import { sql } from 'drizzle-orm';
 
 const router = Router();
 
@@ -35,87 +38,168 @@ const upload = multer({
     fileSize: 10 * 1024 * 1024, // 10MB limit
   },
   fileFilter: (req, file, cb) => {
-    // Check file type
-    const allowedMimes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-    if (allowedMimes.includes(file.mimetype)) {
-      cb(null, true);
+    // Check file type based on field name
+    if (file.fieldname === 'thumbnail') {
+      // Thumbnails must be images
+      const allowedImageMimes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+      if (allowedImageMimes.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(new Error('Thumbnail must be an image (JPEG, PNG, GIF, or WebP).'));
+      }
     } else {
-      cb(new Error('Invalid file type. Only JPEG, PNG, GIF, and WebP are allowed.'));
+      // Main asset can be image or RIVE
+      const allowedMimes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/octet-stream'];
+      const ext = path.extname(file.originalname).toLowerCase();
+      
+      // Special handling for .riv files
+      if (ext === '.riv' || allowedMimes.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(new Error('Invalid file type. Images (JPEG, PNG, GIF, WebP) or RIVE (.riv) files are allowed.'));
+      }
     }
   },
 });
 
 /**
- * POST /api/admin/assets/upload
- * Simple upload endpoint that returns a URL directly
+ * Generate a thumbnail from an image buffer
  */
-router.post('/upload', authenticateAdmin, upload.single('image'), async (req, res) => {
+async function generateThumbnail(buffer: Buffer, size: number = 128): Promise<Buffer> {
+  return sharp(buffer)
+    .resize(size, size, {
+      fit: 'contain',
+      background: { r: 0, g: 0, b: 0, alpha: 0 }
+    })
+    .png()
+    .toBuffer();
+}
+
+/**
+ * POST /api/admin/assets/upload
+ * Enhanced upload endpoint that supports images and RIVE files with automatic thumbnail generation
+ */
+router.post('/upload', requireAuth, requireAdmin, upload.fields([
+  { name: 'image', maxCount: 1 },
+  { name: 'thumbnail', maxCount: 1 }
+]), async (req: any, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+    const mainFile = files['image']?.[0];
+    const thumbnailFile = files['thumbnail']?.[0];
+    
+    if (!mainFile) {
+      return res.status(400).json({ error: 'No main file uploaded' });
     }
 
-    const { type } = req.body;
+    const { type, assetType, storeItemId } = req.body;
     if (!type) {
       return res.status(400).json({ error: 'Item type is required' });
     }
     
-    // Generate unique path
-    const timestamp = Date.now();
-    const randomId = crypto.randomUUID();
-    const ext = path.extname(req.file.originalname);
-    const safeName = path.basename(req.file.originalname, ext).replace(/[^a-zA-Z0-9-]/g, '_');
-    const storagePath = `${type}/${randomId}-${timestamp}-${safeName}${ext}`;
+    // Determine if this is a RIVE file
+    const ext = path.extname(mainFile.originalname).toLowerCase();
+    const isRive = ext === '.riv';
+    const actualAssetType = isRive ? 'rive' : 'static';
+    
+    // Use provided storeItemId or generate a new one
+    const itemId = storeItemId || crypto.randomUUID();
+    
+    // Create folder structure: items/{itemId}/
+    const folderPath = `items/${itemId}`;
+    const mainFileName = isRive ? 'main.riv' : 'main.png';
+    const mainPath = `${folderPath}/${mainFileName}`;
+    const thumbPath = `${folderPath}/thumb.png`;
     
     // Upload to Supabase Storage
     const bucket = 'store-items';
-    console.log('Uploading to Supabase:', { bucket, storagePath, size: req.file.size });
+    let mainBuffer = mainFile.buffer;
+    let thumbnailBuffer: Buffer;
     
-    const { data: uploadData, error: uploadError } = await getSupabaseClient().storage
+    // Process main file if it's an image (convert to PNG)
+    if (!isRive) {
+      mainBuffer = await sharp(mainFile.buffer).png().toBuffer();
+    }
+    
+    // Handle thumbnail
+    if (isRive) {
+      // For RIVE files, thumbnail is required
+      if (!thumbnailFile) {
+        return res.status(400).json({ error: 'Thumbnail is required for RIVE animations' });
+      }
+      thumbnailBuffer = await generateThumbnail(thumbnailFile.buffer);
+    } else {
+      // For images, generate thumbnail automatically
+      thumbnailBuffer = await generateThumbnail(mainFile.buffer);
+    }
+    
+    console.log('Uploading to Supabase:', { bucket, mainPath, thumbPath });
+    
+    // Upload main file
+    const { data: mainUploadData, error: mainUploadError } = await getSupabaseClient().storage
       .from(bucket)
-      .upload(storagePath, req.file.buffer, {
-        contentType: req.file.mimetype,
-        upsert: false,
+      .upload(mainPath, mainBuffer, {
+        contentType: isRive ? 'application/octet-stream' : 'image/png',
+        upsert: true,
       });
     
-    if (uploadError) {
-      console.error('Supabase upload error:', uploadError);
+    if (mainUploadError) {
+      console.error('Main file upload error:', mainUploadError);
       
       // Check if it's a bucket not found error
-      if (uploadError.message?.includes('The resource was not found')) {
+      if (mainUploadError.message?.includes('The resource was not found')) {
         return res.status(500).json({ 
           error: 'Storage bucket not found', 
           details: 'The "store-items" bucket does not exist in Supabase. Please create it in your Supabase dashboard under Storage.' 
         });
       }
       
-      return res.status(500).json({ error: 'Failed to upload to storage', details: uploadError.message });
+      return res.status(500).json({ error: 'Failed to upload main file', details: mainUploadError.message });
     }
     
-    console.log('Upload successful:', uploadData);
-    
-    // Get public URL
-    const { data: { publicUrl } } = getSupabaseClient().storage
+    // Upload thumbnail
+    const { data: thumbUploadData, error: thumbUploadError } = await getSupabaseClient().storage
       .from(bucket)
-      .getPublicUrl(storagePath);
+      .upload(thumbPath, thumbnailBuffer, {
+        contentType: 'image/png',
+        upsert: true,
+      });
+    
+    if (thumbUploadError) {
+      console.error('Thumbnail upload error:', thumbUploadError);
+      // Try to clean up the main file
+      await getSupabaseClient().storage.from(bucket).remove([mainPath]);
+      return res.status(500).json({ error: 'Failed to upload thumbnail', details: thumbUploadError.message });
+    }
+    
+    console.log('Upload successful:', { main: mainUploadData, thumb: thumbUploadData });
+    
+    // Get public URLs
+    const { data: { publicUrl: mainUrl } } = getSupabaseClient().storage
+      .from(bucket)
+      .getPublicUrl(mainPath);
+      
+    const { data: { publicUrl: thumbnailUrl } } = getSupabaseClient().storage
+      .from(bucket)
+      .getPublicUrl(thumbPath);
     
     // Create asset record in database using raw SQL with proper result handling
-    const { db } = await import('../../db');
-    const { sql } = await import('drizzle-orm');
-    
     const assetId = crypto.randomUUID();
     const result = await db.execute(sql`
       INSERT INTO assets (id, file_name, file_type, file_size, storage_path, public_url, category, created_at, updated_at)
-      VALUES (${assetId}, ${req.file.originalname}, ${req.file.mimetype}, ${req.file.size}, ${storagePath}, ${publicUrl}, ${type}, NOW(), NOW())
+      VALUES (${assetId}, ${mainFile.originalname}, ${mainFile.mimetype}, ${mainFile.size}, ${mainPath}, ${mainUrl}, ${type}, NOW(), NOW())
     `);
     
     const newAsset = { id: assetId };
     
-    // Return response with both URL and assetId
+    // Return response with URLs, assetId, and asset type info
     res.json({
       success: true,
-      url: publicUrl,
-      assetId: newAsset.id
+      url: mainUrl,
+      thumbnailUrl: thumbnailUrl,
+      assetId: newAsset.id,
+      assetType: actualAssetType,
+      storeItemId: itemId
     });
     
   } catch (error: any) {
@@ -148,7 +232,7 @@ router.post('/upload', authenticateAdmin, upload.single('image'), async (req, re
  * GET /api/admin/assets/test-connection
  * Test Supabase connection and configuration
  */
-router.get('/test-connection', authenticateAdmin, async (req, res) => {
+router.get('/test-connection', requireAuth, requireAdmin, async (req, res) => {
   try {
     // Test environment variables
     const envCheck = {

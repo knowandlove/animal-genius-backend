@@ -3,32 +3,42 @@ import { uuidStorage } from '../storage-uuid';
 import { requireAuth } from '../middleware/auth';
 import { parseSubmissionDetails } from '../utils/submission-parser';
 import { generateClassInsights } from '../services/pairingService';
+import { hasClassAccess } from '../db/collaborators';
+import { asyncWrapper } from '../utils/async-wrapper';
+import { NotFoundError, AuthorizationError, InternalError, ErrorCode } from '../utils/errors';
+import { createSecureLogger } from '../utils/secure-logger';
+
+const logger = createSecureLogger('AnalyticsRoutes');
 
 const router = Router();
 
 // Get student data for teacher view
-router.get('/teacher/students/:studentId', requireAuth, async (req: Request, res: Response) => {
-  try {
-    const studentId = req.params.studentId;
-    const teacherId = req.user!.userId;
-    
-    // Get the student
-    const student = await uuidStorage.getStudentById(studentId);
-    if (!student) {
-      return res.status(404).json({ message: "Student not found" });
-    }
-    
-    // Verify teacher owns the class
-    const classRecord = await uuidStorage.getClassById(student.classId);
-    if (!classRecord || classRecord.teacherId !== teacherId) {
-      return res.status(403).json({ message: "Access denied" });
-    }
-    
-    // Get the student's submissions
-    const submissions = await uuidStorage.getSubmissionsByStudentId(studentId);
-    if (submissions.length === 0) {
-      return res.status(404).json({ message: "No submissions found for this student" });
-    }
+router.get('/teacher/students/:studentId', requireAuth, asyncWrapper(async (req: Request, res: Response, next) => {
+  const studentId = req.params.studentId;
+  const teacherId = req.user!.userId;
+  
+  // Get the student
+  const student = await uuidStorage.getStudentById(studentId);
+  if (!student) {
+    throw new NotFoundError('Student not found', ErrorCode.RES_001);
+  }
+  
+  // Verify teacher has access to the class
+  const classRecord = await uuidStorage.getClassById(student.classId);
+  if (!classRecord) {
+    throw new NotFoundError('Class not found', ErrorCode.RES_001);
+  }
+  
+  const hasAccess = await hasClassAccess(teacherId, student.classId);
+  if (!hasAccess) {
+    throw new AuthorizationError('Access denied', ErrorCode.AUTH_005);
+  }
+  
+  // Get the student's submissions
+  const submissions = await uuidStorage.getSubmissionsByStudentId(studentId);
+  if (submissions.length === 0) {
+    throw new NotFoundError('No submissions found for this student', ErrorCode.RES_001);
+  }
     
     // Get the latest submission (already sorted by storage method)
     const latestSubmission = submissions[0];
@@ -62,10 +72,6 @@ router.get('/teacher/students/:studentId', requireAuth, async (req: Request, res
     };
     
     res.json(response);
-  } catch (error) {
-    console.error("Get student data error:", error);
-    res.status(500).json({ message: "Failed to get student data" });
-  }
-});
+}));
 
 export default router;

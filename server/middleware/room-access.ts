@@ -53,15 +53,19 @@ export async function checkRoomAccess(req: Request, res: Response, next: NextFun
 
     // Check 0: Try to authenticate teacher from Authorization header
     const authHeader = req.headers.authorization;
+    console.log('Room access - checking auth header:', !!authHeader);
     if (authHeader) {
       const token = authHeader.split(' ')[1];
+      console.log('Room access - extracted token:', token?.substring(0, 20) + '...');
       if (token) {
         try {
           // Verify teacher token with Supabase Admin client for security
           const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+          console.log('Room access - Supabase auth result:', { userId: user?.id, error: error?.message });
           if (user && !error) {
             // Get teacher profile
             const profile = await getCachedProfile(user.id);
+            console.log('Room access - teacher profile found:', !!profile);
             if (profile) {
               // Teacher or admin - always allow access
               req.user = {
@@ -77,12 +81,13 @@ export async function checkRoomAccess(req: Request, res: Response, next: NextFun
                 isTeacher: true,
                 roomOwner
               };
+              console.log('Room access - teacher authenticated successfully');
               return next();
             }
           }
         } catch (error) {
           // Token verification failed, continue to student auth
-          console.log('Teacher auth check failed, trying student auth');
+          console.log('Teacher auth check failed:', error);
         }
       }
     }
