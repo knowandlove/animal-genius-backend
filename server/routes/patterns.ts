@@ -3,69 +3,28 @@ import { db } from '../db';
 import { patterns, storeItems, studentInventory, itemTypes, students } from '@shared/schema';
 import { eq, and, inArray, isNotNull } from 'drizzle-orm';
 import { requireAuth } from '../middleware/auth';
-import { requireStudentSession } from '../middleware/student-auth';
+import { requireUnifiedAuth, requireStudent } from '../middleware/unified-auth';
 import { z } from 'zod';
 import StorageRouter from '../services/storage-router';
-import jwt from 'jsonwebtoken';
-
-const JWT_SECRET = process.env.JWT_SECRET;
+// JWT imports removed - using unified auth
 
 // Combined auth middleware that handles both student and teacher authentication
 async function flexibleAuth(req: Request, res: Response, next: NextFunction) {
-  console.log('FlexibleAuth - cookies:', req.cookies);
-  console.log('FlexibleAuth - auth header:', req.headers.authorization);
-  
-  // First check for student cookie
-  const studentCookie = req.cookies?.student_session;
-  if (studentCookie) {
-    try {
-      if (!JWT_SECRET) {
-        return res.status(500).json({ error: 'Server configuration error' });
-      }
-      const decoded = jwt.verify(studentCookie, JWT_SECRET) as any;
-      (req as any).studentId = decoded.studentId;
+  // Use unified auth which handles both student and teacher authentication
+  return requireUnifiedAuth(req, res, (err) => {
+    if (err) return; // Error already handled by unified auth
+    
+    // Set authType based on role
+    if (req.auth?.role === 'student') {
       (req as any).authType = 'student';
-      console.log('FlexibleAuth - authenticated as student:', decoded.studentId);
-      return next();
-    } catch (error) {
-      console.log('FlexibleAuth - student cookie invalid:', error);
-      // Cookie invalid, try other auth methods
+      (req as any).studentId = req.auth.studentId;
+    } else if (req.auth?.role === 'teacher') {
+      (req as any).authType = 'teacher';
+      (req as any).user = req.user; // For backward compatibility
     }
-  }
-  
-  // Check if there's a Bearer token for teacher auth
-  const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    // Try teacher auth
-    requireAuth(req, res, (err) => {
-      if (err) {
-        console.log('FlexibleAuth - teacher auth failed');
-        return res.status(401).json({ 
-          success: false, 
-          error: { message: 'Invalid authentication token' } 
-        });
-      }
-      
-      if ((req as any).user && (req as any).user.userId) {
-        (req as any).authType = 'teacher';
-        console.log('FlexibleAuth - authenticated as teacher:', (req as any).user.userId);
-        return next();
-      }
-      
-      // Should not reach here
-      return res.status(401).json({ 
-        success: false, 
-        error: { message: 'Authentication failed' } 
-      });
-    });
-  } else {
-    // No valid authentication found
-    console.log('FlexibleAuth - no valid auth found');
-    return res.status(401).json({ 
-      success: false, 
-      error: { message: 'Authentication required - please provide student cookie or teacher token' } 
-    });
-  }
+    
+    next();
+  });
 }
 
 const router = Router();
@@ -396,7 +355,7 @@ router.get('/available', async (req, res) => {
  * Check if a student owns a specific pattern
  * Requires student authentication
  */
-router.get('/:patternId/ownership', requireStudentSession, async (req, res) => {
+router.get('/:patternId/ownership', requireUnifiedAuth, requireStudent, async (req, res) => {
   try {
     const studentId = req.studentId;
     const { patternId } = req.params;

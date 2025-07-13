@@ -1,9 +1,9 @@
 import { Router, Request, Response } from 'express';
+import { AuthenticatedRequest } from '../types/api';
 import { uuidStorage } from '../storage-uuid';
 import { requireAuth } from '../middleware/auth';
 import { parseSubmissionDetails } from '../utils/submission-parser';
 import { generateClassInsights } from '../services/pairingService';
-import { hasClassAccess } from '../db/collaborators';
 import { asyncWrapper } from '../utils/async-wrapper';
 import { NotFoundError, AuthorizationError, InternalError, ErrorCode } from '../utils/errors';
 import { createSecureLogger } from '../utils/secure-logger';
@@ -13,9 +13,10 @@ const logger = createSecureLogger('AnalyticsRoutes');
 const router = Router();
 
 // Get student data for teacher view
-router.get('/teacher/students/:studentId', requireAuth, asyncWrapper(async (req: Request, res: Response, next) => {
-  const studentId = req.params.studentId;
-  const teacherId = req.user!.userId;
+router.get('/teacher/students/:studentId', requireAuth, asyncWrapper(async (req, res, next) => {
+  const authReq = req as AuthenticatedRequest;
+  const studentId = authReq.params.studentId;
+  const teacherId = authReq.user!.userId;
   
   // Get the student
   const student = await uuidStorage.getStudentById(studentId);
@@ -29,19 +30,15 @@ router.get('/teacher/students/:studentId', requireAuth, asyncWrapper(async (req:
     throw new NotFoundError('Class not found', ErrorCode.RES_001);
   }
   
-  const hasAccess = await hasClassAccess(teacherId, student.classId);
-  if (!hasAccess) {
+  if (classRecord.teacherId !== teacherId) {
     throw new AuthorizationError('Access denied', ErrorCode.AUTH_005);
   }
   
-  // Get the student's submissions
+  // Get the student's submissions (allow empty for students who haven't taken quiz)
   const submissions = await uuidStorage.getSubmissionsByStudentId(studentId);
-  if (submissions.length === 0) {
-    throw new NotFoundError('No submissions found for this student', ErrorCode.RES_001);
-  }
-    
-    // Get the latest submission (already sorted by storage method)
-    const latestSubmission = submissions[0];
+  
+  // Get the latest submission if available
+  const latestSubmission = submissions.length > 0 ? submissions[0] : null;
     
     // Parse answers using helper
     const parsedDetails = parseSubmissionDetails(latestSubmission, student);
@@ -51,19 +48,20 @@ router.get('/teacher/students/:studentId', requireAuth, asyncWrapper(async (req:
     
     // Format response similar to what teacher-student-view expects
     const response = {
-      id: latestSubmission.id,
+      id: latestSubmission?.id || null,
       studentId: student.id,
       studentName: student.studentName || 'Unknown',
       gradeLevel: parsedDetails.gradeLevel,
-      animalType: parsedDetails.animalType || latestSubmission.animalTypeId,
-      geniusType: latestSubmission.geniusType, // Fixed: was animalGenius
+      animalType: latestSubmission?.animalType || null,
+      geniusType: latestSubmission?.geniusType || null,
       personalityType: parsedDetails.personalityType,
       learningStyle: parsedDetails.learningStyle,
       learningScores: parsedDetails.learningScores,
       scores: parsedDetails.scores,
-      completedAt: latestSubmission.completedAt,
+      completedAt: latestSubmission?.completedAt || null,
       passportCode: student.passportCode,
       currencyBalance: balance,
+      hasCompletedQuiz: !!latestSubmission,
       class: {
         id: classRecord.id,
         name: classRecord.name,

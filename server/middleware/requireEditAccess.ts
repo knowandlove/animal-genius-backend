@@ -6,6 +6,12 @@ interface RoomAccessRequest extends Request {
     canEdit: boolean;
     isOwner: boolean;
     isTeacher: boolean;
+    roomOwner: {
+      id: string;
+      classId: string;
+      roomVisibility?: string | null;
+      studentName: string | null;
+    };
   };
 }
 

@@ -1,9 +1,9 @@
 import { Request, Response } from "express";
 import { db } from "../db";
-import { quizSubmissions, classes } from "../../shared/schema";
-import { eq } from "drizzle-orm";
+import { quizSubmissions, classes, students, animalTypes, geniusTypes } from "../../shared/schema";
+import { eq, and } from "drizzle-orm";
 import multer from "multer";
-import { canEditClass, hasCollaboratorPermission } from "../db/collaborators";
+import { v7 as uuidv7 } from "uuid";
 
 // Configure multer for file uploads
 const upload = multer({ 
@@ -81,7 +81,7 @@ function parseCSV(csvContent: string): StudentData[] {
  * Generate random VARK learning style scores
  */
 function generateRandomVARKScores() {
-  const scores = {
+  const scores: Record<string, number> = {
     Visual: Math.floor(Math.random() * 16) + 1,
     Auditory: Math.floor(Math.random() * 16) + 1,
     "Reading/Writing": Math.floor(Math.random() * 16) + 1,
@@ -158,12 +158,10 @@ export async function handleImportStudents(req: Request, res: Response) {
     
     const classData = classResult[0];
     
-    // Check if teacher can edit this class and manage students
+    // Check if teacher owns this class
     const userId = (req as any).user?.userId;
-    const canEdit = await canEditClass(userId, classId);
-    const canManageStudents = await hasCollaboratorPermission(userId, classId, 'can_manage_students');
     
-    if (!canEdit || !canManageStudents) {
+    if (classData.teacherId !== userId) {
       return res.status(403).json({ message: "You do not have permission to import students to this class" });
     }
     
@@ -173,16 +171,23 @@ export async function handleImportStudents(req: Request, res: Response) {
     }
     
     const csvContent = req.file.buffer.toString('utf-8');
-    const students = parseCSV(csvContent);
+    const parsedStudents = parseCSV(csvContent);
     
-    if (students.length === 0) {
+    if (parsedStudents.length === 0) {
       return res.status(400).json({ message: "No valid students found in CSV" });
     }
+    
+    // Look up all animal types and genius types we'll need
+    const animalTypesData = await db.select().from(animalTypes);
+    const geniusTypesData = await db.select().from(geniusTypes);
+    
+    const animalTypeMap = new Map(animalTypesData.map(at => [at.code, at.id]));
+    const geniusTypeMap = new Map(geniusTypesData.map(gt => [gt.code, gt.id]));
     
     // Import each student
     const importedStudents = [];
     
-    for (const student of students) {
+    for (const student of parsedStudents) {
       const varkResults = generateRandomVARKScores();
       const mbtiScores = generateMBTIScores(student.personalityType);
       const answers = generateSampleAnswers(student.personalityType);
@@ -191,21 +196,73 @@ export async function handleImportStudents(req: Request, res: Response) {
       
       const studentName = `${student.firstName} ${student.lastInitial}`;
       
-      const submission = {
-        classId: classId,
-        studentName: studentName,
-        gradeLevel: student.gradeLevel || "5th Grade",
-        answers: answers,
-        personalityType: student.personalityType,
-        animalType: animalType,
-        animalGenius: animalGenius,
-        scores: mbtiScores,
-        learningStyle: varkResults.primaryStyle,
-        learningScores: varkResults.scores,
-        completedAt: new Date()
-      };
+      // Get the animal type ID
+      const animalTypeId = animalTypeMap.get(animalType);
+      if (!animalTypeId) {
+        console.error(`Animal type not found: ${animalType}`);
+        continue;
+      }
       
-      await db.insert(quizSubmissions).values(submission);
+      // Get the genius type ID
+      const geniusTypeId = geniusTypeMap.get(animalGenius);
+      if (!geniusTypeId) {
+        console.error(`Genius type not found: ${animalGenius}`);
+        continue;
+      }
+      
+      // First, create or find the student
+      let studentRecord = await db
+        .select()
+        .from(students)
+        .where(and(
+          eq(students.classId, classId),
+          eq(students.studentName, studentName)
+        ))
+        .limit(1);
+      
+      if (studentRecord.length === 0) {
+        // Generate a unique passport code for the student
+        const passportCode = `${student.firstName.toUpperCase()}${student.lastInitial.toUpperCase()}${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
+        
+        // Create new student
+        const [newStudent] = await db
+          .insert(students)
+          .values({
+            id: uuidv7(),
+            classId: classId,
+            passportCode: passportCode,
+            studentName: studentName,
+            gradeLevel: student.gradeLevel || "5th Grade",
+            personalityType: student.personalityType,
+            animalTypeId: animalTypeId,
+            geniusTypeId: geniusTypeId,
+            learningStyle: varkResults.primaryStyle
+          })
+          .returning();
+        studentRecord = [newStudent];
+      }
+      
+      const studentId = studentRecord[0].id;
+      
+      // Check if submission already exists
+      const existingSubmission = await db
+        .select()
+        .from(quizSubmissions)
+        .where(eq(quizSubmissions.studentId, studentId))
+        .limit(1);
+      
+      if (existingSubmission.length === 0) {
+        // Create the quiz submission
+        await db.insert(quizSubmissions).values({
+          id: uuidv7(),
+          studentId: studentId,
+          animalTypeId: animalTypeId,
+          geniusTypeId: geniusTypeId,
+          answers: answers,
+          coinsEarned: 100, // Default coins for imported students
+          completedAt: new Date()
+        });
+      }
       
       importedStudents.push({
         name: studentName,

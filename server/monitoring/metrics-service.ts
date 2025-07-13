@@ -1,5 +1,4 @@
 // Performance Monitoring Service
-// Game and WebSocket metrics have been removed - will be re-implemented on a different server
 
 interface DatabaseMetrics {
   queryCount: number;

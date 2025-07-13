@@ -15,6 +15,69 @@
       "when": 1751420115069,
       "tag": "0001_smiling_typhoid_mary",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1751420115070,
+      "tag": "0002_add_asset_type_for_rive",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1751420115071,
+      "tag": "0003_add_pet_system",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1751420115072,
+      "tag": "0004_ensure_pets_data",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1751420115073,
+      "tag": "0005_add_currency_balance_constraint",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1751420115074,
+      "tag": "0006_remove_game_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1751420115075,
+      "tag": "0007_add_game_scores",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1751420115076,
+      "tag": "0008_add_class_values_system",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1751420115077,
+      "tag": "0009_add_class_values_constraints",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1751420115078,
+      "tag": "0010_add_class_values_fields",
+      "breakpoints": true
     }
   ]
 }

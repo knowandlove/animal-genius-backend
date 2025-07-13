@@ -1,17 +1,18 @@
 import { Router, Request, Response } from 'express';
+import { AuthenticatedRequest } from '../types/api';
 import { db } from '../db';
 import { uuidStorage } from '../storage-uuid';
 import { quizSubmissions } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { requireAuth } from '../middleware/auth';
-import { canEditClass } from '../db/collaborators';
 
 const router = Router();
 
 // Delete submission
 router.delete('/:id', requireAuth, async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
   try {
-    const submissionId = req.params.id;
+    const submissionId = authReq.params.id;
     const submission = await uuidStorage.getSubmissionById(submissionId);
     
     if (!submission) {
@@ -30,9 +31,8 @@ router.delete('/:id', requireAuth, async (req: Request, res: Response) => {
       return res.status(404).json({ message: "Class not found" });
     }
     
-    // Check if user can edit this class (owner or editor collaborator)
-    const hasEditAccess = await canEditClass(req.user!.userId, student.classId);
-    if (!hasEditAccess) {
+    // Check if user owns this class
+    if (classRecord.teacherId !== authReq.user!.userId) {
       return res.status(403).json({ message: "Access denied" });
     }
     

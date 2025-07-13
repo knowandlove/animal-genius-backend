@@ -1,5 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
-import { config } from "dotenv";
+import { env } from "./config/env";
 import { registerRoutes } from "./routes";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -14,25 +14,21 @@ import cors from "cors";
 import { setCacheHeaders } from "./middleware/cache-headers";
 import { requestIdMiddleware, errorHandler, notFoundHandler } from "./middleware/error-handler";
 import { httpMetricsMiddleware } from "./middleware/observability";
+import { jsonLogger } from "./lib/json-logger";
+import helmet from "helmet";
 // Vite imports removed - frontend is now separate
 
 // Get __dirname equivalent in ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Simple logging function
+// Simple logging function that uses JSON logger
 function log(message: string) {
-  const formattedTime = new Date().toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  });
-  console.log(`${formattedTime} [express] ${message}`);
+  jsonLogger.info(message, { service: 'express' });
 }
 
 // Register all cleanup handlers
-function registerCleanupHandlers(server: any, app: Express) {
+function registerCleanupHandlers(server: any, app: express.Express) {
   // Database pool cleanup
   cleanupManager.register({
     name: 'database-pool',
@@ -76,9 +72,6 @@ function registerCleanupHandlers(server: any, app: Express) {
   });
 }
 
-// Load environment variables
-config();
-
 const app = express();
 
 // Configure CORS
@@ -89,20 +82,39 @@ const allowedOrigins = [
   'http://localhost:5175',
   'https://animal-genius-frontend.vercel.app',
   'https://animal-genius-quiz-pro.vercel.app',
-  process.env.FRONTEND_URL
+  env.FRONTEND_URL
 ].filter(Boolean);
 
-if (process.env.NODE_ENV === 'production') {
-  console.log('CORS configured for production with origins:', allowedOrigins);
+if (env.NODE_ENV === 'production') {
+  jsonLogger.info('CORS configured for production', { origins: allowedOrigins });
 }
+
+// Apply security headers with Helmet
+// Using report-only mode for beta to identify needed external resources
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'", ...allowedOrigins].filter(Boolean),
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"],
+    },
+    reportOnly: true, // Report violations but don't enforce during beta
+  },
+  crossOriginEmbedderPolicy: false, // May need to be false for some assets
+}));
 
 app.use(cors({
   credentials: true, // Allow cookies to be sent
   origin: (origin, callback) => {
     // Log the origin for debugging in development only
-    if (process.env.NODE_ENV === 'development') {
-      console.log('CORS check - Origin:', origin);
-      console.log('CORS check - Allowed origins:', allowedOrigins);
+    if (env.NODE_ENV === 'development') {
+      jsonLogger.debug('CORS check', { origin, allowedOrigins });
     }
     
     // Allow requests with no origin (like mobile apps or Postman)
@@ -110,18 +122,17 @@ app.use(cors({
       callback(null, true);
     } else {
       // For local development ONLY, allow file:// protocol
-      if (process.env.NODE_ENV === 'development' && origin && origin.startsWith('file://')) {
-        console.log('CORS allowed file:// origin in development mode');
+      if (env.NODE_ENV === 'development' && origin && origin.startsWith('file://')) {
+        jsonLogger.debug('CORS allowed file:// origin in development mode', { origin });
         callback(null, true);
       } else {
-        console.log('CORS BLOCKED:', origin);
+        jsonLogger.warn('CORS blocked origin', { origin });
         callback(new Error('Not allowed by CORS'));
       }
     }
   },
-  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-passport-code']
 }));
 
 // Trust proxy for rate limiting to work properly in Replit
@@ -155,8 +166,20 @@ app.use((req, res, next) => {
 
   const originalResJson = res.json;
   res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
+    try {
+      // Test if the response can be serialized
+      JSON.stringify(bodyJson);
+      capturedJsonResponse = bodyJson;
+      return originalResJson.apply(res, [bodyJson, ...args]);
+    } catch (error) {
+      jsonLogger.error('Failed to serialize response', error, {
+        responseType: typeof bodyJson,
+        responseKeys: bodyJson && typeof bodyJson === 'object' ? Object.keys(bodyJson) : undefined
+      });
+      // Send error response instead
+      res.status(500);
+      return originalResJson.apply(res, [{ message: 'Internal server error: Response serialization failed' }, ...args]);
+    }
   };
 
   res.on("finish", () => {
@@ -189,26 +212,10 @@ app.use((req, res, next) => {
     // Frontend is now served separately via Vite dev server or Vercel
     // No need to serve static files from backend
 
-    // Use PORT from environment or default to 5001
-    const port = process.env.PORT || 5001;
-    
-    // Handle WebSocket upgrade - let Vite handle its own WebSocket connections
-    server.on('upgrade', (request, socket, head) => {
-      log(`WebSocket upgrade request from ${request.url}`);
-      
-      // Let Vite handle its own WebSocket connections for HMR
-      if (request.url?.includes('vite') || request.url?.includes('@vite') || request.headers['sec-websocket-protocol']?.includes('vite-hmr')) {
-        // Don't interfere with Vite's WebSocket handling
-        return;
-      }
-      
-      // All other WebSocket connections are handled by the GameWebSocketServer
-      // which is already attached to the server in routes.ts
-    });
-    
-    server.listen(port, "0.0.0.0", () => {
-      log(`serving on port ${port}`);
-      log(`WebSocket server also listening on port ${port}`);
+    // Use PORT from validated environment
+    const portNumber = env.PORT;
+    server.listen(portNumber, "0.0.0.0", () => {
+      log(`serving on port ${portNumber}`);
       
       // Start authentication performance monitoring
       startPerformanceLogging();
@@ -218,15 +225,18 @@ app.use((req, res, next) => {
       registerCleanupHandlers(server, app);
     });
   } catch (error) {
-    console.error("Failed to start server:", error);
+    jsonLogger.error("Failed to start server", error);
     
     // If it's a database connection error, provide more specific guidance
     if (error && typeof error === 'object' && 'code' in error) {
-      console.error("Database error code:", error.code);
-      console.error("This appears to be a database connection issue. Please check:");
-      console.error("1. DATABASE_URL environment variable is set correctly");
-      console.error("2. Database is accessible and running");
-      console.error("3. Network connectivity to the database");
+      jsonLogger.error("Database connection issue detected", error, {
+        errorCode: error.code,
+        guidance: [
+          "1. DATABASE_URL environment variable is set correctly",
+          "2. Database is accessible and running",
+          "3. Network connectivity to the database"
+        ]
+      });
     }
     
     process.exit(1);

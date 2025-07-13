@@ -16,7 +16,8 @@
     "baseUrl": ".",
     "types": ["node"],
     "paths": {
-      "@shared/*": ["./shared/*"]
+      "@shared/*": ["./shared/*"],
+      "@kalpro/shared-types": ["../shared-types/src"]
     }
   }
 }

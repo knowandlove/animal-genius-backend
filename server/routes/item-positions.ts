@@ -1,4 +1,5 @@
-import type { Express } from "express";
+import type { Express, Request, Response } from "express";
+import { AuthenticatedRequest } from "../types/api";
 import { db } from "../db";
 import { itemAnimalPositions, profiles, itemTypes, animalTypes } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
@@ -29,13 +30,14 @@ export function registerItemPositionRoutes(app: Express) {
   });
 
   // Get all item positions (for matrix view)
-  app.get("/api/admin/item-positions", requireAuth, async (req: any, res) => {
+  app.get("/api/admin/item-positions", requireAuth, async (req: Request, res: Response) => {
+    const authReq = req as AuthenticatedRequest;
     try {
       // Get user details to verify admin access
       const [user] = await db
         .select()
         .from(profiles)
-        .where(eq(profiles.id, req.user.userId))
+        .where(eq(profiles.id, authReq.user.userId))
         .limit(1);
 
       if (!user || !user.isAdmin) {
@@ -51,23 +53,24 @@ export function registerItemPositionRoutes(app: Express) {
   });
 
   // Save/update item position
-  app.post("/api/admin/item-positions", requireAuth, async (req: any, res) => {
+  app.post("/api/admin/item-positions", requireAuth, async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
     console.log('=== SAVE ITEM POSITION REQUEST ===');
-    console.log('Request body:', req.body);
+    console.log('Request body:', authReq.body);
     
     try {
       // Get user details to verify admin access
       const [user] = await db
         .select()
         .from(profiles)
-        .where(eq(profiles.id, req.user.userId))
+        .where(eq(profiles.id, authReq.user.userId))
         .limit(1);
 
       if (!user || !user.isAdmin) {
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      const { item_type, animal_type, x_position, y_position, scale, rotation } = req.body;
+      const { item_type, animal_type, x_position, y_position, scale, rotation } = authReq.body;
       console.log('Parsed values:', { item_type, animal_type, x_position, y_position, scale, rotation });
 
       // Validate input
@@ -157,20 +160,21 @@ export function registerItemPositionRoutes(app: Express) {
   });
 
   // Bulk copy positions from one animal to others
-  app.post("/api/admin/item-positions/bulk-copy", requireAuth, async (req: any, res) => {
+  app.post("/api/admin/item-positions/bulk-copy", requireAuth, async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
     try {
       // Get user details to verify admin access
       const [user] = await db
         .select()
         .from(profiles)
-        .where(eq(profiles.id, req.user.userId))
+        .where(eq(profiles.id, authReq.user.userId))
         .limit(1);
 
       if (!user || !user.isAdmin) {
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      const { item_type, source_animal, target_animals } = req.body;
+      const { item_type, source_animal, target_animals } = authReq.body;
 
       if (!item_type || !source_animal || !Array.isArray(target_animals)) {
         return res.status(400).json({ message: "Invalid request data" });
@@ -226,8 +230,8 @@ export function registerItemPositionRoutes(app: Express) {
           const [created] = await db
             .insert(itemAnimalPositions)
             .values({
-              itemType: item_type,
-              animalType: targetAnimal,
+              itemTypeId: item_type,
+              animalTypeId: targetAnimal,
               xPosition: sourcePosition.xPosition,
               yPosition: sourcePosition.yPosition,
               scale: sourcePosition.scale,
@@ -246,20 +250,21 @@ export function registerItemPositionRoutes(app: Express) {
   });
 
   // Batch update positions
-  app.post("/api/admin/item-positions/batch", requireAuth, async (req: any, res) => {
+  app.post("/api/admin/item-positions/batch", requireAuth, async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
     try {
       // Get user details to verify admin access
       const [user] = await db
         .select()
         .from(profiles)
-        .where(eq(profiles.id, req.user.userId))
+        .where(eq(profiles.id, authReq.user.userId))
         .limit(1);
 
       if (!user || !user.isAdmin) {
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      const { positions } = req.body;
+      const { positions } = authReq.body;
 
       if (!positions || typeof positions !== 'object') {
         return res.status(400).json({ message: "Invalid positions data" });
@@ -308,8 +313,8 @@ export function registerItemPositionRoutes(app: Express) {
             const [created] = await db
               .insert(itemAnimalPositions)
               .values({
-                itemType,
-                animalType,
+                itemTypeId: itemType,
+                animalTypeId: animalType,
                 xPosition: x?.toString() ?? '50',
                 yPosition: y?.toString() ?? '50',
                 scale: scale?.toString() ?? '1.0',

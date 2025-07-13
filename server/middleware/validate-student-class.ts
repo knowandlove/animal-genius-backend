@@ -3,6 +3,20 @@ import { db } from '../db';
 import { students, quizSubmissions } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 
+// Extend Express Request type
+declare global {
+  namespace Express {
+    interface Request {
+      student?: {
+        id: string;
+        classId: string;
+        studentName: string;
+        passportCode: string;
+      };
+    }
+  }
+}
+
 /**
  * Middleware to validate that a passport code belongs to a valid student
  * and optionally that they belong to a specific class
@@ -34,7 +48,7 @@ export async function validateStudentAccess(req: Request, res: Response, next: N
     req.student = {
       id: student.id,
       classId: student.classId,
-      studentName: student.studentName,
+      studentName: student.studentName || '',
       passportCode
     };
     
@@ -90,7 +104,7 @@ export async function requireSameClass(req: Request, res: Response, next: NextFu
 export async function validateOwnDataAccess(req: Request, res: Response, next: NextFunction) {
   try {
     const passportCode = req.params.passportCode || req.body.passportCode;
-    const studentId = req.studentId; // From requireStudentSession
+    const studentId = req.student?.id; // From unified auth middleware
     
     if (!passportCode || !studentId) {
       return res.status(400).json({ message: 'Invalid request' });

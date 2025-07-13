@@ -1,11 +1,11 @@
 // Store Management Routes - Teacher controls for store hours
-import type { Express, Request, Response } from "express";
+import type { Express, Response } from "express";
+import { AuthenticatedRequest } from "../types/api";
 import { db } from "../db";
 import { storeSettings, classes } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth";
 import { verifyClassEditAccess } from "../middleware/ownership-collaborator";
-import { requireManageStore } from "../middleware/permission-check";
 import { z } from "zod";
 import { getCache } from "../lib/cache-factory";
 
@@ -36,13 +36,14 @@ const storeHoursSchema = z.object({
 export function registerStoreManagementRoutes(app: Express) {
   
   // Toggle store open/closed status
-  app.post("/api/currency/store/toggle", requireAuth, verifyClassEditAccess, requireManageStore, async (req: any, res) => {
+  app.post("/api/currency/store/toggle", requireAuth, verifyClassEditAccess, async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
     try {
-      console.log('[STORE TOGGLE] Request body:', JSON.stringify(req.body));
-      console.log('[STORE TOGGLE] User:', req.user);
+      console.log('[STORE TOGGLE] Request body:', JSON.stringify(authReq.body));
+      console.log('[STORE TOGGLE] User:', authReq.user);
       
-      const { classId, isOpen } = storeToggleSchema.parse(req.body);
-      const teacherId = req.user?.userId;
+      const { classId, isOpen } = storeToggleSchema.parse(authReq.body);
+      const teacherId = authReq.user?.userId;
       
       if (!teacherId) {
         console.error('[STORE TOGGLE] No teacher ID found');
@@ -88,7 +89,7 @@ export function registerStoreManagementRoutes(app: Express) {
 
       // Invalidate the cache for this class
       const cacheKey = `store-status:${classId}`;
-      cache.del(cacheKey);
+      await cache.del(cacheKey);
       console.log(`🗑️ Cache invalidated for ${cacheKey}`);
 
       res.json({ 
@@ -114,10 +115,11 @@ export function registerStoreManagementRoutes(app: Express) {
   });
 
   // Get current store status for a class
-  app.get("/api/classes/:classId/store-status", requireAuth, validateUUID('classId'), verifyClassEditAccess, requireManageStore, async (req: any, res) => {
+  app.get("/api/classes/:classId/store-status", requireAuth, validateUUID('classId'), verifyClassEditAccess, async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
     try {
-      const { classId } = req.params;
-      const teacherId = req.user?.userId;
+      const { classId } = authReq.params;
+      const teacherId = authReq.user?.userId;
       
       console.log('[STORE STATUS] ClassId:', classId);
       console.log('[STORE STATUS] TeacherId:', teacherId);
@@ -173,10 +175,11 @@ export function registerStoreManagementRoutes(app: Express) {
   });
 
   // Set auto-approval threshold
-  app.post("/api/currency/store/auto-approval", requireAuth, verifyClassEditAccess, requireManageStore, async (req: any, res) => {
+  app.post("/api/currency/store/auto-approval", requireAuth, verifyClassEditAccess, async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
     try {
-      const { classId, threshold } = autoApprovalSchema.parse(req.body);
-      const teacherId = req.user?.userId;
+      const { classId, threshold } = autoApprovalSchema.parse(authReq.body);
+      const teacherId = authReq.user?.userId;
 
       // Check if store settings exist
       const existingSettings = await db
@@ -226,10 +229,11 @@ export function registerStoreManagementRoutes(app: Express) {
   });
 
   // Set store hours (future feature)
-  app.post("/api/currency/store/hours", requireAuth, verifyClassEditAccess, async (req: any, res) => {
+  app.post("/api/currency/store/hours", requireAuth, verifyClassEditAccess, async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
     try {
-      const { classId, openTime, closeTime, timezone } = storeHoursSchema.parse(req.body);
-      const teacherId = req.user?.userId;
+      const { classId, openTime, closeTime, timezone } = storeHoursSchema.parse(authReq.body);
+      const teacherId = authReq.user?.userId;
 
       // This is a placeholder for future store hours functionality
       res.json({

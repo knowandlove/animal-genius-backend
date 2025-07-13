@@ -1,82 +1,63 @@
 import { QuizSubmission } from "@shared/schema";
 
-// Animal to genius type mapping
+// Animal to genius type mapping - updated to match current system
 export const animalGeniusMap: Record<string, string> = {
-  // Thinkers - analytical, logical
+  // Thinkers - analytical, logical (ISTP, INTP)
   'Owl': 'Thinker',
-  'Cat': 'Thinker',
-  'Fox': 'Thinker',
   
-  // Feelers - empathetic, people-focused
-  'Elephant': 'Feeler',
-  'Dolphin': 'Feeler',
-  'Deer': 'Feeler',
-  'Horse': 'Feeler',
-  'Koala': 'Feeler',
-  'Rabbit': 'Feeler',
-  'Panda': 'Feeler',
+  // Feelers - empathetic, people-focused (INFP, ISFP, INFJ, INTJ, ISFJ, ISTJ, ESFJ, ENFJ)
+  'Meerkat': 'Feeler',      // INFP, ISFP - creative, empathetic
+  'Panda': 'Feeler',        // INFJ, INTJ - reflective, strategic  
+  'Beaver': 'Feeler',       // ISFJ, ISTJ - reliable, supportive
+  'Elephant': 'Feeler',     // ESFJ, ENFJ - caring, nurturing
   
-  // Doers - action-oriented, hands-on
-  'Tiger': 'Doer',
-  'Lion': 'Doer',
-  'Otter': 'Doer',
-  'Penguin': 'Doer',
-  'Beaver': 'Doer',
-  'Wolf': 'Doer',
-  'Parrot': 'Doer',
-  'Border Collie': 'Doer',
-  'Meerkat': 'Doer'
+  // Doers - action-oriented, hands-on (ESFP, ESTP, ENFP, ENTP, ESTJ, ENTJ)
+  'Otter': 'Doer',          // ESFP, ESTP - playful, energetic
+  'Parrot': 'Doer',         // ENFP, ENTP - enthusiastic, creative
+  'Border Collie': 'Doer'   // ESTJ, ENTJ - leadership, goal-oriented
 };
 
 // Dynamic duos - complementary pairs that work well together
 const DYNAMIC_PAIRS = [
   { animals: ['Owl', 'Otter'], reason: 'Thinker + Doer complement each other perfectly' },
-  { animals: ['Elephant', 'Parrot'], reason: 'Feeler + Doer create balanced collaboration' },
-  { animals: ['Cat', 'Dolphin'], reason: 'Analytical thinking meets empathetic communication' },
-  { animals: ['Fox', 'Horse'], reason: 'Strategic thinking with people-focused execution' },
-  { animals: ['Beaver', 'Deer'], reason: 'Structured approach with considerate implementation' },
-  { animals: ['Tiger', 'Koala'], reason: 'High energy balanced with calm reflection' },
-  { animals: ['Lion', 'Rabbit'], reason: 'Leadership paired with thoughtful support' },
-  { animals: ['Wolf', 'Penguin'], reason: 'Independent worker with social collaborator' },
-  { animals: ['Panda', 'Border Collie'], reason: 'Calm reflection paired with energetic action' },
-  { animals: ['Meerkat', 'Panda'], reason: 'Alert vigilance balanced with peaceful presence' },
-  { animals: ['Owl', 'Border Collie'], reason: 'Analytical thinking with enthusiastic execution' },
-  { animals: ['Beaver', 'Meerkat'], reason: 'Structured planning with keen observation' }
+  { animals: ['Owl', 'Parrot'], reason: 'Analytical thinking with creative enthusiasm' },
+  { animals: ['Owl', 'Border Collie'], reason: 'Analytical thinking with goal-oriented execution' },
+  { animals: ['Meerkat', 'Otter'], reason: 'Creative empathy with energetic action' },
+  { animals: ['Meerkat', 'Parrot'], reason: 'Imaginative souls with enthusiastic communication' },
+  { animals: ['Panda', 'Border Collie'], reason: 'Strategic reflection with decisive leadership' },
+  { animals: ['Panda', 'Otter'], reason: 'Thoughtful planning with spontaneous energy' },
+  { animals: ['Beaver', 'Parrot'], reason: 'Organized structure with creative inspiration' },
+  { animals: ['Beaver', 'Border Collie'], reason: 'Reliable support with strong leadership' },
+  { animals: ['Elephant', 'Otter'], reason: 'Nurturing care with playful energy' },
+  { animals: ['Elephant', 'Parrot'], reason: 'Social harmony with creative communication' },
+  { animals: ['Elephant', 'Border Collie'], reason: 'People-focused care with goal achievement' }
 ];
 
 // Puzzle pairings - combinations that need extra support
 const PUZZLE_PAIRS = [
   { 
-    animals: ['Beaver', 'Parrot'], 
-    issue: 'Different pace preferences - Beaver likes structure, Parrot prefers flexibility' 
+    animals: ['Owl', 'Elephant'], 
+    issue: 'Communication style differences - analytical vs people-focused' 
   },
   { 
-    animals: ['Owl', 'Penguin'], 
-    issue: 'Communication style differences - detail-focused vs social-focused' 
+    animals: ['Meerkat', 'Border Collie'], 
+    issue: 'Pace differences - creative process vs goal-driven urgency' 
   },
   { 
-    animals: ['Tiger', 'Deer'], 
-    issue: 'Energy level mismatch - high intensity vs gentle approach' 
+    animals: ['Panda', 'Parrot'], 
+    issue: 'Energy mismatch - calm reflection vs enthusiastic action' 
   },
   { 
-    animals: ['Cat', 'Horse'], 
-    issue: 'Different social needs - independent vs collaborative preferences' 
+    animals: ['Beaver', 'Otter'], 
+    issue: 'Structure vs flexibility - organized approach vs spontaneous style' 
   },
   { 
-    animals: ['Fox', 'Elephant'], 
-    issue: 'Decision-making differences - quick analysis vs careful consideration' 
+    animals: ['Owl', 'Meerkat'], 
+    issue: 'Different processing styles - logical analysis vs emotional intuition' 
   },
   { 
-    animals: ['Border Collie', 'Panda'], 
-    issue: 'Energy mismatch - high activity vs calm, steady approach' 
-  },
-  { 
-    animals: ['Meerkat', 'Otter'], 
-    issue: 'Different focus styles - vigilant attention vs spontaneous action' 
-  },
-  { 
-    animals: ['Border Collie', 'Owl'], 
-    issue: 'Different processing speeds - quick action vs thorough analysis' 
+    animals: ['Elephant', 'Panda'], 
+    issue: 'Social needs differences - group harmony vs independent reflection' 
   }
 ];
 
@@ -113,33 +94,8 @@ export function calculateGeniusDistribution(submissions: QuizSubmission[]) {
   return distribution;
 }
 
-// Helper function to parse scores from the stored format
-function parseScores(scores: any) {
-  // Handle both old format (E, I, S, N, etc.) and new format (E/I, S/N, etc.)
-  if (scores['E/I'] !== undefined) {
-    // New format - calculate individual scores
-    const ei = scores['E/I'];
-    const sn = scores['S/N']; 
-    const tf = scores['T/F'];
-    const jp = scores['J/P'];
-    
-    return {
-      E: ei > 10 ? ei - 10 : 0,
-      I: ei <= 10 ? 10 - ei : 0,
-      S: sn > 10 ? sn - 10 : 0,
-      N: sn <= 10 ? 10 - sn : 0,
-      T: tf > 10 ? tf - 10 : 0,
-      F: tf <= 10 ? 10 - tf : 0,
-      J: jp > 10 ? jp - 10 : 0,
-      P: jp <= 10 ? 10 - jp : 0
-    };
-  }
-  
-  // Old format - return as-is
-  return scores;
-}
 
-export function generateClassInsights(submissions: QuizSubmission[]): ClassInsights {
+export function generateClassInsights(submissions: any[]): ClassInsights {
   const insights: ClassInsights = {
     mayGetOverlooked: [],
     needConnection: [],
@@ -148,45 +104,47 @@ export function generateClassInsights(submissions: QuizSubmission[]): ClassInsig
   };
 
   submissions.forEach(submission => {
-    const rawScores = submission.scores as any;
-    
-    // Skip if no scores available
-    if (!rawScores) {
-      return;
-    }
-    
-    const scores = parseScores(rawScores);
-    const studentInfo = {
-      name: submission.studentName,
-      animal: submission.animalType,
-      submissionId: submission.id
-    };
+    try {
+      const studentInfo = {
+        name: submission.studentName || 'Unknown Student',
+        animal: submission.animalType || 'Unknown',
+        submissionId: submission.id || 0
+      };
 
-    // May Get Overlooked - introverted + feeling types
-    if (scores.I > scores.E && ['Elephant', 'Deer', 'Koala', 'Rabbit', 'Panda'].includes(submission.animalType)) {
-      insights.mayGetOverlooked.push(studentInfo);
-    }
+      // Base insights on animal personality types instead of scores
+      const animalType = submission.animalType;
 
-    // Need Connection - high feeling score
-    if (scores.F > scores.T && scores.F >= 7) {
-      insights.needConnection.push(studentInfo);
-    }
+      // May Get Overlooked - quiet, introverted types
+      if (['Meerkat', 'Panda', 'Beaver'].includes(animalType)) {
+        insights.mayGetOverlooked.push(studentInfo);
+      }
 
-    // Need Change Warnings - high judging score
-    if (scores.J > scores.P && scores.J >= 7) {
-      insights.needChangeWarnings.push(studentInfo);
-    }
+      // Need Connection - feeling-based animals
+      if (['Meerkat', 'Elephant', 'Beaver'].includes(animalType)) {
+        insights.needConnection.push(studentInfo);
+      }
 
-    // Need Think Time - introverted
-    if (scores.I > scores.E && scores.I >= 6) {
-      insights.needThinkTime.push(studentInfo);
+      // Need Change Warnings - structured, planning animals
+      if (['Beaver', 'Panda', 'Border Collie'].includes(animalType)) {
+        insights.needChangeWarnings.push(studentInfo);
+      }
+
+      // Need Think Time - analytical and introverted types
+      if (['Owl', 'Panda', 'Meerkat', 'Beaver'].includes(animalType)) {
+        insights.needThinkTime.push(studentInfo);
+      }
+    } catch (error) {
+      console.error('Error processing submission for insights:', error, submission);
+      // Skip this submission but continue with others
     }
   });
 
   return insights;
 }
 
-export function generatePairings(submissions: QuizSubmission[]): PairingAnalysis {
+export function generatePairings(submissions: any[]): PairingAnalysis {
+  console.log(`[Pairings] Starting pairing generation with ${submissions.length} submissions`);
+  
   const dynamicDuos: StudentPairing[] = [];
   const puzzlePairings: StudentPairing[] = [];
   const soloWorkers: Array<{ name: string; animal: string; submissionId: number; note: string }> = [];
@@ -196,23 +154,29 @@ export function generatePairings(submissions: QuizSubmission[]): PairingAnalysis
     name: string;
     animalType: string;
     submissionId: number;
-    scores: any;
   }
   
   const students: StudentData[] = submissions
-    .filter(s => s.scores) // Only include submissions with scores
+    .filter(s => s.animalType && s.studentName) // Only need animal type and name
     .map(s => ({
       name: s.studentName,
       animalType: s.animalType,
-      submissionId: s.id,
-      scores: parseScores(s.scores as any)
+      submissionId: s.id
     }));
+    
+  console.log(`[Pairings] Filtered to ${students.length} students`);
+  console.log('[Pairings] Student animals:', students.map(s => `${s.name}: ${s.animalType}`));
+  
+  // Log available pairing patterns
+  console.log('[Pairings] Available dynamic duo patterns:', DYNAMIC_PAIRS.map(p => p.animals.join(' + ')));
 
   // Find dynamic duos
   for (let i = 0; i < students.length; i++) {
     for (let j = i + 1; j < students.length; j++) {
       const student1 = students[i];
       const student2 = students[j];
+      
+      console.log(`[Pairings] Checking pair: ${student1.animalType} + ${student2.animalType}`);
       
       // Check if this pair matches any dynamic duo patterns
       const matchingPair = DYNAMIC_PAIRS.find(pair => 
@@ -221,6 +185,7 @@ export function generatePairings(submissions: QuizSubmission[]): PairingAnalysis
       );
       
       if (matchingPair) {
+        console.log(`[Pairings] Found dynamic duo: ${student1.name} (${student1.animalType}) + ${student2.name} (${student2.animalType})`);
         dynamicDuos.push({
           student1: { name: student1.name, animal: student1.animalType, submissionId: student1.submissionId },
           student2: { name: student2.name, animal: student2.animalType, submissionId: student2.submissionId },
@@ -252,21 +217,22 @@ export function generatePairings(submissions: QuizSubmission[]): PairingAnalysis
     }
   }
 
-  // Identify solo workers (typically introverted types)
+  // Identify solo workers based on animal personality types (introverted animals)
   students.forEach(student => {
-    if (student.scores && student.scores.I > student.scores.E) {
+    // Introverted animal types: Owl, Panda, Beaver, Meerkat (some)
+    const introvertedAnimals = ['Owl', 'Panda', 'Beaver', 'Meerkat'];
+    
+    if (introvertedAnimals.includes(student.animalType)) {
       let note = "Works best with minimal distractions";
       
-      if (['Owl', 'Cat'].includes(student.animalType)) {
+      if (student.animalType === 'Owl') {
         note = "Excels in independent analytical projects";
-      } else if (['Deer', 'Koala', 'Rabbit', 'Panda'].includes(student.animalType)) {
-        note = "Prefers individual creative or research tasks";
+      } else if (student.animalType === 'Panda') {
+        note = "Prefers individual strategic planning tasks";
       } else if (student.animalType === 'Beaver') {
         note = "Thrives on structured individual assignments";
-      } else if (['Meerkat'].includes(student.animalType)) {
-        note = "Works well independently with focused attention";
-      } else if (['Border Collie'].includes(student.animalType)) {
-        note = "Can work solo when given clear structure and goals";
+      } else if (student.animalType === 'Meerkat') {
+        note = "Works well independently with focused creative attention";
       }
       
       soloWorkers.push({
@@ -278,10 +244,15 @@ export function generatePairings(submissions: QuizSubmission[]): PairingAnalysis
     }
   });
 
+  console.log(`[Pairings] Results: ${dynamicDuos.length} duos, ${puzzlePairings.length} puzzles, ${soloWorkers.length} solo workers`);
+  
   // Limit results to prevent overwhelming display
-  return {
+  const result = {
     dynamicDuos: dynamicDuos.slice(0, 8), // Top 8 dynamic duos
     puzzlePairings: puzzlePairings.slice(0, 6), // Top 6 puzzle pairings  
     soloWorkers: soloWorkers.slice(0, 6) // Top 6 solo workers
   };
+  
+  console.log('[Pairings] Final result:', JSON.stringify(result, null, 2));
+  return result;
 }

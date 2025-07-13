@@ -1,4 +1,5 @@
-import type { Express } from "express";
+import type { Express, Request, Response } from "express";
+import { AuthenticatedRequest } from "../types/api";
 import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middleware/auth";
@@ -29,7 +30,8 @@ export function registerNormalizedItemPositionRoutes(app: Express) {
   });
 
   // Admin endpoint to get all positions with metadata
-  app.get("/api/admin/item-positions-normalized", requireAuth, requireAdmin, async (req: any, res) => {
+  app.get("/api/admin/item-positions-normalized", requireAuth, requireAdmin, async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
     try {
 
       const result = await db.execute(sql`
@@ -52,7 +54,8 @@ export function registerNormalizedItemPositionRoutes(app: Express) {
   });
 
   // Save/update normalized position
-  app.post("/api/admin/item-positions-normalized", requireAuth, requireAdmin, async (req: any, res) => {
+  app.post("/api/admin/item-positions-normalized", requireAuth, requireAdmin, async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
     try {
 
       const { 
@@ -64,7 +67,7 @@ export function registerNormalizedItemPositionRoutes(app: Express) {
         rotation,
         anchor_x = 0.5,
         anchor_y = 0.5 
-      } = req.body;
+      } = authReq.body;
 
       console.log('Saving normalized position:', req.body);
 
@@ -106,19 +109,20 @@ export function registerNormalizedItemPositionRoutes(app: Express) {
     } catch (error) {
       console.error("Save normalized position error:", error);
       console.error("Full error details:", {
-        message: error.message,
-        stack: error.stack,
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
         requestBody: req.body
       });
       res.status(500).json({ 
         message: "Failed to save position",
-        error: error.message 
+        error: error instanceof Error ? error.message : 'Unknown error'
       });
     }
   });
 
   // Copy positions to all animals
-  app.post("/api/admin/item-positions-normalized/copy-all", requireAuth, requireAdmin, async (req: any, res) => {
+  app.post("/api/admin/item-positions-normalized/copy-all", requireAuth, requireAdmin, async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
     try {
 
       const { 
@@ -130,7 +134,7 @@ export function registerNormalizedItemPositionRoutes(app: Express) {
         rotation,
         anchor_x = 0.5,
         anchor_y = 0.5 
-      } = req.body;
+      } = authReq.body;
 
       // Wrap in transaction for data consistency
       const results = await db.transaction(async (tx) => {
@@ -174,7 +178,8 @@ export function registerNormalizedItemPositionRoutes(app: Express) {
   });
 
   // Batch update positions
-  app.post("/api/admin/item-positions-normalized/batch", requireAuth, requireAdmin, async (req: any, res) => {
+  app.post("/api/admin/item-positions-normalized/batch", requireAuth, requireAdmin, async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
     try {
       const { positions } = req.body;
 

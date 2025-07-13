@@ -4,9 +4,7 @@ import { students, quizSubmissions, profiles } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { supabaseAdmin } from '../supabase-clients';
 import { getCachedProfile } from './profile-cache';
-import jwt from 'jsonwebtoken';
-
-const JWT_SECRET = process.env.JWT_SECRET;
+// JWT imports removed - using unified auth
 
 /**
  * Comprehensive room access control
@@ -35,21 +33,7 @@ export async function checkRoomAccess(req: Request, res: Response, next: NextFun
       return res.status(404).json({ message: 'Room not found' });
     }
 
-    // Check 0: Parse student session cookie if present
-    if (req.cookies?.student_session && !req.studentId) {
-      console.log('Found student_session cookie in room-access');
-      try {
-        if (!JWT_SECRET) {
-          console.log('JWT_SECRET not configured');
-          return;
-        }
-        const decoded = jwt.verify(req.cookies.student_session, JWT_SECRET) as any;
-        req.studentId = decoded.studentId;
-        console.log('Set studentId from cookie:', req.studentId);
-      } catch (error) {
-        console.log('Failed to verify student session cookie:', error);
-      }
-    }
+    // Legacy cookie handling removed - unified auth middleware handles this
 
     // Check 0: Try to authenticate teacher from Authorization header
     const authHeader = req.headers.authorization;
@@ -106,9 +90,9 @@ export async function checkRoomAccess(req: Request, res: Response, next: NextFun
     }
 
     // Check 2: Student Authentication
-    if (req.studentId) {
+    if (req.student?.id) {
       // Get the authenticated student's info
-      console.log('Looking up student with ID:', req.studentId);
+      console.log('Looking up student with ID:', req.student.id);
       
       // Get the student details
       const [authStudent] = await db
@@ -117,7 +101,7 @@ export async function checkRoomAccess(req: Request, res: Response, next: NextFun
           classId: students.classId
         })
         .from(students)
-        .where(eq(students.id, req.studentId))
+        .where(eq(students.id, req.student.id))
         .limit(1);
 
       if (!authStudent) {
@@ -249,10 +233,10 @@ declare global {
         isOwner: boolean;
         isTeacher: boolean;
         roomOwner: {
-          id: number;
-          classId: number;
+          id: string;
+          classId: string;
           roomVisibility?: string | null;
-          studentName: string;
+          studentName: string | null;
         };
       };
     }

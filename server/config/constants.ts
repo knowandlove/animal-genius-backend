@@ -14,18 +14,10 @@ export const CONFIG = {
       WINDOW_MS: 15 * 60 * 1000, // 15 minutes
       MAX_REQUESTS: 1000
     },
-    // GAME_CREATION: { // Commented out - game features removed
-    //   WINDOW_MS: 60 * 60 * 1000, // 1 hour
-    //   MAX_REQUESTS: 20
-    // },
     PASSWORD_RESET: {
       WINDOW_MS: 60 * 60 * 1000, // 1 hour
       MAX_REQUESTS: 3
     },
-    // WS_CONNECTION: { // Commented out - WebSocket features removed
-    //   WINDOW_MS: 60 * 1000, // 1 minute
-    //   MAX_REQUESTS: 10
-    // },
     STORE_PURCHASE: {
       WINDOW_MS: 5 * 60 * 1000, // 5 minutes
       MAX_REQUESTS: 10
@@ -57,7 +49,6 @@ export const CONFIG = {
     DB_ACQUIRE: 10000, // 10 seconds
     DB_IDLE: 30000, // 30 seconds
     SLOW_REQUEST_THRESHOLD: 1000, // 1 second
-    // WEBSOCKET_HEARTBEAT: 120000, // 2 minutes - WebSocket features removed
     RATE_LIMIT_CLEANUP: 15 * 60 * 1000, // 15 minutes
     RATE_LIMIT_EXPIRY: 5 * 60 * 1000 // 5 minutes
   },

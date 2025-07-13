@@ -8,19 +8,15 @@ import { getPaginationParams, createPaginatedResponse, setPaginationHeaders } fr
 import { asyncWrapper } from '../utils/async-wrapper';
 import { InternalError, ErrorCode } from '../utils/errors';
 import { createSecureLogger } from '../utils/secure-logger';
+import { getCache } from '../lib/cache-factory';
 
 const logger = createSecureLogger('StoreRoutes');
 
 const router = Router();
 
-// Simple in-memory cache for store catalog
-interface CatalogCache {
-  data: any[];
-  timestamp: number;
-}
-
-let catalogCache: CatalogCache | null = null;
-const CATALOG_CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache
+// Cache configuration
+const CATALOG_CACHE_KEY = 'store:catalog:active';
+const CATALOG_CACHE_TTL = 300; // 5 minutes in seconds
 
 /**
  * GET /api/store/catalog
@@ -30,12 +26,15 @@ const CATALOG_CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache
 router.get('/catalog', storeBrowsingLimiter, asyncWrapper(async (req, res, next) => {
   const { page, limit, offset } = getPaginationParams(req);
   
+  // Get cache instance
+  const cache = getCache();
+  
   // For backward compatibility, if no pagination params provided, return all items from cache
   if (!req.query.page && !req.query.limit) {
     // Check cache first
-    const now = Date.now();
-    if (catalogCache && (now - catalogCache.timestamp) < CATALOG_CACHE_TTL) {
-      res.json(catalogCache.data);
+    const cachedData = await cache.get<any[]>(CATALOG_CACHE_KEY);
+    if (cachedData) {
+      res.json(cachedData);
       return;
     }
     
@@ -48,11 +47,8 @@ router.get('/catalog', storeBrowsingLimiter, asyncWrapper(async (req, res, next)
     // Prepare items with proper image URLs using StorageRouter
     const preparedItems = await StorageRouter.prepareStoreItemsResponse(items);
     
-    // Cache the result
-    catalogCache = {
-      data: preparedItems,
-      timestamp: now
-    };
+    // Cache the result in centralized cache
+    await cache.set(CATALOG_CACHE_KEY, preparedItems, CATALOG_CACHE_TTL);
     
     res.json(preparedItems);
     return;

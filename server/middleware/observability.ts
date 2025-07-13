@@ -5,10 +5,8 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
-import { createSecureLogger } from '../utils/secure-logger';
+import { jsonLogger } from '../lib/json-logger';
 import { metricsService } from '../monitoring/metrics-service';
-
-const logger = createSecureLogger('HTTP');
 
 interface RequestMetrics {
   method: string;
@@ -35,7 +33,7 @@ export function httpMetricsMiddleware(req: Request, res: Response, next: NextFun
   const originalEnd = res.end;
   
   // Override end function to capture metrics
-  res.end = function(...args: any[]) {
+  res.end = function(...args: any[]): any {
     const duration = Date.now() - startTime;
     const statusCode = res.statusCode;
     
@@ -61,7 +59,7 @@ export function httpMetricsMiddleware(req: Request, res: Response, next: NextFun
     // Log structured data
     logHttpRequest(metrics);
     
-    // Call original end
+    // Call original end with the same arguments
     return originalEnd.apply(res, args);
   };
   
@@ -125,13 +123,13 @@ function logHttpRequest(metrics: RequestMetrics) {
   
   // Determine log level based on status code and duration
   if (metrics.statusCode >= 500) {
-    logger.error('HTTP request failed', logData);
+    jsonLogger.error('HTTP request server error', undefined, logData);
   } else if (metrics.statusCode >= 400) {
-    logger.warn('HTTP request client error', logData);
+    jsonLogger.warn('HTTP request client error', logData);
   } else if (metrics.duration > 1000) {
-    logger.warn('Slow HTTP request', logData);
+    jsonLogger.warn('Slow HTTP request', logData);
   } else if (process.env.NODE_ENV === 'development') {
-    logger.debug('HTTP request', logData);
+    jsonLogger.debug('HTTP request', logData);
   }
 }
 

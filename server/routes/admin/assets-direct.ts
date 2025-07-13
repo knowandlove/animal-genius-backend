@@ -1,4 +1,5 @@
-import { Router } from 'express';
+import { Router, Response } from 'express';
+import { AuthenticatedRequest } from '../../types/api';
 import { requireAuth, requireAdmin } from '../../middleware/auth';
 import multer from 'multer';
 import { createClient } from '@supabase/supabase-js';
@@ -82,7 +83,8 @@ async function generateThumbnail(buffer: Buffer, size: number = 128): Promise<Bu
 router.post('/upload', requireAuth, requireAdmin, upload.fields([
   { name: 'image', maxCount: 1 },
   { name: 'thumbnail', maxCount: 1 }
-]), async (req: any, res) => {
+]), async (req, res) => {
+  const authReq = req as AuthenticatedRequest;
   try {
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
     const mainFile = files['image']?.[0];
@@ -92,7 +94,7 @@ router.post('/upload', requireAuth, requireAdmin, upload.fields([
       return res.status(400).json({ error: 'No main file uploaded' });
     }
 
-    const { type, assetType, storeItemId } = req.body;
+    const { type, assetType, storeItemId } = authReq.body;
     if (!type) {
       return res.status(400).json({ error: 'Item type is required' });
     }
@@ -233,6 +235,7 @@ router.post('/upload', requireAuth, requireAdmin, upload.fields([
  * Test Supabase connection and configuration
  */
 router.get('/test-connection', requireAuth, requireAdmin, async (req, res) => {
+  const authReq = req as AuthenticatedRequest;
   try {
     // Test environment variables
     const envCheck = {

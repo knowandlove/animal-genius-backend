@@ -1,42 +1,86 @@
 #!/usr/bin/env node
 
-import { execSync } from 'child_process';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+/**
+ * TypeScript baseline checker
+ * 
+ * This script runs TypeScript type checking and compares the error count
+ * against a baseline to prevent regression while allowing gradual fixes.
+ */
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const { execSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 
-const baselinePath = path.join(__dirname, '..', '.typecheck-baseline.json');
-const baseline = JSON.parse(fs.readFileSync(baselinePath, 'utf8'));
+const BASELINE_FILE = path.join(__dirname, '..', '.typecheck-baseline.json');
 
-try {
-  // Run typecheck and capture output
-  execSync('npm run typecheck', { stdio: 'pipe' });
-  console.log('✅ No TypeScript errors!');
-  process.exit(0);
-} catch (error) {
-  // Count errors in output
-  const output = error.stdout?.toString() || '';
-  const errorMatches = output.match(/error TS\d+:/g) || [];
-  const currentErrorCount = errorMatches.length;
-  
-  console.log(`\n📊 TypeScript Error Summary:`);
-  console.log(`   Current errors: ${currentErrorCount}`);
-  console.log(`   Baseline errors: ${baseline.baselineErrorCount}`);
-  console.log(`   Baseline date: ${baseline.baselineDate}\n`);
-  
-  if (currentErrorCount > baseline.baselineErrorCount) {
-    console.error(`❌ FAILED: ${currentErrorCount - baseline.baselineErrorCount} new TypeScript errors introduced!`);
-    console.error(`   Please fix the new errors before committing.\n`);
+function loadBaseline() {
+  try {
+    const baselineData = fs.readFileSync(BASELINE_FILE, 'utf8');
+    return JSON.parse(baselineData);
+  } catch (error) {
+    console.error('❌ Could not load baseline file:', BASELINE_FILE);
+    console.error('   Create it with: { "baselineErrorCount": 0, "baselineDate": "YYYY-MM-DD" }');
     process.exit(1);
-  } else if (currentErrorCount < baseline.baselineErrorCount) {
-    console.log(`✅ Great work! You've reduced errors by ${baseline.baselineErrorCount - currentErrorCount}`);
-    console.log(`   Consider updating the baseline in .typecheck-baseline.json\n`);
-    process.exit(0);
-  } else {
-    console.log(`⚠️  Error count unchanged. While no new errors were added, consider fixing some existing ones.\n`);
-    process.exit(0);
   }
 }
+
+function runTypeCheck() {
+  try {
+    // Run TypeScript compiler with no emit to get error count
+    execSync('npx tsc --noEmit', { stdio: 'pipe' });
+    return 0; // No errors
+  } catch (error) {
+    // TypeScript outputs errors to stderr
+    const output = error.stderr ? error.stderr.toString() : error.stdout.toString();
+    
+    // Count errors by looking for lines that match TypeScript error format
+    const errorLines = output.split('\n').filter(line => 
+      line.includes(': error TS') || 
+      line.match(/\(\d+,\d+\):\s*error\s*TS\d+/)
+    );
+    
+    return errorLines.length;
+  }
+}
+
+function main() {
+  console.log('🔍 Running TypeScript baseline check...');
+  
+  const baseline = loadBaseline();
+  const currentErrors = runTypeCheck();
+  
+  console.log(`📊 Current errors: ${currentErrors}`);
+  console.log(`📏 Baseline: ${baseline.baselineErrorCount}`);
+  
+  if (currentErrors <= baseline.baselineErrorCount) {
+    const improvement = baseline.baselineErrorCount - currentErrors;
+    if (improvement > 0) {
+      console.log(`🎉 GREAT! You fixed ${improvement} TypeScript error(s)!`);
+      console.log('   Consider updating the baseline to lock in this improvement.');
+    } else {
+      console.log('✅ TypeScript errors within baseline limit.');
+    }
+    process.exit(0);
+  } else {
+    const regression = currentErrors - baseline.baselineErrorCount;
+    console.error(`❌ REGRESSION: ${regression} new TypeScript error(s) introduced!`);
+    console.error(`   Current: ${currentErrors}, Baseline: ${baseline.baselineErrorCount}`);
+    console.error('   Fix the new errors or update the baseline if intentional.');
+    process.exit(1);
+  }
+}
+
+// Handle command line arguments
+if (process.argv.includes('--update-baseline')) {
+  const currentErrors = runTypeCheck();
+  const baseline = loadBaseline();
+  
+  baseline.baselineErrorCount = currentErrors;
+  baseline.lastUpdate = new Date().toISOString().split('T')[0];
+  
+  fs.writeFileSync(BASELINE_FILE, JSON.stringify(baseline, null, 2));
+  console.log(`✅ Updated baseline to ${currentErrors} errors`);
+  process.exit(0);
+}
+
+main();

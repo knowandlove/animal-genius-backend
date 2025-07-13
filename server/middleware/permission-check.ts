@@ -1,41 +1,17 @@
 import { Request, Response, NextFunction } from 'express';
-import { hasCollaboratorPermission } from '../db/collaborators';
-import { CollaboratorRequest } from './collaborators';
 
 /**
- * Create a middleware that checks for a specific permission
+ * Placeholder for permission check middleware
+ * All collaborator functionality has been removed
  */
-export function requirePermission(permission: keyof import('@/shared/types/collaborators').CollaboratorPermissions) {
-  return async (req: CollaboratorRequest, res: Response, next: NextFunction) => {
-    try {
-      const userId = req.user?.userId;
-      const classId = req.params.classId || req.params.id || req.body.classId;
-
-      if (!userId || !classId) {
-        return res.status(400).json({ 
-          error: 'Missing required parameters' 
-        });
-      }
-
-      const hasPermission = await hasCollaboratorPermission(userId, classId, permission);
-      
-      if (!hasPermission) {
-        return res.status(403).json({ 
-          error: `You do not have permission to ${permission.replace(/_/g, ' ')}` 
-        });
-      }
-
-      next();
-    } catch (error) {
-      console.error('Error checking permission:', error);
-      res.status(500).json({ 
-        error: 'Failed to verify permissions' 
-      });
-    }
+export function requirePermission(permission: string) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    // Permission checks have been removed - using simple ownership checks instead
+    next();
   };
 }
 
-// Convenience middleware for common permissions
+// Convenience middleware for common permissions (now just pass-through)
 export const requireManageStudents = requirePermission('can_manage_students');
 export const requireManageStore = requirePermission('can_manage_store');
 export const requireViewAnalytics = requirePermission('can_view_analytics');

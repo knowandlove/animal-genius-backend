@@ -51,7 +51,21 @@ export async function provisionUser(userData: JITUserData): Promise<{
       return await provisionStudent(userData);
     }
   } catch (error) {
-    logger.error('JIT provisioning failed', { error: error instanceof Error ? error.message : String(error) });
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    
+    // Direct console logging to bypass redaction
+    console.error('🚨 JIT PROVISIONING ERROR DETAILS:');
+    console.error('Error message:', errorMessage);
+    console.error('Error stack:', errorStack);
+    console.error('User data:', JSON.stringify(userData, null, 2));
+    
+    logger.error('JIT provisioning failed', { 
+      error: errorMessage,
+      stack: errorStack,
+      role: userData.role,
+      metadata: userData.metadata 
+    });
     throw error;
   }
 }
@@ -114,9 +128,10 @@ async function provisionTeacher(userData: JITUserData): Promise<any> {
 
 /**
  * Provision a student account using passport code
- * Creates a Supabase auth account if needed
+ * DEPRECATED: Students should use passport code authentication instead
  */
 async function provisionStudent(userData: JITUserData): Promise<any> {
+  throw new Error('Student provisioning disabled. Students should use passport code authentication via Edge Functions.');
   const { metadata } = userData;
   
   if (!metadata.passportCode) {
@@ -138,15 +153,25 @@ async function provisionStudent(userData: JITUserData): Promise<any> {
   let supabaseUser;
   let isNewUser = false;
   
-  // Use student UUID as the Supabase user ID for consistency
-  const { data: existingUser } = await supabaseAdmin.auth.admin.getUserById(student.id);
+  // Generate the email that would be used for this student
+  const studentEmail = `student-${student.id}@internal.animalgenius.com`;
   
-  if (!existingUser) {
+  console.log('🔍 Checking for existing Supabase user by email:', studentEmail);
+  console.log('🔍 Student details:', { 
+    id: student.id, 
+    name: student.studentName, 
+    passportCode: student.passportCode 
+  });
+  
+  // Check by email instead of ID since Supabase generates its own UUIDs
+  const { data: existingUser, error: getUserError } = await supabaseAdmin.auth.admin.getUserByEmail(studentEmail);
+  console.log('🔍 Existing user result:', existingUser);
+  console.log('🔍 Get user error:', getUserError);
+  
+  if (!existingUser?.user) {
     // Create Supabase auth account for student
     logger.debug('Creating Supabase account for student', { studentId: student.id });
-    
-    // Generate a unique email for the student (not exposed to them)
-    const studentEmail = `student-${student.id}@internal.animalgenius.com`;
+    console.log('🔧 Creating new Supabase user with email:', studentEmail);
     
     // Create user with admin API
     const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
@@ -161,18 +186,31 @@ async function provisionStudent(userData: JITUserData): Promise<any> {
       }
     });
     
+    console.log('🔧 Supabase user creation response:', JSON.stringify({ newUser, createError }, null, 2));
+    
     if (createError) {
+      console.error('🚨 Supabase user creation error:', createError);
       logger.error('Failed to create Supabase user for student', { error: createError });
       throw new Error('Failed to create student account');
+    }
+    
+    if (!newUser?.user?.id) {
+      console.error('🚨 Supabase user creation returned invalid user:', JSON.stringify(newUser, null, 2));
+      throw new Error('Supabase user creation failed - no user ID returned');
     }
     
     supabaseUser = newUser.user;
     isNewUser = true;
   } else {
-    supabaseUser = existingUser;
+    supabaseUser = existingUser.user;
   }
   
   // Create or update profile
+  if (!supabaseUser?.id) {
+    console.error('🚨 No Supabase user ID available for profile creation:', supabaseUser);
+    throw new Error('Invalid Supabase user - missing ID');
+  }
+  
   const [existingProfile] = await db
     .select()
     .from(profiles)
@@ -181,6 +219,12 @@ async function provisionStudent(userData: JITUserData): Promise<any> {
     
   let profile;
   if (!existingProfile) {
+    console.log('🔧 Creating profile for student:', { 
+      userId: supabaseUser.id, 
+      email: supabaseUser.email,
+      studentName: student.studentName 
+    });
+    
     [profile] = await db
       .insert(profiles)
       .values({
@@ -266,13 +310,16 @@ export async function verifyPassportCode(passportCode: string, classCode?: strin
 
 /**
  * Migrate existing student sessions to Supabase Auth
- * This allows gradual migration without breaking existing sessions
+ * DEPRECATED: Students will use Custom JWT Authorizer pattern instead
+ * This function is temporarily disabled pending Phase 1 implementation
  */
 export async function migrateStudentSession(studentId: string): Promise<{
   success: boolean;
   session?: any;
   error?: string;
 }> {
+  // Migration disabled - students will use Custom JWT Authorizer pattern
+  return { success: false, error: 'Migration disabled. Use Custom JWT Authorizer pattern.' };
   try {
     const [student] = await db
       .select()

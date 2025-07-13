@@ -24,7 +24,7 @@ export const createClassSchema = z.object({
   icon: z.string()
     .max(50, "Icon must be less than 50 characters")
     .optional()
-    .default('book'),
+    .default('book-open'),
   backgroundColor: z.string()
     .regex(/^#[0-9A-Fa-f]{6}$/, "Background color must be a valid hex color (e.g., #829B79)")
     .optional()

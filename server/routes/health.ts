@@ -5,13 +5,12 @@
  */
 
 import { Router } from 'express';
-import { db, pool } from '../db';
+import { db, pool, POOL_MAX } from '../db';
 import { sql } from 'drizzle-orm';
 import { asyncWrapper } from '../utils/async-wrapper';
-import { createSecureLogger } from '../utils/secure-logger';
+import { jsonLogger } from '../lib/json-logger';
 
 const router = Router();
-const logger = createSecureLogger('HealthCheck');
 
 interface HealthStatus {
   status: 'healthy' | 'degraded' | 'unhealthy';
@@ -112,7 +111,7 @@ router.get('/detailed', asyncWrapper(async (req, res, next) => {
         pid: process.pid
       },
       database: {
-        poolSize: pool?.options?.max || 0,
+        poolSize: POOL_MAX || 0,
         host: process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : 'unknown'
       },
       memory: {
@@ -153,8 +152,9 @@ async function checkDatabase(): Promise<CheckResult> {
       responseTime
     };
   } catch (error) {
-    logger.error('Database health check failed', { 
-      error: error instanceof Error ? error.message : String(error) 
+    jsonLogger.error('Database health check failed', error, { 
+      check: 'database',
+      service: 'health'
     });
     
     return {

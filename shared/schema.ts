@@ -61,6 +61,8 @@ export const classes = pgTable('classes', {
   backgroundColor: varchar('background_color', { length: 7 }).default('#829B79'),
   numberOfStudents: integer('number_of_students'),
   isArchived: boolean('is_archived').default(false),
+  hasValuesSet: boolean('has_values_set').default(false),
+  valuesSetAt: timestamp('values_set_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
@@ -551,3 +553,21 @@ export type StudentPet = typeof studentPets.$inferSelect;
 export type NewStudentPet = typeof studentPets.$inferInsert;
 export type PetInteraction = typeof petInteractions.$inferSelect;
 export type NewPetInteraction = typeof petInteractions.$inferInsert;
+
+// Re-export class values voting tables
+export { 
+  classValuesSessions, 
+  classValuesVotes, 
+  classValuesResults,
+  classValuesSessionsRelations,
+  classValuesVotesRelations,
+  classValuesResultsRelations
+} from './schema-class-values';
+export type { 
+  ClassValuesSession, 
+  NewClassValuesSession, 
+  ClassValuesVote, 
+  NewClassValuesVote, 
+  ClassValuesResult, 
+  NewClassValuesResult 
+} from './schema-class-values';

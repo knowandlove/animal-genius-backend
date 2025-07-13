@@ -28,9 +28,10 @@ import analyticsRouter from './routes/analytics';
 import currencyRouter from './routes/currency';
 import adminRouter from './routes/admin';
 import submissionsRouter from './routes/submissions';
-import collaboratorsRouter from './routes/collaborators';
+import quizSubmissionDetailsRouter from './routes/quiz-submission-details';
 import patternsRouter from './routes/patterns';
 import { registerStudentApiRoutes } from './routes/student-api';
+import studentPassportRouter from './routes/student-passport-api';
 import lessonsRouter from './routes/lessons';
 import petsRouter from './routes/pets';
 import adminPetsRouter from './routes/admin/pets';
@@ -39,6 +40,9 @@ import healthRouter from './routes/health';
 import jobsRouter from './routes/jobs';
 import monitoringRouter from './routes/monitoring';
 import httpMetricsRouter from './routes/admin/http-metrics';
+import gameScoresRouter from './routes/game-scores';
+import classValuesRouter from './routes/class-values';
+import classSettingsRouter from './routes/class-settings';
 
 // Feature flags to disable unused features
 const FEATURE_FLAGS = {
@@ -99,6 +103,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Classes routes
   app.use('/api/classes', classesRouter);
   
+  // Class settings routes
+  app.use('/api/classes', classSettingsRouter);
+  
   // Quiz routes
   app.use('/api/quiz', quizRouter);
   
@@ -114,12 +121,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Submissions routes
   app.use('/api/submissions', submissionsRouter);
   
-  // Collaborators routes
-  app.use('/api/classes', collaboratorsRouter);
-  app.use('/api', collaboratorsRouter); // For invitation endpoints
+  // Quiz submission details routes (for realtime)
+  app.use('/api/quiz-submissions', quizSubmissionDetailsRouter);
   
   // Lessons routes
   app.use('/api/classes', lessonsRouter);
+  
+  // Student Passport API routes (for anonymous auth)
+  app.use('/api/student-passport', studentPassportRouter);
   
   // ==================== LEGACY ROUTES ====================
   
@@ -160,6 +169,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Register admin pet management routes
   app.use('/api/admin/pets', adminPetsRouter);
   
+  // Register game scores routes
+  app.use(gameScoresRouter);
+  
+  // Register class values voting routes
+  app.use('/api/class-values', classValuesRouter);
+  
+  
   // Register admin upload routes
   app.use('/api/admin', adminUploadRoutes);
   
@@ -168,7 +184,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // ==================== METRICS ROUTES ====================
   
-  // Get WebSocket performance metrics (admin only) - if enabled
+  // Get performance metrics (admin only) - if enabled
   if (FEATURE_FLAGS.METRICS_ENABLED) {
     app.get("/api/admin/metrics", requireAuth, requireAdmin, metricsEndpoint);
 

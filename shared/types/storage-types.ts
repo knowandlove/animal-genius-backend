@@ -45,8 +45,8 @@ export interface ClassAnalyticsStudent {
   studentName: string;
   gradeLevel: string;
   personalityType: string;
-  animalType: string;
-  geniusType: string;
+  animalType: string | null;
+  geniusType: string | null;
   learningStyle: string;
   learningScores: LearningScores;
   scores?: PersonalityScores | any;

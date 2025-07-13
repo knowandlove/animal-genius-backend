@@ -113,7 +113,19 @@ export async function createQuizSubmissionFast(submission: any) {
           studentId: studentId,
           animalTypeId: animalType.id,
           geniusTypeId: geniusType.id,
-          answers: submission.answers || {},
+          answers: {
+            personalityType: submission.personalityType,
+            learningStyle: submission.learningStyle,
+            gradeLevel: submission.gradeLevel,
+            learningScores: submission.learningScores || submission.answers?.learningScores || {
+              visual: 0,
+              auditory: 0,
+              kinesthetic: 0,
+              readingWriting: 0
+            },
+            scores: submission.scores || submission.answers?.scores || {},
+            ...submission.answers // Include any other answer data
+          },
           coinsEarned: CURRENCY_CONSTANTS.QUIZ_COMPLETION_REWARD
         })
         .returning();

@@ -6,8 +6,7 @@ import { eq, and, sql, asc } from 'drizzle-orm';
 import { z } from 'zod';
 import StorageRouter from '../services/storage-router';
 import { storePurchaseLimiter, storeBrowsingLimiter } from '../middleware/rateLimiter';
-import { requireStudentSession } from '../middleware/student-auth';
-import { validateOwnDataAccess } from '../middleware/validate-student-class';
+import { requireStudentAuth } from '../middleware/passport-auth';
 import { getCache } from '../lib/cache-factory';
 import { createFishForStudent } from '../services/fishbowlService';
 
@@ -60,10 +59,11 @@ router.get('/catalog', storeBrowsingLimiter, async (req, res) => {
  * Direct purchase - coins are deducted immediately
  * REQUIRES AUTHENTICATION - students can only purchase for themselves
  */
-router.post('/purchase', requireStudentSession, validateOwnDataAccess, storePurchaseLimiter, async (req, res) => {
+router.post('/purchase', requireStudentAuth, storePurchaseLimiter, async (req, res) => {
   const purchaseStartTime = Date.now();
   const clientIP = req.ip || req.connection.remoteAddress;
-  const studentId = req.studentId; // Get from authenticated session
+  
+  const studentId = req.student!.id; // Get from passport-based authentication
   
   try {
     const { itemId } = purchaseSchema.parse(req.body);
@@ -217,13 +217,9 @@ router.post('/purchase', requireStudentSession, validateOwnDataAccess, storePurc
  * GET /api/store-direct/inventory
  * Get authenticated student's owned items
  */
-router.get('/inventory', requireStudentSession, storeBrowsingLimiter, async (req, res) => {
+router.get('/inventory', requireStudentAuth, storeBrowsingLimiter, async (req, res) => {
   try {
-    const studentId = req.studentId;
-    
-    if (!studentId) {
-      return res.status(401).json({ message: 'Authentication required' });
-    }
+    const studentId = req.student!.id;
     
     // Get owned items with details
     const ownedItems = await db

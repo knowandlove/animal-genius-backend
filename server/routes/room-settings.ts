@@ -5,6 +5,7 @@ import { students } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { checkRoomAccess } from "../middleware/room-access";
+import { optionalStudentAuth } from "../middleware/passport-auth";
 
 // Validation schema
 const updateVisibilitySchema = z.object({
@@ -60,7 +61,7 @@ export function registerRoomSettingsRoutes(app: Express) {
   });
 
   // Update room visibility
-  app.patch("/api/room/:passportCode/settings/visibility", checkRoomAccess, async (req, res) => {
+  app.patch("/api/room/:passportCode/settings/visibility", optionalStudentAuth, checkRoomAccess, async (req, res) => {
     try {
       // Must be owner to change settings
       if (!req.roomAccess?.isOwner && !req.roomAccess?.isTeacher) {

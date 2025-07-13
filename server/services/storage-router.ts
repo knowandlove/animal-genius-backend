@@ -127,19 +127,8 @@ export class StorageRouter {
    * Get storage statistics
    */
   static async getStorageStats(): Promise<any> {
-    if (this.isCloudStorageEnabled()) {
-      return EnhancedStorageService.getStorageStats();
-    } else {
-      // For local storage, return basic stats
-      const items = await db.select().from(storeItems);
-      return {
-        totalFiles: items.filter(i => i.imageUrl).length,
-        totalSize: 0, // Unknown for local files
-        byType: {
-          'store-items': { count: items.filter(i => i.imageUrl).length, size: 0 }
-        }
-      };
-    }
+    // Always use cloud storage now
+    return EnhancedStorageService.getStorageStats();
   }
 
   /**

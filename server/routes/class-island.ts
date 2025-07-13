@@ -4,7 +4,7 @@ import { db } from "../db";
 import { students, classes, animalTypes, geniusTypes, quizSubmissions } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth";
-import { requireStudentSession } from "../middleware/student-auth";
+import { requireUnifiedAuth, requireStudent } from "../middleware/unified-auth";
 import { getCache } from "../lib/cache-factory";
 
 const cache = getCache();
@@ -19,7 +19,7 @@ interface ClassIslandStudent {
   avatarData: any;
   roomVisibility: string;
   isOnline?: boolean;
-  lastActive?: Date;
+  lastActive?: Date | null;
 }
 
 export function registerClassIslandRoutes(app: Express) {
@@ -72,7 +72,7 @@ export function registerClassIslandRoutes(app: Express) {
       const island: ClassIslandStudent[] = studentsData.map(student => ({
         id: student.id,
         passportCode: student.passportCode,
-        studentName: student.studentName,
+        studentName: student.studentName || 'Unknown',
         animalType: student.animalType || 'Unknown',
         animalTypeId: student.animalTypeId || '',
         geniusType: student.geniusType || 'Unknown',
@@ -147,7 +147,7 @@ export function registerClassIslandRoutes(app: Express) {
       const island: ClassIslandStudent[] = studentsData.map(student => ({
         id: student.id,
         passportCode: student.passportCode,
-        studentName: student.studentName,
+        studentName: student.studentName || 'Unknown',
         animalType: student.animalType || 'Unknown',
         animalTypeId: student.animalTypeId || '',
         geniusType: student.geniusType || 'Unknown',
@@ -174,9 +174,9 @@ export function registerClassIslandRoutes(app: Express) {
   });
   
   // Get class island for students (limited view)
-  app.get("/api/room/my-class-island", requireStudentSession, async (req, res) => {
+  app.get("/api/room/my-class-island", requireUnifiedAuth, requireStudent, async (req, res) => {
     try {
-      const studentId = req.studentId!;
+      const studentId = req.student?.id!;
       
       // Get the student's class info
       const [studentInfo] = await db
@@ -226,7 +226,7 @@ export function registerClassIslandRoutes(app: Express) {
       const island: ClassIslandStudent[] = classmates.map(student => ({
         id: student.id,
         passportCode: student.passportCode,
-        studentName: student.studentName,
+        studentName: student.studentName || 'Unknown',
         animalType: student.animalType || 'Unknown',
         animalTypeId: student.animalTypeId || '',
         geniusType: student.geniusType || 'Unknown',

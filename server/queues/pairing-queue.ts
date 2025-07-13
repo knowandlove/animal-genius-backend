@@ -26,36 +26,47 @@ if (process.env.NODE_ENV === 'development' && !process.env.REDIS_URL) {
         name: jobName,
         data,
         status: 'waiting',
-        result: null,
-        error: null
+        result: null as any,
+        error: null as any
       };
       
       this.jobs.set(jobId, job);
       
       // Process asynchronously
       setTimeout(async () => {
+        console.log(`[Queue] Starting job ${jobId} for ${jobName}`);
         job.status = 'active';
         try {
           if (jobName === 'generate-pairings') {
             const { classId } = data;
-            const allSubmissions = await uuidStorage.getQuizSubmissionsByClassId(classId);
+            console.log(`[Queue] Fetching analytics for class ${classId}`);
+            const allSubmissions = await uuidStorage.getClassAnalytics(classId);
+            
+            console.log(`[Queue] Got ${allSubmissions?.length || 0} submissions`);
             
             if (!allSubmissions || allSubmissions.length === 0) {
               job.result = { dynamicDuos: [], puzzlePairings: [], soloWorkers: [] };
+              console.log('[Queue] No submissions, returning empty result');
             } else {
+              console.log('[Queue] Generating pairings...');
               job.result = generatePairings(allSubmissions);
+              console.log('[Queue] Pairings generated successfully');
             }
             
             // Store in memory cache with expiration
             memoryCache.set(`pairings:${classId}`, job.result);
+            console.log(`[Queue] Cached result for class ${classId}`);
+            
             // Clean up cache after 1 hour
             setTimeout(() => {
               memoryCache.delete(`pairings:${classId}`);
             }, 3600000);
             
             job.status = 'completed';
+            console.log(`[Queue] Job ${jobId} completed successfully`);
           }
         } catch (error) {
+          console.error(`[Queue] Job ${jobId} failed:`, error);
           job.error = error;
           job.status = 'failed';
         } finally {
@@ -74,7 +85,7 @@ if (process.env.NODE_ENV === 'development' && !process.env.REDIS_URL) {
     },
     
     async getJobs(states: string[]) {
-      return Array.from(this.jobs.values()).filter(job => states.includes(job.status));
+      return Array.from(this.jobs.values()).filter((job: any) => states.includes(job.status));
     },
     
     client: {
@@ -97,14 +108,14 @@ if (process.env.NODE_ENV === 'development' && !process.env.REDIS_URL) {
 });
 
   // Process pairing jobs
-  pairingQueue.process('generate-pairings', async (job) => {
+  pairingQueue.process('generate-pairings', async (job: Bull.Job) => {
   const { classId } = job.data;
   
   console.log(`[Pairing Queue] Starting pairing generation for class ${classId}`);
   
   try {
-    // Get all submissions for the class
-    const allSubmissions = await uuidStorage.getQuizSubmissionsByClassId(classId);
+    // Get all submissions for the class using getClassAnalytics for properly formatted data
+    const allSubmissions = await uuidStorage.getClassAnalytics(classId);
     
     if (!allSubmissions || allSubmissions.length === 0) {
       return {
@@ -131,13 +142,13 @@ if (process.env.NODE_ENV === 'development' && !process.env.REDIS_URL) {
 });
 
 // Process insights jobs
-pairingQueue.process('generate-insights', async (job) => {
+pairingQueue.process('generate-insights', async (job: Bull.Job) => {
   const { classId } = job.data;
   
   console.log(`[Pairing Queue] Starting insights generation for class ${classId}`);
   
   try {
-    const allSubmissions = await uuidStorage.getQuizSubmissionsByClassId(classId);
+    const allSubmissions = await uuidStorage.getClassAnalytics(classId);
     
     if (!allSubmissions || allSubmissions.length === 0) {
       return null;
@@ -159,11 +170,11 @@ pairingQueue.process('generate-insights', async (job) => {
 });
 
   // Queue event handlers
-  pairingQueue.on('completed', (job, result) => {
+  pairingQueue.on('completed', (job: Bull.Job, result: any) => {
     console.log(`[Pairing Queue] Job ${job.id} completed successfully`);
   });
 
-  pairingQueue.on('failed', (job, err) => {
+  pairingQueue.on('failed', (job: Bull.Job, err: Error) => {
     console.error(`[Pairing Queue] Job ${job.id} failed:`, err.message);
   });
 }
@@ -181,7 +192,7 @@ export async function getPairingResults(classId: string) {
   
   // Check if job is already running
   const jobs = await pairingQueue.getJobs(['active', 'waiting', 'delayed']);
-  const existingJob = jobs.find(job => 
+  const existingJob = jobs.find((job: any) => 
     job.name === 'generate-pairings' && job.data.classId === classId
   );
   

@@ -75,6 +75,7 @@ router.post('/student/login', authLimiter, checkPassportLockout, asyncWrapper(as
     // In production, we'd return a Supabase session token
     res.json({
       success: true,
+      studentId: result.student.id,
       studentName: result.student.studentName,
       message: 'Welcome to Animal Genius!',
       // Include migration info for frontend
@@ -86,22 +87,7 @@ router.post('/student/login', authLimiter, checkPassportLockout, asyncWrapper(as
       }
     });
     
-    // Set legacy cookie for backward compatibility during migration
-    if (process.env.ENABLE_LEGACY_STUDENT_AUTH === 'true') {
-      const jwt = require('jsonwebtoken');
-      const legacyToken = jwt.sign(
-        { studentId: result.student.id },
-        process.env.JWT_SECRET!,
-        { expiresIn: '24h' }
-      );
-      
-      res.cookie('student_session', legacyToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 24 * 60 * 60 * 1000
-      });
-    }
+    // Legacy cookie support removed - using token-based auth only
   } catch (error) {
     logger.error('Student provisioning failed', { error });
     throw new BusinessError('Failed to create student session', ErrorCode.BIZ_001);
@@ -165,17 +151,6 @@ router.get('/session', asyncWrapper(async (req, res, next) => {
   const token = authHeader?.split(' ')[1];
   
   if (!token) {
-    // Check for legacy student session
-    const studentToken = req.cookies.student_session;
-    if (studentToken) {
-      res.json({
-        authenticated: true,
-        type: 'legacy_student',
-        migrationRequired: true
-      });
-      return;
-    }
-    
     res.json({ authenticated: false });
     return;
   }
@@ -202,8 +177,7 @@ router.get('/session', asyncWrapper(async (req, res, next) => {
  * Unified logout endpoint
  */
 router.post('/logout', asyncWrapper(async (req, res, next) => {
-  // Clear any legacy cookies
-  res.clearCookie('student_session');
+  // Token-based auth - logout handled client-side
   
   // Sign out from Supabase if token present
   const authHeader = req.headers.authorization;

@@ -2,13 +2,18 @@ import { Router } from 'express';
 import { uuidStorage } from '../storage-uuid';
 import { apiLimiter } from '../middleware/rateLimiter';
 import { validateClassAccess } from '../middleware/validate-class';
+import { createQuizSubmissionFast } from '../services/quizSubmissionService';
+import { db } from '../db';
+import { classes } from '@shared/schema';
+import { eq } from 'drizzle-orm';
 
 const router = Router();
 
 // Use the general API rate limiter for quiz submissions
 const quizLimiter = apiLimiter;
 
-// Submit quiz
+// Legacy quiz submission endpoint (for backward compatibility)
+// New frontend should use Supabase Edge Functions directly
 router.post('/submissions', quizLimiter, validateClassAccess, async (req, res) => {
   try {
     const { studentName, gradeLevel, classId, animalType, geniusType, answers, personalityType, learningStyle, scores, learningScores } = req.body;
@@ -20,64 +25,84 @@ router.post('/submissions', quizLimiter, validateClassAccess, async (req, res) =
     if (!gradeLevel?.trim()) {
       return res.status(400).json({ message: "Grade level is required" });
     }
-    // Class validation is now handled by middleware
-    const classRecord = (req as any).classData;
-    
-    // Create or get student using upsert to prevent race conditions
-    const student = await uuidStorage.upsertStudent({
-      classId: classId,
-      studentName: studentName,
-      gradeLevel: gradeLevel,
-      personalityType: personalityType,
-      animalType: animalType,
-      geniusType: geniusType || '',
-      learningStyle: learningStyle || 'visual',
-    });
-    
-    // Validate required fields for quiz submission
     if (!animalType?.trim()) {
       return res.status(400).json({ message: "Animal type is required" });
     }
-    if (!geniusType?.trim()) {
-      return res.status(400).json({ message: "Genius type is required" });
-    }
     
-    // Create quiz submission and award coins in a transaction
-    const submission = await uuidStorage.submitQuizAndAwardCoins(
-      {
-        studentId: student.id,
-        animalType: animalType,
-        geniusType: geniusType,
-        answers: {
-          ...answers,
-          personalityType: personalityType,
-          learningStyle: learningStyle,
-          learningScores: learningScores,
-          scores: scores,
-          gradeLevel: gradeLevel
-        },
-        coinsEarned: 50,
+    // Use the fast submission service
+    const submission = await createQuizSubmissionFast({
+      studentName,
+      gradeLevel,
+      classId,
+      animalType,
+      geniusType: geniusType || '',
+      answers: {
+        ...answers,
+        personalityType,
+        learningStyle,
+        learningScores,
+        scores,
       },
-      {
-        studentId: student.id,
-        teacherId: classRecord.teacherId,
-        amount: 50,
-        transactionType: 'quiz_complete',
-        description: 'Quiz completion reward',
-      }
-    );
+      personalityType,
+      learningStyle: learningStyle || 'visual',
+    });
     
     // Return the student's passport code
     res.json({
       ...submission,
-      passportCode: student.passportCode,
-      studentId: student.id,
+      studentId: submission.studentId,
       message: 'Quiz completed successfully!'
     });
   } catch (error) {
     console.error("Submit quiz submission error:", error);
     const errorMessage = error instanceof Error ? error.message : "Failed to submit quiz";
     res.status(400).json({ message: errorMessage });
+  }
+});
+
+// New endpoint to check quiz eligibility (proxy to Edge Function)
+router.post('/check-eligibility', apiLimiter, async (req, res) => {
+  try {
+    const { classCode, firstName, lastInitial, grade } = req.body;
+    
+    // Basic validation
+    if (!classCode || !firstName || !lastInitial) {
+      return res.status(400).json({ 
+        eligible: false,
+        reason: 'MISSING_FIELDS',
+        message: 'Missing required fields' 
+      });
+    }
+    
+    // Check class exists
+    const [classData] = await db
+      .select()
+      .from(classes)
+      .where(eq(classes.classCode, classCode.toUpperCase()))
+      .limit(1);
+      
+    if (!classData || !classData.isActive) {
+      return res.json({
+        eligible: false,
+        reason: 'INVALID_CLASS',
+        message: 'This class code is not valid.'
+      });
+    }
+    
+    // For now, return eligible (full validation happens in Edge Function)
+    res.json({
+      eligible: true,
+      warnings: [],
+      classInfo: {
+        name: classData.name,
+        id: classData.id
+      }
+    });
+  } catch (error) {
+    console.error('Check eligibility error:', error);
+    res.status(500).json({ 
+      error: 'Failed to check eligibility' 
+    });
   }
 });
 

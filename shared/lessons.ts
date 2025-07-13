@@ -45,14 +45,6 @@ export const lessons: Lesson[] = [
       "Knowing and Loving, Me! worksheet (optional)",
       "Parent letter and Family Zoo worksheet (optional)"
     ],
-    materialsNeededPrep: [
-      "Computers/tablets for quiz access",
-      "Class code for quiz access",
-      "Table tent templates",
-      "Markers, colored pencils, crayons",
-      "Knowing and Loving, Me! worksheet (optional)",
-      "Parent letter and Family Zoo worksheet (optional)"
-    ],
     activities: {
       activity1: {
         title: "Take the Animal Genius Quiz®",

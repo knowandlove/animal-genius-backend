@@ -283,7 +283,7 @@ router.post('/reset-password', asyncWrapper(async (req, res, next) => {
     type: 'recovery',
   });
   
-  if (sessionError || !sessionData.session) {
+  if (sessionError || !sessionData.session || !sessionData.user) {
     logger.error('Session verification error', { error: sessionError?.message });
     throw new AuthenticationError('Invalid or expired reset token', ErrorCode.AUTH_002);
   }

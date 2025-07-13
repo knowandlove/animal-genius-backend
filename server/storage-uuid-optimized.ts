@@ -8,17 +8,18 @@ import type { ClassAnalyticsStudent, QuizAnswers } from "@shared/types/storage-t
  * Fetches data in 2 simple queries instead of 1 complex query with ROW_NUMBER()
  */
 export async function getClassAnalyticsOptimized(classId: string): Promise<ClassAnalyticsStudent[]> {
-  // 1. Get all students in the class
-  const classStudents = await db
-    .select({
-      id: students.id,
-      studentName: students.studentName,
-      gradeLevel: students.gradeLevel,
-      passportCode: students.passportCode,
-      currencyBalance: students.currencyBalance
-    })
-    .from(students)
-    .where(eq(students.classId, classId));
+  try {
+    // 1. Get all students in the class
+    const classStudents = await db
+      .select({
+        id: students.id,
+        studentName: students.studentName,
+        gradeLevel: students.gradeLevel,
+        passportCode: students.passportCode,
+        currencyBalance: students.currencyBalance
+      })
+      .from(students)
+      .where(eq(students.classId, classId));
 
   if (classStudents.length === 0) {
     return [];
@@ -34,6 +35,7 @@ export async function getClassAnalyticsOptimized(classId: string): Promise<Class
       animalTypeName: animalTypes.name,
       animalTypeCode: animalTypes.code,
       geniusTypeName: geniusTypes.name,
+      geniusTypeCode: geniusTypes.code,
       answers: quizSubmissions.answers,
       completedAt: quizSubmissions.completedAt
     })
@@ -53,13 +55,19 @@ export async function getClassAnalyticsOptimized(classId: string): Promise<Class
   });
 
   // 4. Combine student data with their latest submission
-  return classStudents.map(student => {
+  return classStudents.map((student, index) => {
     const latestSubmission = latestSubmissionMap.get(student.id);
     
     let personalityType = 'INTJ';
     let learningStyle = 'visual';
     let gradeLevel = student.gradeLevel || 'Unknown';
     let scores = null;
+    let learningScores = {
+      visual: 0,
+      auditory: 0,
+      kinesthetic: 0,
+      readingWriting: 0
+    };
 
     if (latestSubmission?.answers && typeof latestSubmission.answers === 'object') {
       const answers = latestSubmission.answers as QuizAnswers;
@@ -67,26 +75,28 @@ export async function getClassAnalyticsOptimized(classId: string): Promise<Class
       if (answers.learningStyle) learningStyle = answers.learningStyle;
       if (answers.gradeLevel) gradeLevel = answers.gradeLevel;
       if (answers.scores) scores = answers.scores;
+      if (answers.learningScores) learningScores = answers.learningScores;
     }
 
     return {
-      id: student.id,
+      id: student.id, // Use the actual UUID
+      studentId: student.id,
       studentName: student.studentName || 'Unknown',
       gradeLevel: gradeLevel,
       personalityType: personalityType,
-      animalType: latestSubmission?.animalTypeName || '',
-      geniusType: latestSubmission?.geniusTypeName || '',
+      animalType: latestSubmission?.animalTypeName || latestSubmission?.animalTypeCode || null,
+      animalGenius: latestSubmission?.geniusTypeName || latestSubmission?.geniusTypeCode || null,
+      geniusType: latestSubmission?.geniusTypeName || latestSubmission?.geniusTypeCode || null,
       learningStyle: learningStyle,
-      learningScores: {
-        visual: 0,
-        auditory: 0,
-        kinesthetic: 0,
-        readingWriting: 0
-      },
+      learningScores: learningScores,
       scores: scores,
-      completedAt: latestSubmission?.completedAt || null,
+      completedAt: latestSubmission?.completedAt ? new Date(latestSubmission.completedAt) : null,
       passportCode: student.passportCode,
       currencyBalance: student.currencyBalance || 0
     };
   });
+  } catch (error) {
+    console.error('Error in getClassAnalyticsOptimized:', error);
+    throw new Error('Failed to fetch class analytics data');
+  }
 }

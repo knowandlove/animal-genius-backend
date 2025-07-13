@@ -88,6 +88,7 @@ router.post('/upload-asset', requireAuth, requireAdmin, uploadLimiter, upload.si
 
     // Validate and optimize image
     let optimizedBuffer: Buffer;
+    let thumbnailBuffer: Buffer | null = null;
     let finalMimeType: string = req.file.mimetype;
     
     try {
@@ -106,6 +107,21 @@ router.post('/upload-asset', requireAuth, requireAdmin, uploadLimiter, upload.si
           success: false, 
           error: 'Image height exceeds maximum of 4096 pixels' 
         });
+      }
+      
+      // Generate thumbnail for store items
+      if (type === 'item' || bucket === 'store-items') {
+        console.log('Generating 128x128 thumbnail for store item...');
+        thumbnailBuffer = await sharp(req.file.buffer)
+          .resize(128, 128, {
+            fit: 'cover',
+            position: 'center'
+          })
+          .jpeg({
+            quality: 90,
+            progressive: true
+          })
+          .toBuffer();
       }
       
       // Optimize image: resize if too large and convert to efficient format
@@ -147,6 +163,9 @@ router.post('/upload-asset', requireAuth, requireAdmin, uploadLimiter, upload.si
       const optimizedSize = optimizedBuffer.length;
       const savings = ((originalSize - optimizedSize) / originalSize * 100).toFixed(1);
       console.log(`Image optimization: ${originalSize} → ${optimizedSize} bytes (${savings}% saved)`);
+      if (thumbnailBuffer) {
+        console.log(`Thumbnail generated: ${thumbnailBuffer.length} bytes`);
+      }
       
     } catch (sharpError) {
       console.error('Image validation/optimization error:', sharpError);
@@ -186,11 +205,43 @@ router.post('/upload-asset', requireAuth, requireAdmin, uploadLimiter, upload.si
       }
     );
 
+    // Upload thumbnail if generated
+    let thumbnailUrl: string | undefined;
+    let thumbnailWarning: string | undefined;
+    if (thumbnailBuffer) {
+      const thumbnailFilename = sanitizedFilename.replace(/\.[^.]+$/, '_thumb.jpg');
+      const thumbnailFolder = `${category || itemType || 'misc'}/_thumbnails`;
+      
+      try {
+        const thumbnailResult = await StorageRouter.uploadFile(
+          thumbnailBuffer,
+          thumbnailFilename,
+          {
+            bucket,
+            folder: thumbnailFolder,
+            type,
+            category: category || itemType,
+            itemType,
+            name: `${name || sanitizedFilename} (thumbnail)`,
+            mimeType: 'image/jpeg'
+          }
+        );
+        thumbnailUrl = thumbnailResult.url;
+        console.log('Thumbnail uploaded:', thumbnailUrl);
+      } catch (thumbError: any) {
+        console.error('Thumbnail upload failed:', thumbError);
+        thumbnailWarning = `Main asset uploaded, but thumbnail generation failed: ${thumbError.message || 'Unknown error'}`;
+        // Continue without thumbnail - not a critical error
+      }
+    }
+
     // Prepare response
     const response = {
       success: true,
       url: uploadResult.url,
       assetId: uploadResult.assetId,
+      thumbnailUrl,
+      ...(thumbnailWarning && { warning: thumbnailWarning }),
       cloudStorage: StorageRouter.isCloudStorageEnabled(),
       // Include additional info for debugging
       ...(process.env.NODE_ENV === 'development' && {

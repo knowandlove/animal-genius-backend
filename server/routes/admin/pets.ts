@@ -7,6 +7,7 @@ import { requireAuth, requireAdmin } from '../../middleware/auth';
 import multer from 'multer';
 import StorageRouter from '../../services/storage-router';
 import { getCache } from '../../lib/cache-factory';
+import { EnhancedStorageService } from '../../services/enhanced-storage-service';
 
 const cache = getCache();
 
@@ -24,7 +25,7 @@ const createPetSchema = z.object({
   species: z.string().min(1).max(50),
   name: z.string().min(1).max(100),
   description: z.string().optional(),
-  assetUrl: z.string().optional(),
+  assetUrl: z.string().url(),
   cost: z.number().int().min(0),
   rarity: z.enum(['common', 'uncommon', 'rare', 'epic', 'legendary']),
   baseStats: z.object({
@@ -253,8 +254,19 @@ router.post('/:id/upload-sprite', upload.single('sprite'), async (req, res) => {
     }
 
     // Upload the sprite sheet
-    const storage = new StorageService();
-    const assetUrl = await storage.uploadFile(req.file.buffer, req.file.originalname, 'pets');
+    const uploadResult = await EnhancedStorageService.upload({
+      buffer: req.file.buffer,
+      metadata: {
+        bucket: 'public-assets',
+        folder: 'pets',
+        fileName: req.file.originalname,
+        mimeType: req.file.mimetype,
+        type: 'animal',
+        category: 'pets',
+        name: req.file.originalname
+      }
+    });
+    const assetUrl = uploadResult.path;
 
     // Update pet with new asset URL and sprite metadata
     const updateData: any = {

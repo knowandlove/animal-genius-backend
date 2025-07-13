@@ -19,7 +19,7 @@ import { getCache } from "../lib/cache-factory";
 
 const cache = getCache();
 import StorageRouter from "../services/storage-router";
-import { requireStudentSession } from "../middleware/student-auth";
+import { requireUnifiedAuth, requireStudent } from "../middleware/unified-auth";
 import { 
   roomUpdateRequestSchema, 
   avatarUpdateRequestSchema,
@@ -39,8 +39,13 @@ const equipItemSchema = z.object({
 export function registerStudentApiRoutes(app: Express) {
   
   // Get student dashboard/room data
-  app.get("/api/student/dashboard", requireStudentSession, async (req, res) => {
+  app.get("/api/student/dashboard", requireUnifiedAuth, requireStudent, async (req, res) => {
     try {
+      // Bridge: Set req.studentId for legacy compatibility
+      if (req.auth?.role === 'student') {
+        (req as any).studentId = req.auth.studentId;
+      }
+      
       const studentId = req.studentId;
       
       // Check cache first
@@ -252,7 +257,7 @@ export function registerStudentApiRoutes(app: Express) {
 
 
   // Update avatar data
-  app.post("/api/student/avatar", requireStudentSession, async (req, res) => {
+  app.post("/api/student/avatar", requireUnifiedAuth, requireStudent, async (req, res) => {
     try {
       const studentId = req.studentId;
       
@@ -309,7 +314,7 @@ export function registerStudentApiRoutes(app: Express) {
   });
 
   // Update room data  
-  app.post("/api/student/room", requireStudentSession, async (req, res) => {
+  app.post("/api/student/room", requireUnifiedAuth, requireStudent, async (req, res) => {
     try {
       const studentId = req.studentId;
       

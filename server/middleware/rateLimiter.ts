@@ -21,15 +21,6 @@ export const authLimiter = rateLimit({
   skipSuccessfulRequests: CONFIG.RATE_LIMITS.AUTH.SKIP_SUCCESSFUL,
 });
 
-// Game creation rate limiter - commented out as game features are removed
-// export const gameCreationLimiter = rateLimit({
-//   windowMs: CONFIG.RATE_LIMITS.GAME_CREATION.WINDOW_MS,
-//   max: CONFIG.RATE_LIMITS.GAME_CREATION.MAX_REQUESTS,
-//   message: 'Too many games created, please try again later.',
-//   standardHeaders: true,
-//   legacyHeaders: false,
-// });
-
 // Rate limiter for password reset
 export const passwordResetLimiter = rateLimit({
   windowMs: CONFIG.RATE_LIMITS.PASSWORD_RESET.WINDOW_MS,
@@ -38,15 +29,6 @@ export const passwordResetLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
-
-// WebSocket connection rate limiter - commented out as WebSocket features are removed
-// export const wsConnectionLimiter = rateLimit({
-//   windowMs: CONFIG.RATE_LIMITS.WS_CONNECTION.WINDOW_MS,
-//   max: CONFIG.RATE_LIMITS.WS_CONNECTION.MAX_REQUESTS,
-//   message: 'Too many connection attempts, please try again later.',
-//   standardHeaders: true,
-//   legacyHeaders: false,
-// });
 
 // Store purchase rate limiter (per student)
 export const storePurchaseLimiter = rateLimit({
@@ -79,7 +61,7 @@ export const roomSaveLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req) => {
     // Rate limit by passport code (student) if available, otherwise IP
-    return req.params?.passportCode || req.ip;
+    return req.params?.passportCode || req.ip || 'unknown';
   },
 });
 
@@ -91,7 +73,7 @@ export const roomBrowsingLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => {
-    return req.params?.passportCode || req.ip;
+    return req.params?.passportCode || req.ip || 'unknown';
   },
 });
 

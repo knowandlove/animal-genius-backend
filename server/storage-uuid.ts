@@ -219,11 +219,15 @@ export class UUIDStorage implements IUUIDStorage {
 
   // Student operations
   async createStudent(studentData: StudentData): Promise<Student> {
+    if (!studentData.animalType) {
+      throw new Error('Animal type is required for student creation');
+    }
+    
     // Generate passport code using the imported function
-    const passportCode = await generateAnimalPassportCode(studentData.animalType || 'Unknown');
+    const passportCode = await generateAnimalPassportCode(studentData.animalType);
     
     // Look up the UUIDs for animal and genius types
-    const animalTypeId = await getAnimalTypeId(studentData.animalType || 'meerkat');
+    const animalTypeId = await getAnimalTypeId(studentData.animalType);
     const geniusTypeId = await getGeniusTypeId(studentData.geniusType || studentData.animalGenius || 'Feeler');
     
     const [student] = await db
@@ -246,8 +250,11 @@ export class UUIDStorage implements IUUIDStorage {
   }
 
   async upsertStudent(studentData: StudentData): Promise<Student> {
+    if (!studentData.animalType) {
+      throw new Error('Animal type is required for student upsert');
+    }
     
-    const animalTypeId = await getAnimalTypeId(studentData.animalType || 'meerkat');
+    const animalTypeId = await getAnimalTypeId(studentData.animalType);
     const geniusTypeId = await getGeniusTypeId(studentData.geniusType || studentData.animalGenius || 'Feeler');
     const studentName = studentData.studentName || studentData.name || 'Unknown Student';
     
@@ -318,8 +325,12 @@ export class UUIDStorage implements IUUIDStorage {
     transaction: NewCurrencyTransaction
   ): Promise<QuizSubmission> {
     return await db.transaction(async (tx) => {
+      if (!submission.animalType) {
+        throw new Error('Animal type is required for quiz submission');
+      }
+      
       // Look up the UUIDs for animal and genius types
-      const animalTypeId = await getAnimalTypeId(submission.animalType || 'meerkat');
+      const animalTypeId = await getAnimalTypeId(submission.animalType);
       const geniusTypeId = await getGeniusTypeId(submission.geniusType || 'Feeler');
       
       const [quizSubmission] = await tx

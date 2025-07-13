@@ -65,6 +65,13 @@ class ResourceCleanupManager {
   }
 
   /**
+   * Untrack a timeout (when it completes naturally)
+   */
+  untrackTimeout(handle: NodeJS.Timeout): void {
+    this.timeoutHandles.delete(handle);
+  }
+
+  /**
    * Execute all cleanup handlers
    */
   async cleanup(gracePeriodMs: number = 10000): Promise<void> {
@@ -162,7 +169,7 @@ export function createManagedTimeout(
   name?: string
 ): NodeJS.Timeout {
   const handle = setTimeout(() => {
-    cleanupManager.timeoutHandles.delete(handle);
+    cleanupManager.untrackTimeout(handle);
     callback();
   }, delay);
   
@@ -207,6 +214,22 @@ export function registerProcessHandlers(): void {
   });
 
   process.on('unhandledRejection', (reason, promise) => {
+    // Better error logging for unhandled rejections
+    console.error('Unhandled rejection details:');
+    console.error('Reason:', reason);
+    console.error('Reason type:', typeof reason);
+    if (reason instanceof Error) {
+      console.error('Error message:', reason.message);
+      console.error('Error stack:', reason.stack);
+    } else if (typeof reason === 'object' && reason !== null) {
+      try {
+        console.error('Reason object:', JSON.stringify(reason, null, 2));
+      } catch (e) {
+        console.error('Reason object (cannot stringify):', Object.keys(reason));
+      }
+    }
+    console.error('Promise:', promise);
+    
     logger.error('Unhandled rejection at:', promise, 'reason:', reason);
     handleShutdown('unhandledRejection');
   });

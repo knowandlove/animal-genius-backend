@@ -1,5 +1,5 @@
-import { db } from '../server/db.js';
-import { pets } from '../shared/schema.js';
+import { db } from '../server/db';
+import { pets } from '../shared/schema';
 import { sql } from 'drizzle-orm';
 
 async function seedPets() {

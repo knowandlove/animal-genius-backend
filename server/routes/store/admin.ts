@@ -12,6 +12,9 @@ import { getCache } from "../../lib/cache-factory";
 
 const cache = getCache();
 
+// Cache configuration - must match store.ts
+const CATALOG_CACHE_KEY = 'store:catalog:active';
+
 // Configure multer for memory storage
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -122,7 +125,7 @@ export function registerStoreAdminRoutes(app: Express) {
       // Get assetId and URLs from request body
       const assetId = req.body.assetId;
       const imageUrl = req.body.imageUrl;
-      const thumbnailUrl = req.body.thumbnailUrl;
+      const thumbnailUrl = req.body.thumbnailUrl; // This now comes from the upload response
       const assetType = req.body.assetType || 'image';
       const riveUrl = req.body.riveUrl;
       
@@ -222,7 +225,7 @@ export function registerStoreAdminRoutes(app: Express) {
         .returning();
       
       // Clear store catalog cache
-      cache.del('store-catalog:active:v4');
+      await cache.del(CATALOG_CACHE_KEY);
       console.log('🗑️ Cleared store catalog cache after creating item');
       
       res.json(newItem);
@@ -268,7 +271,7 @@ export function registerStoreAdminRoutes(app: Express) {
       }
       
       // Clear store catalog cache
-      cache.del('store-catalog:active:v4');
+      await cache.del(CATALOG_CACHE_KEY);
       console.log('🗑️ Cleared store catalog cache after updating item');
       
       res.json(updatedItem);
@@ -325,7 +328,7 @@ export function registerStoreAdminRoutes(app: Express) {
         .where(eq(storeItems.id, id));
       
       // Clear store catalog cache
-      cache.del('store-catalog:active:v4');
+      await cache.del(CATALOG_CACHE_KEY);
       console.log('🗑️ Cleared store catalog cache after deleting item');
       
       res.json({ message: "Item and associated asset deleted successfully" });

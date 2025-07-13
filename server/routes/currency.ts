@@ -1,8 +1,8 @@
 import { Router, Request, Response } from 'express';
+import { AuthenticatedRequest } from '../types/api';
 import { uuidStorage } from '../storage-uuid';
-import { requireAuth } from '../middleware/auth';
+import { requireUnifiedAuth, requireTeacher } from '../middleware/unified-auth';
 import { verifyStudentClassEditAccess, verifyClassAccess, verifyStudentClassAccess } from '../middleware/ownership-collaborator';
-import { hasCollaboratorPermission } from '../db/collaborators';
 import { asyncWrapper } from '../utils/async-wrapper';
 import { ValidationError, NotFoundError, BusinessError, InternalError, ErrorCode } from '../utils/errors';
 import { createSecureLogger } from '../utils/secure-logger';
@@ -12,9 +12,10 @@ const logger = createSecureLogger('CurrencyRoutes');
 const router = Router();
 
 // Give coins to a student
-router.post('/give', requireAuth, verifyStudentClassEditAccess, asyncWrapper(async (req: Request, res: Response, next) => {
-  const teacherId = req.user.userId;
-  const { studentId, amount, reason } = req.body;
+router.post('/give', requireUnifiedAuth, requireTeacher, verifyStudentClassEditAccess, asyncWrapper(async (req, res, next) => {
+  const authReq = req as AuthenticatedRequest;
+  const teacherId = authReq.auth?.userId || authReq.user?.userId;
+  const { studentId, amount, reason } = authReq.body;
   
   // Validate input
   if (!studentId || !amount || amount <= 0 || amount > 1000) {
@@ -24,7 +25,7 @@ router.post('/give', requireAuth, verifyStudentClassEditAccess, asyncWrapper(asy
   // Get the student (ownership already verified by middleware)
   const student = await uuidStorage.getStudentById(studentId);
   if (!student) {
-    throw new NotFoundError('Student not found', ErrorCode.RES_001);
+    throw new NotFoundError('Student', ErrorCode.RES_001);
   }
   
   // Use atomic update to prevent race conditions
@@ -44,9 +45,10 @@ router.post('/give', requireAuth, verifyStudentClassEditAccess, asyncWrapper(asy
 }));
 
 // Take coins from a student
-router.post('/take', requireAuth, verifyStudentClassEditAccess, asyncWrapper(async (req: Request, res: Response, next) => {
-  const teacherId = req.user.userId;
-  const { studentId, amount, reason } = req.body;
+router.post('/take', requireUnifiedAuth, requireTeacher, verifyStudentClassEditAccess, asyncWrapper(async (req, res, next) => {
+  const authReq = req as AuthenticatedRequest;
+  const teacherId = authReq.auth?.userId || authReq.user?.userId;
+  const { studentId, amount, reason } = authReq.body;
   
   // Validate input
   if (!studentId || !amount || amount <= 0) {
@@ -56,7 +58,7 @@ router.post('/take', requireAuth, verifyStudentClassEditAccess, asyncWrapper(asy
   // Get the student (ownership already verified by middleware)
   const student = await uuidStorage.getStudentById(studentId);
   if (!student) {
-    throw new NotFoundError('Student not found', ErrorCode.RES_001);
+    throw new NotFoundError('Student', ErrorCode.RES_001);
   }
   
   // Use atomic update to prevent race conditions
@@ -84,9 +86,10 @@ router.post('/take', requireAuth, verifyStudentClassEditAccess, asyncWrapper(asy
 }));
 
 // Get currency transactions for a class
-router.get('/transactions/:classId', requireAuth, verifyClassAccess, asyncWrapper(async (req: Request, res: Response, next) => {
-  const teacherId = req.user.userId;
-  const classId = req.params.classId;
+router.get('/transactions/:classId', requireUnifiedAuth, requireTeacher, verifyClassAccess, asyncWrapper(async (req, res, next) => {
+  const authReq = req as AuthenticatedRequest;
+  const teacherId = authReq.auth?.userId || authReq.user?.userId;
+  const classId = authReq.params.classId;
   
   // Get transactions for this class
   const transactions = await uuidStorage.getCurrencyTransactionsByClass(classId);
@@ -95,9 +98,10 @@ router.get('/transactions/:classId', requireAuth, verifyClassAccess, asyncWrappe
 }));
 
 // Get transaction history for a specific student
-router.get('/history/:studentId', requireAuth, verifyStudentClassAccess, asyncWrapper(async (req: Request, res: Response, next) => {
-  const teacherId = req.user.userId;
-  const studentId = req.params.studentId;
+router.get('/history/:studentId', requireUnifiedAuth, requireTeacher, verifyStudentClassAccess, asyncWrapper(async (req, res, next) => {
+  const authReq = req as AuthenticatedRequest;
+  const teacherId = authReq.auth?.userId || authReq.user?.userId;
+  const studentId = authReq.params.studentId;
   
   // Get transaction history for this student
   const transactions = await uuidStorage.getCurrencyTransactionsByStudent(studentId);

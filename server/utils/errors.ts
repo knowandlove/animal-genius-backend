@@ -89,7 +89,7 @@ export interface ErrorResponse {
 /**
  * Base application error class
  */
-export abstract class AppError extends Error {
+export class AppError extends Error {
   public readonly code: ErrorCode;
   public readonly statusCode: number;
   public readonly isOperational: boolean;

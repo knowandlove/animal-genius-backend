@@ -116,6 +116,7 @@ export function secureError(message: string, ...args: any[]) {
 
 export interface SecureLogger {
   log: (message: string, ...args: any[]) => void;
+  info: (message: string, ...args: any[]) => void;
   error: (message: string, ...args: any[]) => void;
   debug: (message: string, ...args: any[]) => void;
   warn: (message: string, ...args: any[]) => void;
@@ -127,6 +128,7 @@ export interface SecureLogger {
 export function createSecureLogger(context: string): SecureLogger {
   return {
     log: (message: string, ...args: any[]) => secureLog(`[${context}] ${message}`, ...args),
+    info: (message: string, ...args: any[]) => secureLog(`[${context}:INFO] ${message}`, ...args),
     error: (message: string, ...args: any[]) => secureError(`[${context}] ${message}`, ...args),
     debug: (message: string, ...args: any[]) => {
       if (process.env.NODE_ENV === 'development') {

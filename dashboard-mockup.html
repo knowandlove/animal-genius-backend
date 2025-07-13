@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Animal Genius - Class Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .hover-tooltip {
+            opacity: 0;
+            transform: translateY(10px);
+            transition: all 0.3s ease;
+            pointer-events: none;
+        }
+        .status-card:hover .hover-tooltip {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .urgent-card {
+            animation: pulse-red 2s infinite;
+        }
+        @keyframes pulse-red {
+            0%, 100% { border-color: #ef4444; }
+            50% { border-color: #dc2626; }
+        }
+        .sidebar-transition {
+            transition: transform 0.3s ease-in-out;
+        }
+        .sidebar-hidden {
+            transform: translateX(-100%);
+        }
+        @media (max-width: 768px) {
+            .sidebar {
+                position: fixed;
+                top: 0;
+                left: 0;
+                height: 100vh;
+                z-index: 50;
+                background: white;
+                box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans">
+    <!-- Header -->
+    <header class="bg-white shadow-sm border-b border-gray-200 px-4 py-3">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-4">
+                <button class="md:hidden text-gray-600 hover:text-gray-900" onclick="toggleSidebar()">
+                    <i class="fas fa-bars text-xl"></i>
+                </button>
+                <div class="flex items-center space-x-2">
+                    <div class="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
+                        <i class="fas fa-paw text-white text-sm"></i>
+                    </div>
+                    <span class="font-bold text-gray-900">Animal Genius</span>
+                </div>
+            </div>
+            <div class="flex items-center space-x-4">
+                <select class="bg-white border border-gray-300 rounded-md px-3 py-1 text-sm">
+                    <option>7th Grade Math - P1</option>
+                    <option>7th Grade Math - P3</option>
+                    <option>8th Grade Pre-Algebra</option>
+                </select>
+                <div class="relative">
+                    <button class="text-gray-600 hover:text-gray-900 relative">
+                        <i class="fas fa-bell text-lg"></i>
+                        <span class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">3</span>
+                    </button>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <img src="https://images.unsplash.com/photo-1494790108755-2616c64e550b?w=32&h=32&fit=crop&crop=face&facepad=2&bg=fff" 
+                         alt="Teacher" class="w-8 h-8 rounded-full">
+                    <span class="text-sm font-medium text-gray-700">Ms. Davis</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="flex min-h-screen">
+        <!-- Sidebar -->
+        <aside class="sidebar sidebar-transition w-64 bg-white shadow-lg border-r border-gray-200 md:relative md:translate-x-0" id="sidebar">
+            <div class="p-4">
+                <div class="mb-6">
+                    <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Navigation</h3>
+                    <nav class="space-y-1">
+                        <a href="#" class="bg-blue-50 text-blue-700 border-r-2 border-blue-600 group flex items-center px-3 py-2 text-sm font-medium rounded-l-md">
+                            <i class="fas fa-chart-pie text-blue-500 mr-3"></i>
+                            Dashboard
+                        </a>
+                        <a href="#" class="text-gray-700 hover:bg-gray-50 group flex items-center px-3 py-2 text-sm font-medium rounded-md">
+                            <i class="fas fa-users text-gray-400 group-hover:text-gray-500 mr-3"></i>
+                            Students
+                        </a>
+                        <a href="#" class="text-gray-700 hover:bg-gray-50 group flex items-center px-3 py-2 text-sm font-medium rounded-md">
+                            <i class="fas fa-chart-bar text-gray-400 group-hover:text-gray-500 mr-3"></i>
+                            Analytics
+                        </a>
+                        <a href="#" class="text-gray-700 hover:bg-gray-50 group flex items-center px-3 py-2 text-sm font-medium rounded-md">
+                            <i class="fas fa-object-group text-gray-400 group-hover:text-gray-500 mr-3"></i>
+                            Groups & Seating
+                        </a>
+                        <a href="#" class="text-gray-700 hover:bg-gray-50 group flex items-center px-3 py-2 text-sm font-medium rounded-md">
+                            <i class="fas fa-coins text-gray-400 group-hover:text-gray-500 mr-3"></i>
+                            Class Economy
+                        </a>
+                        <a href="#" class="text-gray-700 hover:bg-gray-50 group flex items-center px-3 py-2 text-sm font-medium rounded-md">
+                            <i class="fas fa-clipboard-list text-gray-400 group-hover:text-gray-500 mr-3"></i>
+                            Class Reports
+                        </a>
+                        <a href="#" class="text-gray-700 hover:bg-gray-50 group flex items-center px-3 py-2 text-sm font-medium rounded-md opacity-60">
+                            <i class="fas fa-users text-gray-400 group-hover:text-gray-500 mr-3"></i>
+                            Community
+                            <span class="ml-auto text-xs bg-green-100 text-green-600 px-2 py-1 rounded-full">Soon</span>
+                        </a>
+                        <a href="#" class="text-gray-700 hover:bg-gray-50 group flex items-center px-3 py-2 text-sm font-medium rounded-md">
+                            <i class="fas fa-cog text-gray-400 group-hover:text-gray-500 mr-3"></i>
+                            Settings
+                        </a>
+                    </nav>
+                </div>
+
+                <div class="border-t border-gray-200 pt-4">
+                    <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Recent Activity</h4>
+                    <div class="space-y-2 text-xs text-gray-600">
+                        <div class="flex items-center">
+                            <div class="w-2 h-2 bg-green-400 rounded-full mr-2"></div>
+                            Alex submitted Algebra Ch. 3
+                        </div>
+                        <div class="flex items-center">
+                            <div class="w-2 h-2 bg-blue-400 rounded-full mr-2"></div>
+                            Posted homework reminder
+                        </div>
+                        <div class="flex items-center">
+                            <div class="w-2 h-2 bg-yellow-400 rounded-full mr-2"></div>
+                            18 completed Pop Quiz 4
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 p-6 md:p-8">
+            <!-- Greeting Header -->
+            <div class="mb-8">
+                <div class="flex items-center justify-between mb-2">
+                    <h1 class="text-2xl md:text-3xl font-bold text-gray-900 flex items-center">
+                        <i class="fas fa-sun text-yellow-500 mr-3"></i>
+                        Good Morning, Ms. Davis!
+                    </h1>
+                    <p class="text-gray-500 text-sm md:text-base">Monday, October 23, 9:05 AM</p>
+                </div>
+            </div>
+
+            <!-- Next Steps Card (Emergency Priority) -->
+            <div class="urgent-card bg-red-50 border-2 border-red-200 rounded-lg p-6 mb-8">
+                <div class="flex items-start">
+                    <div class="flex-shrink-0">
+                        <i class="fas fa-exclamation-triangle text-red-600 text-2xl"></i>
+                    </div>
+                    <div class="ml-4 flex-1">
+                        <h2 class="text-lg font-semibold text-red-900 mb-2">
+                            🚨 URGENT: 3 students falling behind this week
+                        </h2>
+                        <p class="text-red-700 mb-4">
+                            Let's check on Alex P., Maria G., and Sam K. who have missed multiple assignments.
+                        </p>
+                        <div class="flex flex-wrap gap-3">
+                            <button class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-medium flex items-center">
+                                <i class="fas fa-phone mr-2"></i>
+                                Contact Parents
+                            </button>
+                            <button class="bg-white border border-red-300 text-red-700 hover:bg-red-50 px-4 py-2 rounded-md text-sm font-medium flex items-center">
+                                <i class="fas fa-chart-line mr-2"></i>
+                                View Progress
+                            </button>
+                            <button class="bg-white border border-red-300 text-red-700 hover:bg-red-50 px-4 py-2 rounded-md text-sm font-medium flex items-center">
+                                <i class="fas fa-sticky-note mr-2"></i>
+                                Add Notes
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Status Cards Grid -->
+            <div class="mb-8">
+                <h2 class="text-xl font-semibold text-gray-900 mb-4">📋 Status Overview</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+                    
+                    <!-- Needs Grading Card -->
+                    <div class="status-card bg-white rounded-lg shadow-sm border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer relative">
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center">
+                                <i class="fas fa-bell text-orange-500 text-lg mr-2"></i>
+                                <span class="text-2xl font-bold text-gray-900">12</span>
+                            </div>
+                            <div class="bg-orange-100 text-orange-600 text-xs px-2 py-1 rounded-full">
+                                <i class="fas fa-clock mr-1"></i>
+                                5 overdue
+                            </div>
+                        </div>
+                        <h3 class="font-medium text-gray-900 mb-2">Need Grading</h3>
+                        <div class="text-sm text-gray-600 mb-3">
+                            <div>Algebra Ch. 3 (8)</div>
+                            <div>Geometry Wk. 4 (4)</div>
+                        </div>
+                        <button class="w-full bg-orange-600 hover:bg-orange-700 text-white py-2 px-4 rounded-md text-sm font-medium">
+                            Grade Now
+                        </button>
+                        
+                        <!-- Hover Tooltip -->
+                        <div class="hover-tooltip absolute left-full top-0 ml-2 bg-gray-900 text-white p-3 rounded-lg shadow-lg w-64 z-10">
+                            <h4 class="font-medium mb-2">Recent Submissions:</h4>
+                            <ul class="text-sm space-y-1">
+                                <li>• Smith, John</li>
+                                <li>• Doe, Jane</li>
+                                <li>• Garcia, Carlos</li>
+                                <li>• Wilson, Emma</li>
+                                <li class="text-gray-300">...and 8 more</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Falling Behind Card -->
+                    <div class="status-card bg-white rounded-lg shadow-sm border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer">
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center">
+                                <i class="fas fa-trending-down text-red-500 text-lg mr-2"></i>
+                                <span class="text-2xl font-bold text-gray-900">4</span>
+                            </div>
+                            <div class="bg-red-100 text-red-600 text-xs px-2 py-1 rounded-full">
+                                Alert
+                            </div>
+                        </div>
+                        <h3 class="font-medium text-gray-900 mb-2">Falling Behind</h3>
+                        <div class="text-sm text-gray-600 mb-3">
+                            <div>>2 overdue tasks</div>
+                            <div>Alex P., Maria G., Sam K.</div>
+                        </div>
+                        <button class="w-full bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded-md text-sm font-medium">
+                            Review Students
+                        </button>
+                    </div>
+
+                    <!-- Engagement Card -->
+                    <div class="status-card bg-white rounded-lg shadow-sm border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer">
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center">
+                                <i class="fas fa-chart-line text-green-500 text-lg mr-2"></i>
+                                <span class="text-2xl font-bold text-gray-900">85%</span>
+                            </div>
+                            <div class="bg-green-100 text-green-600 text-xs px-2 py-1 rounded-full">
+                                ↑5%
+                            </div>
+                        </div>
+                        <h3 class="font-medium text-gray-900 mb-2">Engagement</h3>
+                        <div class="text-sm text-gray-600 mb-3">
+                            <div>This Week</div>
+                            <div>Up 5% from last week 🎉</div>
+                        </div>
+                        <button class="w-full bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-md text-sm font-medium">
+                            View Details
+                        </button>
+                    </div>
+
+                    <!-- Class Economy Card -->
+                    <div class="status-card bg-white rounded-lg shadow-sm border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer">
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center">
+                                <i class="fas fa-coins text-yellow-500 text-lg mr-2"></i>
+                                <span class="text-2xl font-bold text-gray-900">2,847</span>
+                            </div>
+                            <div class="bg-yellow-100 text-yellow-600 text-xs px-2 py-1 rounded-full">
+                                Active
+                            </div>
+                        </div>
+                        <h3 class="font-medium text-gray-900 mb-2">Class Currency</h3>
+                        <div class="text-sm text-gray-600 mb-3">
+                            <div>Total in circulation</div>
+                            <div>Top earner: Amy S. (847)</div>
+                        </div>
+                        <button class="w-full bg-yellow-600 hover:bg-yellow-700 text-white py-2 px-4 rounded-md text-sm font-medium">
+                            Manage Economy
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="mb-8">
+                <h2 class="text-xl font-semibold text-gray-900 mb-4">🏠 Quick Actions</h2>
+                <div class="flex flex-wrap gap-3">
+                    <button class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md font-medium flex items-center">
+                        <i class="fas fa-check-circle mr-2"></i>
+                        Take Attendance
+                    </button>
+                    <button class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-md font-medium flex items-center">
+                        <i class="fas fa-bullhorn mr-2"></i>
+                        Post Announcement
+                    </button>
+                    <button class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md font-medium flex items-center">
+                        <i class="fas fa-object-group mr-2"></i>
+                        Create Groups
+                    </button>
+                    <button class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md font-medium flex items-center">
+                        <i class="fas fa-chart-bar mr-2"></i>
+                        View Analytics
+                    </button>
+                </div>
+            </div>
+
+            <!-- Community Spotlight -->
+            <div class="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-6 border border-blue-200">
+                <div class="flex items-start">
+                    <div class="flex-shrink-0">
+                        <i class="fas fa-users text-blue-600 text-2xl"></i>
+                    </div>
+                    <div class="ml-4 flex-1">
+                        <h2 class="text-lg font-semibold text-gray-900 mb-2 flex items-center">
+                            👥 Teacher Community Spotlight
+                            <span class="ml-2 text-sm bg-green-100 text-green-600 px-2 py-1 rounded-full">Coming Soon</span>
+                        </h2>
+                        <div class="bg-white rounded-lg p-4 mb-4 border border-blue-100">
+                            <p class="text-gray-700 mb-2">
+                                💡 <strong>"Try a gallery walk for vocabulary review!"</strong>
+                            </p>
+                            <p class="text-sm text-gray-600">
+                                — Sarah K., 7th Grade ELA • 12 teachers found this helpful
+                            </p>
+                        </div>
+                        <p class="text-gray-600 text-sm mb-4">
+                            Connect with other teachers, share lesson plans, and discover new strategies right here in your dashboard.
+                        </p>
+                        <div class="flex gap-3">
+                            <button class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium flex items-center" disabled>
+                                <i class="fas fa-comments mr-2"></i>
+                                Join Discussion
+                            </button>
+                            <button class="bg-white border border-blue-300 text-blue-700 hover:bg-blue-50 px-4 py-2 rounded-md text-sm font-medium flex items-center">
+                                <i class="fas fa-info-circle mr-2"></i>
+                                Learn More
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Mobile Overlay -->
+    <div class="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden hidden" id="overlay" onclick="toggleSidebar()"></div>
+
+    <script>
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('overlay');
+            
+            sidebar.classList.toggle('sidebar-hidden');
+            overlay.classList.toggle('hidden');
+        }
+
+        // Add some interactive behaviors
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add click handlers to status cards
+            const statusCards = document.querySelectorAll('.status-card');
+            statusCards.forEach(card => {
+                card.addEventListener('click', function() {
+                    // Simulate navigation
+                    console.log('Navigating to:', this.querySelector('h3').textContent);
+                });
+            });
+
+            // Add hover effects for buttons
+            const buttons = document.querySelectorAll('button');
+            buttons.forEach(button => {
+                button.addEventListener('mouseenter', function() {
+                    this.style.transform = 'translateY(-1px)';
+                });
+                button.addEventListener('mouseleave', function() {
+                    this.style.transform = 'translateY(0)';
+                });
+            });
+        });
+    </script>
+</body>
+</html>

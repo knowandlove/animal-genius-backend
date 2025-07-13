@@ -6,13 +6,17 @@ import { quizSubmissions, students, classes, purchaseRequests, currencyTransacti
 import { eq, and, desc } from "drizzle-orm";
 import { isValidPassportCode, TRANSACTION_REASONS } from "@shared/currency-types";
 import { z } from "zod";
-import { requireStudentSession, generateStudentSession } from "../middleware/student-auth";
+import { requireUnifiedAuth, requireStudent } from "../middleware/unified-auth";
+import { supabaseAdmin } from "../supabase-clients";
+// Removed imports for generateSecurePassword and generateStudentEmail - no longer needed
 import { authLimiter } from "../middleware/rateLimiter";
 import { checkPassportLockout, trackFailedAttempt, clearFailedAttempts } from "../middleware/passport-lockout";
 import { sanitizeAvatarData, avatarDataSchema } from "../validation/room-schemas";
 
 // Passport code validation schema
 const passportCodeSchema = z.string().regex(/^[A-Z]{3}-[A-Z0-9]{3,4}$/, "Invalid passport code format");
+
+// Password salt no longer needed - students will use Edge Function for JWT generation
 
 export function registerSecureRoomRoutes(app: Express) {
   // ========== CLASS-SCOPED AUTHENTICATION ENDPOINT ==========
@@ -71,25 +75,17 @@ export function registerSecureRoomRoutes(app: Express) {
       // Clear failed attempts on successful login
       clearFailedAttempts(passportCode);
       
-      console.log('Generating session for student ID:', student.id);
+      console.log('Authenticating student ID:', student.id);
       
-      // Generate session token with the student ID (UUID)
-      const sessionToken = generateStudentSession(student.id);
-
-      // Set httpOnly cookie with debugging
-      console.log('Setting session cookie for student:', student.id);
-      console.log('NODE_ENV:', process.env.NODE_ENV);
-      
-      res.cookie('student_session', sessionToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax', // Changed from 'strict' to 'lax' for cross-port compatibility
-        maxAge: 24 * 60 * 60 * 1000, // 24 hours
-        path: '/'
-      });
-
-      res.json({ 
+      // Return success with student info (no Edge Function needed)
+      res.json({
         success: true,
+        student: {
+          id: student.id,
+          name: student.studentName,
+          classId: student.classId,
+          passportCode: student.passportCode
+        },
         studentName: student.studentName,
         message: "Welcome to your class island!"
       });
@@ -116,7 +112,8 @@ export function registerSecureRoomRoutes(app: Express) {
         .select({
           id: students.id,
           studentName: students.studentName,
-          passportCode: students.passportCode
+          passportCode: students.passportCode,
+          classId: students.classId
         })
         .from(students)
         .where(eq(students.passportCode, passportCode))
@@ -139,27 +136,19 @@ export function registerSecureRoomRoutes(app: Express) {
       // Clear failed attempts on successful login
       clearFailedAttempts(passportCode);
       
-      console.log('Generating session for student ID:', student.id);
+      console.log('Authenticating student ID:', student.id);
       
-      // Generate session token with the student ID (UUID)
-      const sessionToken = generateStudentSession(student.id);
-
-      // Set httpOnly cookie with debugging
-      console.log('Setting session cookie for student:', student.id);
-      console.log('NODE_ENV:', process.env.NODE_ENV);
-      
-      res.cookie('student_session', sessionToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax', // Changed from 'strict' to 'lax' for cross-port compatibility
-        maxAge: 24 * 60 * 60 * 1000, // 24 hours
-        path: '/'
-      });
-
-      res.json({ 
+      // Return success with student info (no Edge Function needed)
+      res.json({
         success: true,
+        student: {
+          id: student.id,
+          name: student.studentName,
+          classId: student.classId,
+          passportCode: student.passportCode
+        },
         studentName: student.studentName,
-        message: "Welcome to your room!"
+        message: "Welcome to your class island!"
       });
     } catch (error) {
       console.error("Authentication error:", error);
@@ -169,12 +158,14 @@ export function registerSecureRoomRoutes(app: Express) {
 
   // ========== LOGOUT ENDPOINT ==========
   app.post("/api/room/logout", (req, res) => {
+    // For token-based auth, logout is handled client-side by removing the token
+    // We still clear any legacy cookies for backward compatibility
     res.clearCookie('student_session');
     res.json({ success: true, message: "Logged out successfully" });
   });
 
   // ========== CHECK SESSION ENDPOINT ==========
-  app.get("/api/room/check-session", requireStudentSession, async (req, res) => {
+  app.get("/api/room/check-session", requireUnifiedAuth, requireStudent, async (req, res) => {
     try {
       const [student] = await db
         .select({
@@ -202,7 +193,7 @@ export function registerSecureRoomRoutes(app: Express) {
   // ========== SECURE ENDPOINTS (require session) ==========
   
   // Get student room data (secure version)
-  app.get("/api/room/me", requireStudentSession, async (req, res) => {
+  app.get("/api/room/me", requireUnifiedAuth, requireStudent, async (req, res) => {
     try {
       const studentData = await db
         .select({
@@ -262,7 +253,7 @@ export function registerSecureRoomRoutes(app: Express) {
   });
 
   // Check store status (secure version)
-  app.get("/api/room/me/store", requireStudentSession, async (req, res) => {
+  app.get("/api/room/me/store", requireUnifiedAuth, requireStudent, async (req, res) => {
     try {
       // Get student's class
       const studentClass = await db
@@ -297,7 +288,7 @@ export function registerSecureRoomRoutes(app: Express) {
 
 
   // Equip/unequip items endpoint (secure version)
-  app.post("/api/room/me/equip", requireStudentSession, async (req, res) => {
+  app.post("/api/room/me/equip", requireUnifiedAuth, requireStudent, async (req, res) => {
     try {
       const { slot, itemId } = req.body;
       

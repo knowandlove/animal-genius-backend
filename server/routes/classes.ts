@@ -1,32 +1,33 @@
-import { Router, Request, Response } from 'express';
+import { Router } from 'express';
 import { uuidStorage } from '../storage-uuid';
 import { requireAuth } from '../middleware/auth';
 import { verifyClassAccess, verifyClassEditAccess } from '../middleware/ownership-collaborator';
 import { z } from 'zod';
 import { createClassSchema } from '../validation/class-schemas';
 import { generateClassInsights, generatePairings } from '../services/pairingService';
-import { getAccessibleClasses, getAccessibleClassesWithStats } from '../db/collaborators';
 import { getPaginationParams, addPaginationToResponse, setPaginationHeaders } from '../utils/pagination-wrapper';
 import { pairingQueue, getPairingResults, getInsightsResults } from '../queues/pairing-queue';
 import { asyncWrapper } from '../utils/async-wrapper';
 import { createSecureLogger } from '../utils/secure-logger';
 import { NotFoundError, ErrorCode } from '../utils/errors';
+import type { AuthenticatedRequest } from '../types/api';
 
 const logger = createSecureLogger('ClassRoutes');
 
 const router = Router();
 
 // Create class
-router.post('/', requireAuth, async (req: Request, res: Response) => {
+router.post('/', requireAuth, async (req, res) => {
+  const authReq = req as AuthenticatedRequest;
   try {
     // Validate request body
-    const validatedData = createClassSchema.parse(req.body);
+    const validatedData = createClassSchema.parse(authReq.body);
     const { name, subject, gradeLevel, schoolName, icon, backgroundColor, numberOfStudents } = validatedData;
     
-    console.log('Creating class for teacher:', req.user.userId);
+    console.log('Creating class for teacher:', authReq.user.userId);
     
     const newClass = await uuidStorage.createClass({
-      teacherId: req.user.userId,
+      teacherId: authReq.user.userId,
       name: name,
       subject: subject || null,
       gradeLevel: gradeLevel || null,
@@ -57,11 +58,23 @@ router.post('/', requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-// Get teacher's classes (including collaborations)
-router.get('/', requireAuth, async (req: Request, res: Response) => {
+// Get teacher's classes
+router.get('/', requireAuth, async (req, res) => {
+  const authReq = req as AuthenticatedRequest;
   try {
-    // Get all accessible classes with student counts in 2 queries instead of N+1
-    const classesWithStats = await getAccessibleClassesWithStats(req.user.userId);
+    // Get classes owned by the teacher with student counts
+    const teacherClasses = await uuidStorage.getClassesByTeacherId(authReq.user.userId);
+    
+    // Get student counts for each class
+    const classesWithStats = await Promise.all(
+      teacherClasses.map(async (classRecord) => {
+        const studentCount = await uuidStorage.getStudentCountForClass(classRecord.id);
+        return {
+          ...classRecord,
+          studentCount
+        };
+      })
+    );
     
     res.json(classesWithStats);
   } catch (error) {
@@ -71,9 +84,10 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
 });
 
 // Get individual class by ID
-router.get('/:id', requireAuth, verifyClassAccess, async (req: Request, res: Response) => {
+router.get('/:id', requireAuth, verifyClassAccess, async (req, res) => {
+  const authReq = req as AuthenticatedRequest;
   try {
-    const classId = req.params.id;
+    const classId = authReq.params.id;
     
     // Access already verified by middleware
     const classRecord = await uuidStorage.getClassById(classId);
@@ -82,13 +96,7 @@ router.get('/:id', requireAuth, verifyClassAccess, async (req: Request, res: Res
       return res.status(404).json({ message: "Class not found" });
     }
     
-    // Add user's role information
-    const userRole = (req as any).userRole;
-    
-    res.json({
-      ...classRecord,
-      userRole
-    });
+    res.json(classRecord);
   } catch (error) {
     console.error("Get class error:", error);
     res.status(500).json({ message: "Failed to get class" });
@@ -118,9 +126,10 @@ router.get('/class-code/:code', async (req, res) => {
 });
 
 // Delete class (regular - fails if has students)
-router.delete('/:id', requireAuth, verifyClassEditAccess, async (req: Request, res: Response) => {
+router.delete('/:id', requireAuth, verifyClassEditAccess, async (req, res) => {
+  const authReq = req as AuthenticatedRequest;
   try {
-    const classId = req.params.id;
+    const classId = authReq.params.id;
     
     // Edit access already verified by middleware
     await uuidStorage.deleteClass(classId);
@@ -136,26 +145,60 @@ router.delete('/:id', requireAuth, verifyClassEditAccess, async (req: Request, r
 });
 
 // Import students from CSV
-router.post('/:id/import-students', requireAuth, async (req: Request, res: Response) => {
+router.post('/:id/import-students', requireAuth, async (req, res) => {
+  const authReq = req as AuthenticatedRequest;
   // This will be handled by the import-students middleware
   res.status(501).json({ message: "Import functionality moved to separate handler" });
 });
 
 // Get class analytics
-router.get('/:id/analytics', requireAuth, verifyClassAccess, asyncWrapper(async (req: Request, res: Response, next) => {
-  const classId = req.params.id;
-  logger.debug('Fetching analytics for class', { classId, userId: req.user.userId });
+router.get('/:id/analytics', requireAuth, verifyClassAccess, asyncWrapper(async (req, res, next) => {
+  const authReq = req as AuthenticatedRequest;
+  const classId = authReq.params.id;
   
-  const classRecord = await uuidStorage.getClassById(classId);
-  logger.debug('Class record retrieved', { found: !!classRecord });
-  
-  if (!classRecord) {
-    logger.debug('Class not found in database');
-    throw new NotFoundError('Class not found', ErrorCode.RES_001);
+  // Validate classId format (UUID)
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!classId || !uuidRegex.test(classId)) {
+    logger.warn('Invalid class ID format', { classId });
+    return res.status(400).json({ message: 'Invalid class ID format' });
   }
+  
+  const memUsageBefore = process.memoryUsage();
+  logger.log('Starting class analytics request', { 
+    classId, 
+    userId: authReq.user.userId,
+    memoryMB: {
+      rss: Math.round(memUsageBefore.rss / 1024 / 1024),
+      heapTotal: Math.round(memUsageBefore.heapTotal / 1024 / 1024),
+      heapUsed: Math.round(memUsageBefore.heapUsed / 1024 / 1024)
+    }
+  });
+  
+  try {
+    const classRecord = await uuidStorage.getClassById(classId);
+    logger.debug('Class record retrieved', { found: !!classRecord });
+    
+    if (!classRecord) {
+      logger.debug('Class not found in database');
+      throw new NotFoundError('Class not found', ErrorCode.RES_001);
+    }
     
     // Use the new efficient method that fetches everything in one query
-    const allSubmissions = await uuidStorage.getClassAnalytics(classId);
+    logger.debug('Fetching class analytics data');
+    let allSubmissions;
+    try {
+      allSubmissions = await uuidStorage.getClassAnalytics(classId);
+      logger.log('Class analytics data fetched', { submissionCount: allSubmissions.length });
+    } catch (dbError) {
+      logger.error('Database error fetching analytics', { 
+        error: dbError instanceof Error ? dbError.message : dbError,
+        classId 
+      });
+      return res.status(500).json({ 
+        message: 'Failed to fetch analytics data',
+        error: dbError instanceof Error ? dbError.message : 'Unknown database error'
+      });
+    }
     
     // Calculate statistics
     const animalDistribution: Record<string, number> = {};
@@ -163,21 +206,44 @@ router.get('/:id/analytics', requireAuth, verifyClassAccess, asyncWrapper(async 
     const learningStyleDistribution: Record<string, number> = {};
     const geniusTypeDistribution: Record<string, number> = {};
     
+    logger.debug('Processing submissions for statistics');
     allSubmissions.forEach(sub => {
-      animalDistribution[sub.animalType] = (animalDistribution[sub.animalType] || 0) + 1;
-      geniusTypeDistribution[sub.geniusType] = (geniusTypeDistribution[sub.geniusType] || 0) + 1;
-      learningStyleDistribution[sub.learningStyle] = (learningStyleDistribution[sub.learningStyle] || 0) + 1;
+      if (sub.animalType) {
+        animalDistribution[sub.animalType] = (animalDistribution[sub.animalType] || 0) + 1;
+      }
+      if (sub.geniusType) {
+        geniusTypeDistribution[sub.geniusType] = (geniusTypeDistribution[sub.geniusType] || 0) + 1;
+      }
+      if (sub.learningStyle) {
+        learningStyleDistribution[sub.learningStyle] = (learningStyleDistribution[sub.learningStyle] || 0) + 1;
+      }
+      if (sub.personalityType) {
+        personalityDistribution[sub.personalityType] = (personalityDistribution[sub.personalityType] || 0) + 1;
+      }
     });
     
     // Generate insights if there are submissions
     let insights = undefined;
     if (allSubmissions.length > 0) {
-      insights = generateClassInsights(allSubmissions);
+      logger.debug('Generating class insights');
+      try {
+        insights = generateClassInsights(allSubmissions);
+        logger.debug('Class insights generated successfully');
+      } catch (insightError) {
+        logger.error('Error generating insights', { 
+          error: insightError instanceof Error ? {
+            message: insightError.message,
+            stack: insightError.stack
+          } : insightError,
+          submissionCount: allSubmissions.length
+        });
+        // Continue without insights rather than crashing
+      }
     }
     
     // Check if pagination is requested
-    if (req.query.page || req.query.limit) {
-      const { page, limit } = getPaginationParams(req);
+    if (authReq.query.page || authReq.query.limit) {
+      const { page, limit } = getPaginationParams(authReq);
       
       const response = {
         class: {
@@ -185,8 +251,11 @@ router.get('/:id/analytics', requireAuth, verifyClassAccess, asyncWrapper(async 
           name: classRecord.name,
           code: classRecord.classCode,
           teacherId: classRecord.teacherId,
-          iconEmoji: '📚',
-          iconColor: 'hsl(202 25% 65%)'
+          icon: classRecord.icon || 'book',
+          backgroundColor: classRecord.backgroundColor || '#829B79',
+          // Map to frontend expected fields
+          iconEmoji: classRecord.icon || '📚',
+          iconColor: classRecord.backgroundColor || 'hsl(202 25% 65%)'
         },
         stats: {
           totalSubmissions: allSubmissions.length,
@@ -203,17 +272,46 @@ router.get('/:id/analytics', requireAuth, verifyClassAccess, asyncWrapper(async 
       const paginatedResponse = addPaginationToResponse(response, 'submissions', page, limit);
       setPaginationHeaders(res, page, limit, allSubmissions.length);
       
-      res.json(paginatedResponse);
+      try {
+        // Test JSON serialization before sending
+        const jsonString = JSON.stringify(paginatedResponse);
+        logger.debug('Response serialized successfully', { size: jsonString.length });
+        res.json(paginatedResponse);
+      } catch (jsonError) {
+        logger.error('Failed to serialize analytics response', {
+          error: jsonError instanceof Error ? jsonError.message : jsonError,
+          responseKeys: Object.keys(paginatedResponse),
+          submissionCount: allSubmissions.length
+        });
+        
+        // Try to identify the problematic submission
+        for (let i = 0; i < allSubmissions.length; i++) {
+          try {
+            JSON.stringify(allSubmissions[i]);
+          } catch (itemError) {
+            logger.error('Failed to serialize submission', { 
+              index: i, 
+              studentName: allSubmissions[i].studentName,
+              error: itemError instanceof Error ? itemError.message : itemError 
+            });
+          }
+        }
+        
+        res.status(500).json({ message: 'Failed to process analytics data' });
+      }
     } else {
       // Original response for backward compatibility
-      res.json({
+      const response = {
         class: {
           id: classRecord.id,
           name: classRecord.name,
           code: classRecord.classCode,
           teacherId: classRecord.teacherId,
-          iconEmoji: '📚',
-          iconColor: 'hsl(202 25% 65%)'
+          icon: classRecord.icon || 'book',
+          backgroundColor: classRecord.backgroundColor || '#829B79',
+          // Map to frontend expected fields
+          iconEmoji: classRecord.icon || '📚',
+          iconColor: classRecord.backgroundColor || 'hsl(202 25% 65%)'
         },
         stats: {
           totalSubmissions: allSubmissions.length,
@@ -224,14 +322,52 @@ router.get('/:id/analytics', requireAuth, verifyClassAccess, asyncWrapper(async 
         },
         submissions: allSubmissions,
         insights,
-      });
+      };
+      
+      try {
+        // Test JSON serialization before sending
+        const jsonString = JSON.stringify(response);
+        logger.debug('Response serialized successfully', { size: jsonString.length });
+        res.json(response);
+      } catch (jsonError) {
+        logger.error('Failed to serialize analytics response', {
+          error: jsonError instanceof Error ? jsonError.message : jsonError,
+          responseKeys: Object.keys(response),
+          submissionCount: allSubmissions.length
+        });
+        
+        // Try to identify the problematic submission
+        for (let i = 0; i < allSubmissions.length; i++) {
+          try {
+            JSON.stringify(allSubmissions[i]);
+          } catch (itemError) {
+            logger.error('Failed to serialize submission', { 
+              index: i, 
+              studentName: allSubmissions[i].studentName,
+              error: itemError instanceof Error ? itemError.message : itemError 
+            });
+          }
+        }
+        
+        res.status(500).json({ message: 'Failed to process analytics data' });
+      }
     }
+  } catch (error) {
+    logger.error('Fatal error in class analytics endpoint', { 
+      error, 
+      classId, 
+      userId: authReq.user.userId,
+      stack: error instanceof Error ? error.stack : undefined 
+    });
+    throw error; // Let asyncWrapper handle it
+  }
 }));
 
 // Get pairings (now non-blocking!)
-router.get('/:id/pairings', requireAuth, verifyClassAccess, async (req: Request, res: Response) => {
+router.get('/:id/pairings', requireAuth, verifyClassAccess, async (req, res) => {
+  const authReq = req as AuthenticatedRequest;
   try {
-    const classId = req.params.id;
+    const classId = authReq.params.id;
     const classRecord = await uuidStorage.getClassById(classId);
     
     if (!classRecord) {

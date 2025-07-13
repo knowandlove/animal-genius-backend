@@ -52,7 +52,15 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     if (process.env.NODE_ENV === 'development') {
       console.log('Verifying token with Supabase...');
     }
-    const { data: { user }, error } = await supabaseAnon.auth.getUser(token);
+    let user, error;
+    try {
+      const result = await supabaseAnon.auth.getUser(token);
+      user = result.data?.user;
+      error = result.error;
+    } catch (supabaseError) {
+      console.error('Supabase auth.getUser threw an error:', supabaseError);
+      return res.status(503).json({ message: "Authentication service unavailable" });
+    }
     
     if (error) {
       if (process.env.NODE_ENV === 'development') {

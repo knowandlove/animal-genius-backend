@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { AuthenticatedRequest } from '../types/api';
 import { db } from '../db';
 import { uuidStorage } from '../storage-uuid';
 import { students, quizSubmissions, currencyTransactions, /* purchaseRequests, */ classes } from '@shared/schema';
@@ -9,9 +10,10 @@ const router = Router();
 
 // Admin force delete class (deletes class and all associated data)
 router.delete('/classes/:id/force', requireAuth, async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
   try {
-    const classId = req.params.id;
-    const teacherId = req.user!.userId;
+    const classId = authReq.params.id;
+    const teacherId = authReq.user!.userId;
     
     // Verify teacher owns the class or is admin
     const classRecord = await uuidStorage.getClassById(classId);
@@ -64,7 +66,8 @@ router.delete('/classes/:id/force', requireAuth, async (req: Request, res: Respo
 });
 
 // Get all teachers/profiles
-router.get('/teachers', requireAuth, requireAdmin, async (req: any, res) => {
+router.get('/teachers', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
   try {
     const teachers = await uuidStorage.getAllProfiles();
     res.json(teachers);
@@ -75,16 +78,17 @@ router.get('/teachers', requireAuth, requireAdmin, async (req: any, res) => {
 });
 
 // Update admin status
-router.put('/teachers/:id/admin', requireAuth, requireAdmin, async (req: any, res) => {
+router.put('/teachers/:id/admin', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
   try {
-    const teacherId = req.params.id;
-    const { isAdmin } = req.body;
+    const teacherId = authReq.params.id;
+    const { isAdmin } = authReq.body;
     
     const updatedProfile = await uuidStorage.updateProfileAdmin(teacherId, isAdmin);
     
     // Log admin action
     await uuidStorage.logAdminAction({
-      adminId: req.user.userId,
+      adminId: authReq.user.userId,
       action: isAdmin ? 'GRANT_ADMIN' : 'REVOKE_ADMIN',
       targetUserId: teacherId,
       details: { 
@@ -101,7 +105,8 @@ router.put('/teachers/:id/admin', requireAuth, requireAdmin, async (req: any, re
 });
 
 // Get all classes
-router.get('/classes', requireAuth, requireAdmin, async (req: any, res) => {
+router.get('/classes', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
   try {
     const classes = await uuidStorage.getAllClassesWithStats();
     res.json(classes);
@@ -112,7 +117,8 @@ router.get('/classes', requireAuth, requireAdmin, async (req: any, res) => {
 });
 
 // Get admin stats
-router.get('/stats', requireAuth, requireAdmin, async (req: any, res) => {
+router.get('/stats', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
   try {
     const stats = await uuidStorage.getAdminStats();
     res.json(stats);

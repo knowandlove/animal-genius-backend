@@ -4,7 +4,7 @@ import { getProfileById } from '../storage-supabase';
 import { db } from '../db';
 import { profiles } from '@shared/schema';
 import { eq } from 'drizzle-orm';
-import bcrypt from 'bcryptjs';
+import bcrypt from 'bcrypt';
 import { supabaseAdmin, supabaseAnon } from '../supabase-clients';
 import { z } from 'zod';
 import { updateProfileSchema, updatePasswordSchema } from '../validation/auth-schemas';
@@ -57,7 +57,7 @@ router.get('/me', requireAuth, async (req, res) => {
 // Update current user profile (only allowed fields)
 router.put('/me/profile', requireAuth, async (req, res) => {
   try {
-    const userId = req.user.userId;
+    const userId = req.user!.userId;
     
     // Validate request body
     const validatedData = updateProfileSchema.parse(req.body);
@@ -130,7 +130,7 @@ router.put('/me/profile', requireAuth, async (req, res) => {
 // Update password
 router.put('/me/password', requireAuth, async (req, res) => {
   try {
-    const userId = req.user.userId;
+    const userId = req.user!.userId;
     
     // Validate request body
     const { currentPassword, newPassword } = updatePasswordSchema.parse(req.body);

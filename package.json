@@ -18,12 +18,19 @@
     "lint": "eslint . --ext .ts",
     "typecheck": "tsc --noEmit",
     "typecheck:baseline": "node scripts/check-types-with-baseline.js",
+    "test-auth": "tsx test-student-auth.ts",
+    "create-test-student": "tsx create-test-student.ts",
     "test": "vitest",
     "test:coverage": "vitest --coverage",
     "test:currency-constraints": "tsx scripts/test-currency-constraints.ts",
-    "test:infrastructure": "vitest run server/tests/infrastructure/"
+    "test:infrastructure": "vitest run server/tests/infrastructure/",
+    "cleanup-sessions": "tsx scripts/cleanup-voting-sessions.ts",
+    "migrate:students": "tsx scripts/migrate-students-to-anonymous-auth.ts",
+    "test:edge-functions": "tsx scripts/test-edge-functions.ts",
+    "sync-schema": "bash ../scripts/sync-schema.sh"
   },
   "dependencies": {
+    "@kalpro/shared-types": "file:../shared-types",
     "@neondatabase/serverless": "^0.10.4",
     "@supabase/supabase-js": "^2.39.0",
     "bcrypt": "^6.0.0",
@@ -38,12 +45,14 @@
     "express": "^4.21.2",
     "express-rate-limit": "^7.5.0",
     "express-session": "^1.18.1",
+    "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "memoizee": "^0.4.17",
     "memorystore": "^1.6.7",
     "mime-types": "^2.1.35",
     "multer": "^2.0.1",
     "node-cache": "^5.1.2",
+    "node-fetch": "^3.3.2",
     "openid-client": "^6.5.1",
     "passport": "^0.7.0",
     "passport-local": "^1.0.0",
@@ -80,6 +89,5 @@
     "tsx": "^4.19.1",
     "typescript": "5.6.3",
     "vitest": "^1.2.0"
-  },
-  "optionalDependencies": {}
+  }
 }

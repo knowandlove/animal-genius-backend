@@ -10,12 +10,13 @@ import { getCache } from "../lib/cache-factory";
 const cache = getCache();
 import StorageRouter from "../services/storage-router";
 import { roomSaveLimiter, roomBrowsingLimiter, passportLoginLimiter } from "../middleware/rateLimiter";
-import { requireStudentSession, generateStudentSession } from "../middleware/student-auth";
+// Legacy auth imports removed - using unified auth
 import { validateOwnDataAccess } from "../middleware/validate-student-class";
 import { checkRoomAccess } from "../middleware/room-access";
 import { requireEditAccess } from "../middleware/requireEditAccess";
 import { getStudentPet, getAvailablePets } from "../services/petService";
 import { optionalAuth } from "../middleware/auth";
+import { optionalStudentAuth } from "../middleware/passport-auth";
 
 
 // Passport code validation schema
@@ -36,7 +37,7 @@ export function registerRoomRoutes(app: Express) {
   });
   
   // NEW: Consolidated endpoint for student room page - Uses flexible access control
-  app.get("/api/room-page-data/:passportCode", optionalAuth, checkRoomAccess, passportLoginLimiter, roomBrowsingLimiter, async (req, res) => {
+  app.get("/api/room-page-data/:passportCode", optionalStudentAuth, checkRoomAccess, passportLoginLimiter, roomBrowsingLimiter, async (req, res) => {
     try {
       const { passportCode } = req.params;
       
@@ -94,9 +95,17 @@ export function registerRoomRoutes(app: Express) {
       
       if (storeStatus.isOpen) {
         const catalogCacheKey = 'store-catalog:active:v4'; // Changed cache key to force refresh
-        storeCatalog = cache.get<any[]>(catalogCacheKey);
+        const cachedCatalog = cache.get<any[]>(catalogCacheKey);
         
-        if (!storeCatalog) {
+        // Ensure cached value is an array, not an empty object
+        if (cachedCatalog && Array.isArray(cachedCatalog)) {
+          storeCatalog = cachedCatalog;
+          console.log(`✅ Cache hit for ${catalogCacheKey} - ${storeCatalog.length} items`);
+        } else {
+          if (cachedCatalog && !Array.isArray(cachedCatalog)) {
+            console.warn(`⚠️ Cache contained non-array value for ${catalogCacheKey}:`, typeof cachedCatalog);
+            cache.del(catalogCacheKey); // Clear invalid cache entry
+          }
           console.log(`⚡ Cache miss for ${catalogCacheKey}, fetching from DB`);
           
           const items = await db
@@ -183,8 +192,6 @@ export function registerRoomRoutes(app: Express) {
           // Cache for 10 minutes
           cache.set(catalogCacheKey, storeCatalog, 600);
           console.log(`💾 Cached store catalog for ${catalogCacheKey} - ${storeCatalog.length} items`);
-        } else {
-          console.log(`✅ Cache hit for ${catalogCacheKey} - ${storeCatalog?.length || 0} items`);
         }
       }
 
@@ -523,7 +530,7 @@ export function registerRoomRoutes(app: Express) {
 
 
   // Save room state endpoint - Must have edit permission
-  app.post("/api/room/:passportCode/state", checkRoomAccess, roomSaveLimiter, async (req, res) => {
+  app.post("/api/room/:passportCode/state", optionalStudentAuth, checkRoomAccess, roomSaveLimiter, async (req, res) => {
     try {
       const { passportCode } = req.params;
       const { avatarData, roomData, lastUpdated } = req.body;
@@ -625,7 +632,7 @@ export function registerRoomRoutes(app: Express) {
   });
 
   // Equip/unequip items endpoint - Must have edit permission
-  app.post("/api/room/:passportCode/equip", checkRoomAccess, roomSaveLimiter, async (req, res) => {
+  app.post("/api/room/:passportCode/equip", optionalStudentAuth, checkRoomAccess, roomSaveLimiter, async (req, res) => {
     try {
       const { passportCode } = req.params;
       const { slot, itemId } = req.body;
@@ -736,7 +743,7 @@ export function registerRoomRoutes(app: Express) {
   });
 
   // Save avatar customization endpoint - Must have edit permission
-  app.post("/api/room/:passportCode/avatar", checkRoomAccess, requireEditAccess, roomSaveLimiter, async (req, res) => {
+  app.post("/api/room/:passportCode/avatar", optionalStudentAuth, checkRoomAccess, requireEditAccess, roomSaveLimiter, async (req, res) => {
     try {
       const { passportCode } = req.params;
       const { equipped } = req.body;
@@ -843,7 +850,7 @@ export function registerRoomRoutes(app: Express) {
   });
 
   // Save room decoration endpoint - Must have edit permission
-  app.post("/api/room/:passportCode/room", checkRoomAccess, requireEditAccess, roomSaveLimiter, async (req, res) => {
+  app.post("/api/room/:passportCode/room", optionalStudentAuth, checkRoomAccess, requireEditAccess, roomSaveLimiter, async (req, res) => {
     try {
       const { passportCode } = req.params;
       const { theme, wallColor, floorColor, wallPattern, floorPattern, furniture, wall, floor } = req.body;
@@ -1116,7 +1123,7 @@ export function registerRoomRoutes(app: Express) {
   });
 
   // Update room surfaces endpoint - Must have edit permission
-  app.put("/api/room/:passportCode/surfaces", checkRoomAccess, requireEditAccess, roomSaveLimiter, async (req, res) => {
+  app.put("/api/room/:passportCode/surfaces", optionalStudentAuth, checkRoomAccess, requireEditAccess, roomSaveLimiter, async (req, res) => {
     try {
       const { passportCode } = req.params;
       const { wall, floor } = req.body;

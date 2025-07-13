@@ -15,8 +15,8 @@ All cleanup operations are managed through a single `ResourceCleanupManager` loc
 ### Priority-Based Execution
 Cleanup handlers run in priority order (lower numbers first):
 1. **Priority 0-19**: Critical data persistence
-2. **Priority 20-49**: Service cleanup (games, sessions)
-3. **Priority 50-79**: External connections (Redis, WebSocket)
+2. **Priority 20-49**: Service cleanup (metrics, monitoring)
+3. **Priority 50-79**: External connections (Redis, cache)
 4. **Priority 80-99**: Core infrastructure (HTTP server)
 5. **Priority 100+**: Final cleanup (database pool)
 
@@ -24,8 +24,6 @@ Cleanup handlers run in priority order (lower numbers first):
 
 | Handler | Priority | Timeout | Description |
 |---------|----------|---------|-------------|
-| game-session-manager | 20 | 5s | Saves game state, cleans up sessions |
-| websocket-server | 30 | 5s | Closes WebSocket connections gracefully |
 | metrics-service | 40 | 5s | Flushes metrics, saves reports |
 | redis-cache | 50 | 5s | Closes Redis connections |
 | http-server | 90 | 8s | Stops accepting new requests |
@@ -106,13 +104,13 @@ kill -INT <process-id>
 ### Expected Output
 ```
 2:30:00 PM [express] Received SIGTERM, starting graceful shutdown...
-[ResourceCleanup] Starting cleanup with 6 handlers...
-[ResourceCleanup] Running cleanup handler: game-session-manager
-2:30:00 PM [express] Cleaning up game session manager...
-[ResourceCleanup] ✓ Completed cleanup handler: game-session-manager
-[ResourceCleanup] Running cleanup handler: websocket-server
-2:30:00 PM [express] Cleaning up WebSocket server...
-[ResourceCleanup] ✓ Completed cleanup handler: websocket-server
+[ResourceCleanup] Starting cleanup with 4 handlers...
+[ResourceCleanup] Running cleanup handler: metrics-service
+2:30:00 PM [express] Cleaning up metrics service...
+[ResourceCleanup] ✓ Completed cleanup handler: metrics-service
+[ResourceCleanup] Running cleanup handler: redis-cache
+2:30:00 PM [express] Closing Redis connections...
+[ResourceCleanup] ✓ Completed cleanup handler: redis-cache
 ...
 [ResourceCleanup] Cleanup completed in 1234ms
 [ResourceCleanup] Graceful shutdown completed

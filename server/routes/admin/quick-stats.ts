@@ -68,7 +68,7 @@ router.get('/quick-stats', requireAuth, requireAdmin, async (req, res) => {
     const pendingOrders = [{ count: 0 }];
 
     // Popular items - for now just return empty array since we don't track purchases
-    const popularItems = [];
+    const popularItems: any[] = [];
 
     // Engagement stats
     const dailyActive = await db.select({

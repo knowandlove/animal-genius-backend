@@ -11,7 +11,7 @@ import { CONFIG } from './config/constants';
 if (process.env.NODE_ENV === 'development') {
   console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL);
   console.log('NODE_ENV:', process.env.NODE_ENV);
-  console.log('SSL validation enabled:', process.env.DATABASE_URL?.includes('supabase.co') || process.env.NODE_ENV === 'production');
+  console.log('SSL validation enabled:', process.env.DATABASE_URL?.includes('supabase.co') || process.env.NODE_ENV === 'production' as string);
 }
 
 if (!process.env.DATABASE_URL) {
@@ -25,23 +25,24 @@ if (!process.env.DATABASE_URL) {
 const sslConfig = process.env.DATABASE_URL?.includes('supabase.co')
   ? {
       // Supabase requires SSL connection
-      rejectUnauthorized: process.env.NODE_ENV === 'production' 
-        ? false // In production, Supabase may use certificates that Node.js doesn't recognize
-        : process.env.NODE_TLS_REJECT_UNAUTHORIZED !== '0'
+      rejectUnauthorized: false // Supabase uses certificates that Node.js doesn't recognize by default
     }
   : process.env.NODE_ENV === 'production'
     ? { rejectUnauthorized: true } // Non-Supabase production databases should validate certs
     : false; // No SSL for local development
 
+// Store pool max for monitoring
+export const POOL_MAX = CONFIG.DATABASE.POOL_MAX;
+
 // Create pool with SSL configuration
 export const pool = new Pool({ 
   connectionString: process.env.DATABASE_URL,
   ssl: sslConfig,
-  max: CONFIG.DATABASE.POOL_MAX,
+  max: POOL_MAX,
   min: CONFIG.DATABASE.POOL_MIN,
   idleTimeoutMillis: CONFIG.DATABASE.IDLE_TIMEOUT_MS,
   connectionTimeoutMillis: CONFIG.DATABASE.CONNECTION_TIMEOUT_MS,
-  acquireTimeoutMillis: CONFIG.DATABASE.ACQUIRE_TIMEOUT_MS,
+  // acquireTimeoutMillis is not a valid pg Pool option - removed
 });
 
 // Add error handling for pool
@@ -63,7 +64,7 @@ pool.on('error', (err) => {
 
 // Connection pool monitoring for classroom load
 pool.on('connect', (client) => {
-  console.log(`🔗 New client connected. Pool: ${pool.totalCount}/${pool.options.max} connections`);
+  console.log(`🔗 New client connected. Pool: ${pool.totalCount}/${POOL_MAX} connections`);
 });
 
 pool.on('acquire', (client) => {
@@ -82,7 +83,7 @@ const monitorDbPool = () => {
     total: pool.totalCount,
     idle: pool.idleCount,
     waiting: pool.waitingCount,
-    max: pool.options.max
+    max: POOL_MAX
   };
   
   // Only log if there's activity or near capacity

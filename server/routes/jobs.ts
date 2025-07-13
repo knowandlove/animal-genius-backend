@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { AuthenticatedRequest } from '../types/api';
 import { requireAuth } from '../middleware/auth';
 import { pairingQueue } from '../queues/pairing-queue';
 
@@ -6,8 +7,9 @@ const router = Router();
 
 // Check job status
 router.get('/:jobId/status', requireAuth, async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
   try {
-    const { jobId } = req.params;
+    const { jobId } = authReq.params;
     
     const job = await pairingQueue.getJob(jobId);
     
@@ -37,8 +39,9 @@ router.get('/:jobId/status', requireAuth, async (req: Request, res: Response) =>
 
 // Get job result
 router.get('/:jobId/result', requireAuth, async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
   try {
-    const { jobId } = req.params;
+    const { jobId } = authReq.params;
     
     const job = await pairingQueue.getJob(jobId);
     

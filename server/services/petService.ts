@@ -104,7 +104,7 @@ export async function purchasePet(
   studentId: string, 
   petId: string, 
   customName: string
-): Promise<{ success: boolean; error?: string; studentPet?: StudentPet }> {
+): Promise<{ success: boolean; error?: string; studentPet?: StudentPet; newBalance?: number }> {
   try {
     return await db.transaction(async (tx) => {
       // Check if student already has a pet (MVP: one pet per student)
@@ -140,6 +140,8 @@ export async function purchasePet(
         return { success: false, error: "Insufficient balance" };
       }
       
+      const newBalance = student.currencyBalance - pet.cost;
+      
       // Deduct coins
       await tx
         .update(students)
@@ -167,11 +169,11 @@ export async function purchasePet(
         description: `Purchased pet: ${pet.name}`
       });
       
-      return { success: true, studentPet: newPet };
+      return { success: true, studentPet: newPet, newBalance };
     });
   } catch (error) {
     console.error('Error purchasing pet:', error);
-    return { success: false, error: "Failed to purchase pet" };
+    return { success: false, error: "Failed to complete purchase" };
   }
 }
 
