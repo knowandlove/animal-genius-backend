@@ -1,0 +1,1 @@
+../scripts/development/restart-backend.sh

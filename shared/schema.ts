@@ -358,6 +358,40 @@ export const studentPets = pgTable('student_pets', {
   };
 });
 
+// Lesson progress table
+export const lessonProgress = pgTable('lesson_progress', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  classId: uuid('class_id').notNull().references(() => classes.id, { onDelete: 'cascade' }),
+  lessonId: integer('lesson_id').notNull(),
+  status: varchar('status', { length: 20 }).notNull().default('not_started'), // 'not_started', 'in_progress', 'completed'
+  currentActivity: integer('current_activity').default(1), // 1-4
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => {
+  return {
+    uniqueClassLesson: uniqueIndex('unique_class_lesson').on(table.classId, table.lessonId),
+    classIdIdx: index('idx_lesson_progress_class_id').on(table.classId),
+    statusIdx: index('idx_lesson_progress_status').on(table.status),
+  };
+});
+
+// Lesson activity progress table
+export const lessonActivityProgress = pgTable('lesson_activity_progress', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  lessonProgressId: uuid('lesson_progress_id').notNull().references(() => lessonProgress.id, { onDelete: 'cascade' }),
+  activityNumber: integer('activity_number').notNull(), // 1-4
+  completed: boolean('completed').default(false),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => {
+  return {
+    uniqueLessonActivity: uniqueIndex('unique_lesson_activity').on(table.lessonProgressId, table.activityNumber),
+    lessonProgressIdIdx: index('idx_lesson_activity_progress_lesson_id').on(table.lessonProgressId),
+  };
+});
+
 // Pet interactions log
 export const petInteractions = pgTable('pet_interactions', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -396,6 +430,7 @@ export const classesRelations = relations(classes, ({ one, many }) => ({
   }),
   students: many(students),
   collaborators: many(classCollaborators),
+  lessonProgress: many(lessonProgress),
 }));
 
 export const studentsRelations = relations(students, ({ one, many }) => ({
@@ -520,6 +555,21 @@ export const petInteractionsRelations = relations(petInteractions, ({ one }) => 
   }),
 }));
 
+export const lessonProgressRelations = relations(lessonProgress, ({ one, many }) => ({
+  class: one(classes, {
+    fields: [lessonProgress.classId],
+    references: [classes.id],
+  }),
+  activities: many(lessonActivityProgress),
+}));
+
+export const lessonActivityProgressRelations = relations(lessonActivityProgress, ({ one }) => ({
+  lessonProgress: one(lessonProgress, {
+    fields: [lessonActivityProgress.lessonProgressId],
+    references: [lessonProgress.id],
+  }),
+}));
+
 // Type exports for convenience
 export type Profile = typeof profiles.$inferSelect;
 export type NewProfile = typeof profiles.$inferInsert;
@@ -553,6 +603,10 @@ export type StudentPet = typeof studentPets.$inferSelect;
 export type NewStudentPet = typeof studentPets.$inferInsert;
 export type PetInteraction = typeof petInteractions.$inferSelect;
 export type NewPetInteraction = typeof petInteractions.$inferInsert;
+export type LessonProgress = typeof lessonProgress.$inferSelect;
+export type NewLessonProgress = typeof lessonProgress.$inferInsert;
+export type LessonActivityProgress = typeof lessonActivityProgress.$inferSelect;
+export type NewLessonActivityProgress = typeof lessonActivityProgress.$inferInsert;
 
 // Re-export class values voting tables
 export { 

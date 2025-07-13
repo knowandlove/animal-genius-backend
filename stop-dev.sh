@@ -1,0 +1,1 @@
+../scripts/development/stop-dev.sh
