@@ -16,7 +16,9 @@ export async function getClassAnalyticsOptimized(classId: string): Promise<Class
         studentName: students.studentName,
         gradeLevel: students.gradeLevel,
         passportCode: students.passportCode,
-        currencyBalance: students.currencyBalance
+        currencyBalance: students.currencyBalance,
+        personalityType: students.personalityType,
+        learningStyle: students.learningStyle
       })
       .from(students)
       .where(eq(students.classId, classId));
@@ -58,8 +60,9 @@ export async function getClassAnalyticsOptimized(classId: string): Promise<Class
   return classStudents.map((student, index) => {
     const latestSubmission = latestSubmissionMap.get(student.id);
     
-    let personalityType = 'INTJ';
-    let learningStyle = 'visual';
+    // Use data from students table first, then fallback to JSON answers
+    let personalityType = student.personalityType || 'INTJ';
+    let learningStyle = student.learningStyle || 'visual';
     let gradeLevel = student.gradeLevel || 'Unknown';
     let scores = null;
     let learningScores = {
@@ -69,10 +72,12 @@ export async function getClassAnalyticsOptimized(classId: string): Promise<Class
       readingWriting: 0
     };
 
+    // Try to get additional data from JSON answers if available
     if (latestSubmission?.answers && typeof latestSubmission.answers === 'object') {
       const answers = latestSubmission.answers as QuizAnswers;
-      if (answers.personalityType) personalityType = answers.personalityType;
-      if (answers.learningStyle) learningStyle = answers.learningStyle;
+      // Only override if students table data is missing
+      if (!student.personalityType && answers.personalityType) personalityType = answers.personalityType;
+      if (!student.learningStyle && answers.learningStyle) learningStyle = answers.learningStyle;
       if (answers.gradeLevel) gradeLevel = answers.gradeLevel;
       if (answers.scores) scores = answers.scores;
       if (answers.learningScores) learningScores = answers.learningScores;

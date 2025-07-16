@@ -43,6 +43,9 @@ import httpMetricsRouter from './routes/admin/http-metrics';
 import gameScoresRouter from './routes/game-scores';
 import classValuesRouter from './routes/class-values';
 import classSettingsRouter from './routes/class-settings';
+import { registerRoomVisitRoutes } from './routes/room-visits';
+import { registerRoomGuestbookRoutes } from './routes/room-guestbook';
+import { registerStudentAchievementRoutes } from './routes/student-achievements';
 
 // Feature flags to disable unused features
 const FEATURE_FLAGS = {
@@ -56,12 +59,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Background job status endpoints
   app.use('/api/jobs', jobsRouter);
+  
 
   // Register student room routes (no auth required)
   registerRoomRoutes(app);
   
   // Register room viewer tracking routes
   registerRoomViewerRoutes(app);
+  
+  // Register room visit tracking routes (for achievements and analytics)
+  registerRoomVisitRoutes(app);
+  
+  // Register room guestbook routes (for visitor messages)
+  registerRoomGuestbookRoutes(app);
+  
+  // Register student achievement routes (for achievement system)
+  registerStudentAchievementRoutes(app);
   
   // Register secure student room routes (session-based auth)
   registerSecureRoomRoutes(app);

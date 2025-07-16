@@ -59,6 +59,7 @@ export interface IUUIDStorage {
   getClassByClassCode(code: string): Promise<Class | undefined>;
   getClassById(id: string): Promise<Class | undefined>;
   deleteClass(id: string): Promise<void>;
+  updateClass(id: string, data: Partial<Class>): Promise<Class>;
   generateUniqueClassCode(): Promise<string>;
   
   // Student operations
@@ -215,6 +216,23 @@ export class UUIDStorage implements IUUIDStorage {
         isArchived: true 
       })
       .where(eq(classes.id, id));
+  }
+
+  async updateClass(id: string, data: Partial<Class>): Promise<Class> {
+    const [updatedClass] = await db
+      .update(classes)
+      .set({
+        ...data,
+        updatedAt: new Date()
+      })
+      .where(eq(classes.id, id))
+      .returning();
+    
+    if (!updatedClass) {
+      throw new Error('Class not found');
+    }
+    
+    return updatedClass;
   }
 
   // Student operations
@@ -530,12 +548,22 @@ export class UUIDStorage implements IUUIDStorage {
   }
 
   async getCurrencyTransactionsByClass(classId: string): Promise<CurrencyTransaction[]> {
-    return await db
-      .select()
+    const results = await db
+      .select({
+        id: currencyTransactions.id,
+        studentId: currencyTransactions.studentId,
+        amount: currencyTransactions.amount,
+        transactionType: currencyTransactions.transactionType,
+        description: currencyTransactions.description,
+        teacherId: currencyTransactions.teacherId,
+        createdAt: currencyTransactions.createdAt,
+      })
       .from(currencyTransactions)
       .innerJoin(students, eq(currencyTransactions.studentId, students.id))
       .where(eq(students.classId, classId))
       .orderBy(desc(currencyTransactions.createdAt));
+    
+    return results;
   }
 
   // Atomic currency update - prevents race conditions
@@ -607,15 +635,24 @@ export class UUIDStorage implements IUUIDStorage {
         id: profiles.id,
         email: profiles.email,
         fullName: profiles.fullName,
+        firstName: profiles.firstName,
+        lastName: profiles.lastName,
+        schoolOrganization: profiles.schoolOrganization,
+        roleTitle: profiles.roleTitle,
+        phoneNumber: profiles.phoneNumber,
+        avatarUrl: profiles.avatarUrl,
         isAdmin: profiles.isAdmin,
+        isAnonymous: profiles.isAnonymous,
         createdAt: profiles.createdAt,
         updatedAt: profiles.updatedAt,
+        lastLoginAt: profiles.lastLoginAt,
         classCount: sql<number>`COUNT(DISTINCT ${classes.id})`.as('classCount'),
         studentCount: sql<number>`COUNT(DISTINCT ${students.id})`.as('studentCount')
       })
       .from(profiles)
       .leftJoin(classes, eq(profiles.id, classes.teacherId))
       .leftJoin(students, eq(classes.id, students.classId))
+      .where(eq(profiles.isAnonymous, false))
       .groupBy(profiles.id);
 
     return profilesWithStats;
@@ -625,15 +662,21 @@ export class UUIDStorage implements IUUIDStorage {
     const classesWithStats = await db
       .select({
         id: classes.id,
-        teacherId: classes.teacherId,
         name: classes.name,
+        createdAt: classes.createdAt,
+        updatedAt: classes.updatedAt,
+        teacherId: classes.teacherId,
         subject: classes.subject,
         gradeLevel: classes.gradeLevel,
         classCode: classes.classCode,
         schoolName: classes.schoolName,
+        icon: classes.icon,
+        backgroundColor: classes.backgroundColor,
         isArchived: classes.isArchived,
-        createdAt: classes.createdAt,
-        updatedAt: classes.updatedAt,
+        numberOfStudents: classes.numberOfStudents,
+        hasValuesSet: classes.hasValuesSet,
+        isActive: classes.isActive,
+        deletedAt: classes.deletedAt,
         teacherName: profiles.fullName,
         studentCount: sql<number>`COUNT(${students.id})`.as('studentCount')
       })
@@ -653,18 +696,22 @@ export class UUIDStorage implements IUUIDStorage {
     recentSignups: number;
     animalDistribution: Record<string, number>;
   }> {
-    const [teacherCount] = await db.select({ count: count() }).from(profiles);
+    // Only count non-anonymous profiles as teachers
+    const [teacherCount] = await db
+      .select({ count: count() })
+      .from(profiles)
+      .where(eq(profiles.isAnonymous, false));
     const [classCount] = await db.select({ count: count() }).from(classes);
     const [studentCount] = await db.select({ count: count() }).from(students);
     const [submissionCount] = await db.select({ count: count() }).from(quizSubmissions);
     
-    // Recent signups (last 7 days)
+    // Recent signups (last 7 days) - only non-anonymous
     const weekAgo = new Date();
     weekAgo.setDate(weekAgo.getDate() - 7);
     const [recentSignups] = await db
       .select({ count: count() })
       .from(profiles)
-      .where(sql`${profiles.createdAt} >= ${weekAgo}`);
+      .where(sql`${profiles.createdAt} >= ${weekAgo} AND ${profiles.isAnonymous} = false`);
 
     // Animal distribution from quiz submissions
     const animals = await db
@@ -703,7 +750,7 @@ export class UUIDStorage implements IUUIDStorage {
       .from(storeSettings)
       .where(eq(storeSettings.teacherId, teacherId));
     
-    return settings?.settings || {};
+    return settings?.settings || {} as StoreSettings;
   }
 
   async updateStoreSettings(teacherId: string, settings: StoreSettings): Promise<void> {

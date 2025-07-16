@@ -108,6 +108,7 @@ router.get('/quick-stats', requireAuth, requireAdmin, async (req, res) => {
     const httpMetrics = getHttpMetrics();
     const errorSummary = errorTracker.getErrorSummary();
     const systemMetrics = metricsService.getMetrics();
+    const userJourneyMetrics = metricsService.getUserJourneyMetrics();
     
     // Calculate alerts
     const alerts = [];
@@ -123,6 +124,17 @@ router.get('/quick-stats', requireAuth, requireAdmin, async (req, res) => {
         level: 'warning',
         message: `Slow average response time: ${httpMetrics.averageResponseTime.toFixed(0)}ms`,
         metric: 'responseTime'
+      });
+    }
+    
+    // User journey alerts
+    const studentJoinSuccessRate = userJourneyMetrics.studentJoin.attempts > 0 ? 
+      (userJourneyMetrics.studentJoin.success / userJourneyMetrics.studentJoin.attempts) * 100 : 100;
+    if (studentJoinSuccessRate < 80 && userJourneyMetrics.studentJoin.attempts > 10) {
+      alerts.push({
+        level: 'warning',
+        message: `Low student join success rate: ${studentJoinSuccessRate.toFixed(0)}%`,
+        metric: 'studentJoinRate'
       });
     }
     
@@ -156,11 +168,18 @@ router.get('/quick-stats', requireAuth, requireAdmin, async (req, res) => {
       },
       // New performance section
       performance: {
-        uptime: Math.floor(systemMetrics.system.uptime / 60), // minutes
+        uptime: Math.floor(systemMetrics.system.uptime / 1000 / 60), // convert milliseconds to minutes
         errorRate: errorSummary.errorRate,
         errorsToday: errorSummary.errorsToday,
         avgResponseTime: Math.round(httpMetrics.averageResponseTime),
         slowestEndpoints: httpMetrics.slowestEndpoints.slice(0, 3)
+      },
+      // User journey metrics for beta
+      userJourney: {
+        quizCreation: userJourneyMetrics.quizCreation,
+        studentJoin: userJourneyMetrics.studentJoin,
+        gameStart: userJourneyMetrics.gameStart,
+        recentActivity: userJourneyMetrics.recentEvents.slice(0, 10) // Last 10 events
       },
       alerts,
       recentErrors: errorSummary.recentErrors.slice(0, 5).map(err => ({

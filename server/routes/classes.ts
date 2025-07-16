@@ -160,7 +160,8 @@ router.get('/:id/analytics', requireAuth, verifyClassAccess, asyncWrapper(async 
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (!classId || !uuidRegex.test(classId)) {
     logger.warn('Invalid class ID format', { classId });
-    return res.status(400).json({ message: 'Invalid class ID format' });
+    res.status(400).json({ message: 'Invalid class ID format' });
+    return;
   }
   
   const memUsageBefore = process.memoryUsage();
@@ -194,10 +195,11 @@ router.get('/:id/analytics', requireAuth, verifyClassAccess, asyncWrapper(async 
         error: dbError instanceof Error ? dbError.message : dbError,
         classId 
       });
-      return res.status(500).json({ 
+      res.status(500).json({ 
         message: 'Failed to fetch analytics data',
         error: dbError instanceof Error ? dbError.message : 'Unknown database error'
       });
+      return;
     }
     
     // Calculate statistics

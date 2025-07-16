@@ -41,8 +41,11 @@ export const profiles = pgTable('profiles', {
   schoolOrganization: varchar('school_organization', { length: 255 }),
   roleTitle: varchar('role_title', { length: 255 }),
   howHeardAbout: varchar('how_heard_about', { length: 255 }),
+  phoneNumber: varchar('phone_number', { length: 50 }),
   personalityAnimal: varchar('personality_animal', { length: 50 }),
+  avatarUrl: text('avatar_url'),
   isAdmin: boolean('is_admin').default(false),
+  isAnonymous: boolean('is_anonymous').default(false).notNull(),
   lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
@@ -607,6 +610,118 @@ export type LessonProgress = typeof lessonProgress.$inferSelect;
 export type NewLessonProgress = typeof lessonProgress.$inferInsert;
 export type LessonActivityProgress = typeof lessonActivityProgress.$inferSelect;
 export type NewLessonActivityProgress = typeof lessonActivityProgress.$inferInsert;
+
+// Room visits table (for achievement tracking)
+export const roomVisits = pgTable('room_visits', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  visitorStudentId: uuid('visitor_student_id').notNull().references(() => students.id, { onDelete: 'cascade' }),
+  visitedStudentId: uuid('visited_student_id').notNull().references(() => students.id, { onDelete: 'cascade' }),
+  firstVisitAt: timestamp('first_visit_at', { withTimezone: true }).defaultNow(),
+  lastVisitAt: timestamp('last_visit_at', { withTimezone: true }).defaultNow(),
+  visitCount: integer('visit_count').default(1).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => {
+  return {
+    visitorIdx: index('idx_room_visits_visitor').on(table.visitorStudentId),
+    visitedIdx: index('idx_room_visits_visited').on(table.visitedStudentId),
+    lastVisitIdx: index('idx_room_visits_last_visit').on(table.lastVisitAt),
+    uniqueVisitorVisited: uniqueIndex('uq_visitor_visited').on(table.visitorStudentId, table.visitedStudentId),
+  };
+});
+
+// Room guestbook table
+export const roomGuestbook = pgTable('room_guestbook', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  roomOwnerStudentId: uuid('room_owner_student_id').notNull().references(() => students.id, { onDelete: 'cascade' }),
+  visitorStudentId: uuid('visitor_student_id').notNull().references(() => students.id, { onDelete: 'cascade' }),
+  message: text('message').notNull(),
+  status: varchar('status', { length: 20 }).default('visible').notNull(), // 'visible', 'hidden_by_user', 'flagged_for_review', 'hidden_by_admin'
+  visitorName: varchar('visitor_name', { length: 255 }).notNull(),
+  visitorAnimalType: varchar('visitor_animal_type', { length: 50 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => {
+  return {
+    roomOwnerIdx: index('idx_guestbook_room_owner').on(table.roomOwnerStudentId, table.createdAt),
+    visitorIdx: index('idx_guestbook_visitor').on(table.visitorStudentId),
+    statusIdx: index('idx_guestbook_status').on(table.status),
+  };
+});
+
+// Student achievements table
+export const studentAchievements = pgTable('student_achievements', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  studentId: uuid('student_id').notNull().references(() => students.id, { onDelete: 'cascade' }),
+  achievementCode: varchar('achievement_code', { length: 50 }).notNull(),
+  achievementName: varchar('achievement_name', { length: 255 }).notNull(),
+  earnedAt: timestamp('earned_at', { withTimezone: true }).defaultNow(),
+  progressData: jsonb('progress_data').default({}),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => {
+  return {
+    studentIdx: index('idx_achievements_student').on(table.studentId),
+    codeIdx: index('idx_achievements_code').on(table.achievementCode),
+    earnedIdx: index('idx_achievements_earned').on(table.earnedAt),
+    uniqueStudentAchievement: uniqueIndex('uq_student_achievement').on(table.studentId, table.achievementCode),
+  };
+});
+
+// Relations for new tables
+export const roomVisitsRelations = relations(roomVisits, ({ one }) => ({
+  visitor: one(students, {
+    fields: [roomVisits.visitorStudentId],
+    references: [students.id],
+  }),
+  visited: one(students, {
+    fields: [roomVisits.visitedStudentId],
+    references: [students.id],
+  }),
+}));
+
+export const roomGuestbookRelations = relations(roomGuestbook, ({ one }) => ({
+  roomOwner: one(students, {
+    fields: [roomGuestbook.roomOwnerStudentId],
+    references: [students.id],
+  }),
+  visitor: one(students, {
+    fields: [roomGuestbook.visitorStudentId],
+    references: [students.id],
+  }),
+}));
+
+export const studentAchievementsRelations = relations(studentAchievements, ({ one }) => ({
+  student: one(students, {
+    fields: [studentAchievements.studentId],
+    references: [students.id],
+  }),
+}));
+
+// Update students relations to include new relationships
+export const studentsRelationsUpdated = relations(students, ({ one, many }) => ({
+  class: one(classes, {
+    fields: [students.classId],
+    references: [classes.id],
+  }),
+  quizSubmissions: many(quizSubmissions),
+  inventory: many(studentInventory),
+  currencyTransactions: many(currencyTransactions),
+  pets: many(studentPets),
+  roomVisitsAsVisitor: many(roomVisits),
+  roomVisitsAsVisited: many(roomVisits),
+  guestbookMessagesAsOwner: many(roomGuestbook),
+  guestbookMessagesAsVisitor: many(roomGuestbook),
+  achievements: many(studentAchievements),
+}));
+
+// Type exports for new tables
+export type RoomVisit = typeof roomVisits.$inferSelect;
+export type NewRoomVisit = typeof roomVisits.$inferInsert;
+export type RoomGuestbookMessage = typeof roomGuestbook.$inferSelect;
+export type NewRoomGuestbookMessage = typeof roomGuestbook.$inferInsert;
+export type StudentAchievement = typeof studentAchievements.$inferSelect;
+export type NewStudentAchievement = typeof studentAchievements.$inferInsert;
 
 // Re-export class values voting tables
 export { 

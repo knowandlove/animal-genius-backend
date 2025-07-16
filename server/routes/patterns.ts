@@ -87,7 +87,18 @@ router.get('/student/inventory/patterns', flexibleAuth, async (req, res) => {
     console.log(`Fetching patterns for student ${studentId}, surface_type: ${surface_type || 'all'}`);
     
     // Build the query to get owned patterns
-    let queryBuilder = db
+    // Build conditions array
+    const conditions = [
+      eq(studentInventory.studentId, studentId),
+      isNotNull(storeItems.patternId)
+    ];
+    
+    // Add surface type filter if provided
+    if (surface_type) {
+      conditions.push(eq(patterns.surfaceType, surface_type));
+    }
+    
+    const ownedPatterns = await db
       .select({
         id: patterns.id,
         code: patterns.code,
@@ -112,25 +123,7 @@ router.get('/student/inventory/patterns', flexibleAuth, async (req, res) => {
       .from(studentInventory)
       .innerJoin(storeItems, eq(studentInventory.storeItemId, storeItems.id))
       .innerJoin(patterns, eq(storeItems.patternId, patterns.id))
-      .where(
-        and(
-          eq(studentInventory.studentId, studentId),
-          isNotNull(storeItems.patternId)
-        )
-      );
-    
-    // Add surface type filter if provided
-    if (surface_type) {
-      queryBuilder = queryBuilder.where(
-        and(
-          eq(studentInventory.studentId, studentId),
-          isNotNull(storeItems.patternId),
-          eq(patterns.surfaceType, surface_type)
-        )
-      );
-    }
-    
-    const ownedPatterns = await queryBuilder;
+      .where(and(...conditions));
     
     console.log(`Found ${ownedPatterns.length} owned patterns`);
     
@@ -221,8 +214,19 @@ router.get('/available', async (req, res) => {
     
     console.log(`Fetching available patterns, surface_type: ${surface_type || 'all'}`);
     
+    // Build conditions array for available patterns
+    const availableConditions = [
+      eq(patterns.isActive, true),
+      eq(storeItems.isActive, true)
+    ];
+    
+    // Add surface type filter if provided
+    if (surface_type) {
+      availableConditions.push(eq(patterns.surfaceType, surface_type));
+    }
+    
     // Build query for available patterns with their store items
-    let queryBuilder = db
+    const availablePatterns = await db
       .select({
         id: patterns.id,
         code: patterns.code,
@@ -249,28 +253,8 @@ router.get('/available', async (req, res) => {
       .from(patterns)
       .innerJoin(storeItems, eq(patterns.id, storeItems.patternId))
       .innerJoin(itemTypes, eq(storeItems.itemTypeId, itemTypes.id))
-      .where(
-        and(
-          eq(patterns.isActive, true),
-          eq(storeItems.isActive, true)
-        )
-      );
-    
-    // Add surface type filter if provided
-    if (surface_type) {
-      queryBuilder = queryBuilder.where(
-        and(
-          eq(patterns.isActive, true),
-          eq(storeItems.isActive, true),
-          eq(patterns.surfaceType, surface_type)
-        )
-      );
-    }
-    
-    // Order by sort order and name
-    queryBuilder = queryBuilder.orderBy(storeItems.sortOrder, storeItems.name);
-    
-    const availablePatterns = await queryBuilder;
+      .where(and(...availableConditions))
+      .orderBy(storeItems.sortOrder, storeItems.name);
     
     console.log(`Found ${availablePatterns.length} available patterns`);
     
@@ -357,7 +341,7 @@ router.get('/available', async (req, res) => {
  */
 router.get('/:patternId/ownership', requireUnifiedAuth, requireStudent, async (req, res) => {
   try {
-    const studentId = req.studentId;
+    const studentId = (req as any).studentId;
     const { patternId } = req.params;
     
     // Validate pattern ID

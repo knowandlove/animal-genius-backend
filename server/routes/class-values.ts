@@ -179,6 +179,164 @@ router.get('/session/:classCode', async (req, res) => {
   }
 });
 
+// GET /api/class-values/session-by-id/:sessionId - Get session info by sessionId (for students)
+router.get('/session-by-id/:sessionId', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+
+    // Find session by ID
+    const session = await db
+      .select({
+        id: classValuesSessions.id,
+        classId: classValuesSessions.classId,
+        status: classValuesSessions.status,
+        expiresAt: classValuesSessions.expiresAt,
+      })
+      .from(classValuesSessions)
+      .where(eq(classValuesSessions.id, sessionId))
+      .limit(1);
+
+    if (session.length === 0) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+
+    // Get class info
+    const classData = await db
+      .select({
+        name: classes.name,
+        id: classes.id,
+      })
+      .from(classes)
+      .where(eq(classes.id, session[0].classId))
+      .limit(1);
+
+    res.json({
+      id: session[0].id,
+      classId: session[0].classId,
+      status: session[0].status,
+      expiresAt: session[0].expiresAt,
+      className: classData[0]?.name,
+    });
+  } catch (error) {
+    console.error('Error fetching session by ID:', error);
+    res.status(500).json({ error: 'Failed to fetch voting session' });
+  }
+});
+
+// POST /api/class-values/extend-session/:sessionId - Extend session time by 15 minutes
+router.post('/extend-session/:sessionId', requireAuth, async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+
+    // Find session by ID
+    const session = await db
+      .select()
+      .from(classValuesSessions)
+      .where(eq(classValuesSessions.id, sessionId))
+      .limit(1);
+
+    if (session.length === 0) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+
+    if (session[0].status !== 'active') {
+      return res.status(400).json({ error: 'Can only extend active sessions' });
+    }
+
+    if (!session[0].expiresAt) {
+      return res.status(500).json({ error: 'Active session has no expiration time' });
+    }
+
+    // Extend by 15 minutes from current expiration time
+    const newExpiresAt = new Date(session[0].expiresAt);
+    newExpiresAt.setMinutes(newExpiresAt.getMinutes() + 15);
+
+    // Update the session
+    await db
+      .update(classValuesSessions)
+      .set({ expiresAt: newExpiresAt })
+      .where(eq(classValuesSessions.id, sessionId));
+
+    res.json({
+      sessionId: session[0].id,
+      expiresAt: newExpiresAt,
+      message: 'Session extended by 15 minutes'
+    });
+
+  } catch (error) {
+    console.error('Error extending session:', error);
+    res.status(500).json({ error: 'Failed to extend session' });
+  }
+});
+
+// POST /api/class-values/reset-session/:sessionId - Reset session and delete all votes
+router.post('/reset-session/:sessionId', requireAuth, async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+
+    // Find session by ID
+    const session = await db
+      .select()
+      .from(classValuesSessions)
+      .where(eq(classValuesSessions.id, sessionId))
+      .limit(1);
+
+    if (session.length === 0) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+
+    // Verify teacher owns this session's class
+    const classData = await db
+      .select()
+      .from(classes)
+      .where(eq(classes.id, session[0].classId))
+      .limit(1);
+
+    if (classData.length === 0 || classData[0].teacherId !== req.user!.userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    // Delete all votes for this session
+    await db
+      .delete(classValuesVotes)
+      .where(eq(classValuesVotes.sessionId, sessionId));
+
+    // Delete all results for this class
+    await db
+      .delete(classValuesResults)
+      .where(eq(classValuesResults.classId, session[0].classId));
+
+    // Reset class hasValuesSet flag
+    await db
+      .update(classes)
+      .set({
+        hasValuesSet: false,
+        valuesSetAt: sql`NULL`
+      })
+      .where(eq(classes.id, session[0].classId));
+
+    // Reset session to active with new expiration time (15 minutes from now)
+    const newExpiresAt = new Date(Date.now() + 15 * 60 * 1000);
+    await db
+      .update(classValuesSessions)
+      .set({ 
+        status: 'active',
+        expiresAt: newExpiresAt 
+      })
+      .where(eq(classValuesSessions.id, sessionId));
+
+    res.json({
+      sessionId: session[0].id,
+      expiresAt: newExpiresAt,
+      message: 'Session reset successfully - all votes cleared'
+    });
+
+  } catch (error) {
+    console.error('Error resetting session:', error);
+    res.status(500).json({ error: 'Failed to reset session' });
+  }
+});
+
 // POST /api/class-values/vote - Student submits their votes
 router.post('/vote', requireStudentAuth, async (req, res) => {
   try {
@@ -517,6 +675,7 @@ router.post('/finalize/:sessionId', requireAuth, async (req, res) => {
 router.get('/results/:classId', async (req, res) => {
   try {
     const { classId } = req.params;
+    console.log('🚀 RESULTS ENDPOINT HIT! classId:', classId);
     console.log('🔍 Fetching results for classId:', classId);
 
     // Get class info
@@ -534,14 +693,16 @@ router.get('/results/:classId', async (req, res) => {
     }
 
     // Get winning values
-    const results = await db
+    console.log('🔍 Querying results for classId:', classId);
+    const allResults = await db
       .select()
       .from(classValuesResults)
-      .where(and(
-        eq(classValuesResults.classId, classId),
-        eq(classValuesResults.isWinner, true)
-      ))
-      .orderBy(classValuesResults.clusterNumber);
+      .where(eq(classValuesResults.classId, classId));
+    
+    console.log('📊 All results found:', allResults.length);
+    
+    const results = allResults.filter(r => r.isWinner);
+    console.log('🏆 Winning results:', results.length);
 
     // Format results by cluster
     const formattedResults = [];

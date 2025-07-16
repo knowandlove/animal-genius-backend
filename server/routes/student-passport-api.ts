@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requireStudentAuth, optionalStudentAuth, requireStudentInClass } from '../middleware/passport-auth';
 import { supabaseAdmin } from '../supabase-clients';
 import { createSecureLogger } from '../utils/secure-logger';
+import { passportLoginLimiter } from '../middleware/rateLimiter';
 
 const router = Router();
 const logger = createSecureLogger('StudentPassportAPI');
@@ -147,7 +148,7 @@ router.get('/classmates', requireStudentAuth, async (req, res) => {
  * POST /api/student-passport/validate
  * Validate passport code (useful for frontend to check auth status)
  */
-router.post('/validate', async (req, res) => {
+router.post('/validate', passportLoginLimiter, async (req, res) => {
   const { passportCode } = req.body;
   
   if (!passportCode) {

@@ -73,10 +73,16 @@ router.get('/ready', asyncWrapper(async (req, res, next) => {
   const response: HealthStatus = {
     status,
     timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
+    uptime: Math.floor(process.uptime() / 60), // convert seconds to minutes
     checks,
     version: process.env.APP_VERSION || 'unknown'
   };
+  
+  jsonLogger.info('Health check response', { 
+    status: response.status, 
+    httpStatus,
+    checks: response.checks 
+  });
   
   res.status(httpStatus).json(response);
 }));
@@ -169,27 +175,27 @@ async function checkDatabase(): Promise<CheckResult> {
  */
 function checkMemory(): CheckResult {
   const usage = process.memoryUsage();
+  const rssMB = usage.rss / 1024 / 1024; // Resident Set Size - actual memory used
   const heapUsedMB = usage.heapUsed / 1024 / 1024;
-  const heapTotalMB = usage.heapTotal / 1024 / 1024;
-  const heapPercentage = (heapUsedMB / heapTotalMB) * 100;
   
-  if (heapPercentage > 90) {
+  // More reasonable thresholds based on actual memory usage, not heap %
+  if (rssMB > 1000) { // 1GB
     return {
       status: 'fail',
-      message: `Memory usage critical: ${heapPercentage.toFixed(1)}%`
+      message: `Memory usage critical: ${rssMB.toFixed(0)}MB RSS`
     };
   }
   
-  if (heapPercentage > 75) {
+  if (rssMB > 500) { // 500MB
     return {
-      status: 'warn',
-      message: `Memory usage high: ${heapPercentage.toFixed(1)}%`
+      status: 'warn', 
+      message: `Memory usage elevated: ${rssMB.toFixed(0)}MB RSS`
     };
   }
   
   return {
     status: 'pass',
-    message: `Memory usage: ${heapPercentage.toFixed(1)}%`
+    message: `Memory usage: ${rssMB.toFixed(0)}MB RSS (${heapUsedMB.toFixed(0)}MB heap)`
   };
 }
 
@@ -217,7 +223,7 @@ function getHealthStatus(checks: HealthStatus['checks']): HealthStatus {
   return {
     status,
     timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
+    uptime: Math.floor(process.uptime() / 60), // convert seconds to minutes
     checks,
     version: process.env.APP_VERSION || 'unknown'
   };

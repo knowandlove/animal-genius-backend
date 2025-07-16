@@ -60,7 +60,7 @@ export function httpMetricsMiddleware(req: Request, res: Response, next: NextFun
     logHttpRequest(metrics);
     
     // Call original end with the same arguments
-    return originalEnd.apply(res, args);
+    return originalEnd.apply(this, args as any);
   };
   
   next();

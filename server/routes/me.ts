@@ -15,7 +15,7 @@ const router = Router();
 router.get('/me', requireAuth, async (req, res) => {
   try {
     // req.user is set by the requireAuth middleware
-    const userId = req.user.userId;
+    const userId = req.user!.userId;
     
     // Get the user's profile from the database
     const profile = await getProfileById(userId);

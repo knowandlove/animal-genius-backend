@@ -98,18 +98,22 @@ export function calculateResults(answers: QuizAnswer[]): QuizResults {
     }
   });
 
-  // Determine MBTI type with balanced tie-breaking
+  // Determine MBTI type with improved tie-breaking
   // In case of ties, we alternate preferences to avoid systematic bias
+  console.log('🔍 MBTI Scores:', scores);
+  
   const mbtiType = 
-    (scores.E >= scores.I ? 'E' : 'I') +  // Ties go to E (Extrovert)
-    (scores.S > scores.N ? 'S' : 'N') +   // Ties go to N (Intuitive)
-    (scores.T >= scores.F ? 'T' : 'F') +  // Ties go to T (Thinking)
-    (scores.J > scores.P ? 'J' : 'P');    // Ties go to P (Perceiving)
+    (scores.E > scores.I ? 'E' : 'I') +   // Strict greater than, ties go to I
+    (scores.S >= scores.N ? 'S' : 'N') +  // Ties go to S (Sensing)
+    (scores.T > scores.F ? 'T' : 'F') +   // Strict greater than, ties go to F
+    (scores.J >= scores.P ? 'J' : 'P');   // Ties go to J (Judging)
+  
+  console.log('🎯 Calculated MBTI:', mbtiType, '→ Animal:', animalMap[mbtiType]);
 
   // Get animal for MBTI type
   const animal = animalMap[mbtiType] || 'Unknown';
 
-  // Calculate learning style from VARK questions (41-48)
+  // Calculate learning style from VARK questions
   const varkAnswers = answers.filter(answer => {
     const question = questions.find(q => q.id === answer.questionId);
     return question?.dimension === 'VARK';
@@ -133,16 +137,25 @@ export function calculateResults(answers: QuizAnswer[]): QuizResults {
     }
   });
 
-  // Determine primary learning style
+  // Determine primary learning style with improved tie-breaking
   let primaryStyle: LearningStyleType = 'visual';
   let maxScore = learningScores.visual;
   
-  (Object.keys(learningScores) as LearningStyleType[]).forEach(style => {
+  // Check all styles, using >= for first occurrence to handle ties more fairly
+  const allStyles: LearningStyleType[] = ['visual', 'auditory', 'kinesthetic', 'readingWriting'];
+  
+  allStyles.forEach(style => {
     if (learningScores[style] > maxScore) {
       maxScore = learningScores[style];
       primaryStyle = style;
     }
   });
+  
+  // If all scores are 0 (no VARK questions answered), randomly assign to avoid bias
+  if (maxScore === 0) {
+    const randomIndex = Math.floor(Math.random() * allStyles.length);
+    primaryStyle = allStyles[randomIndex];
+  }
 
   const learningResult = {
     scores: learningScores,

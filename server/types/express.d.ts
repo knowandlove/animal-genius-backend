@@ -1,6 +1,43 @@
 import { Request } from 'express';
 import { Profile } from '@shared/schema';
 
+// Augment Express Request type to include our custom properties
+declare global {
+  namespace Express {
+    interface Request {
+      studentId?: string;
+      student?: {
+        id: string;
+        name: string;
+        classId: string;
+        schoolYear: string;
+        animalType: string;
+        geniusType: string;
+        passportCode: string;
+        userId: string;
+      };
+      user?: {
+        userId: string;
+        email: string;
+        isAdmin: boolean;
+      };
+      profile?: Profile;
+      roomAccess?: {
+        canView: boolean;
+        canEdit: boolean;
+        isOwner: boolean;
+        isTeacher: boolean;
+        roomOwner: {
+          id: string;
+          classId: string;
+          roomVisibility?: string | null;
+          studentName: string | null;
+        };
+      };
+    }
+  }
+}
+
 /**
  * Base request with common properties added by our middleware
  */

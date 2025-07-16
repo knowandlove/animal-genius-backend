@@ -105,6 +105,10 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       
       next();
     } catch (dbError) {
+      // Temporarily show the actual error in development
+      if (process.env.NODE_ENV === 'development' && dbError instanceof Error) {
+        console.error('ACTUAL DATABASE ERROR:', dbError.message);
+      }
       logger.error('Database error:', sanitizeError(dbError));
       return res.status(500).json({ message: "Database error" });
     }

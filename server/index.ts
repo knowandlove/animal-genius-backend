@@ -16,6 +16,8 @@ import { requestIdMiddleware, errorHandler, notFoundHandler } from "./middleware
 import { httpMetricsMiddleware } from "./middleware/observability";
 import { jsonLogger } from "./lib/json-logger";
 import helmet from "helmet";
+import * as Sentry from "@sentry/node";
+import { initSentry } from "./sentry";
 // Vite imports removed - frontend is now separate
 
 // Get __dirname equivalent in ES modules
@@ -74,6 +76,9 @@ function registerCleanupHandlers(server: any, app: express.Express) {
 
 const app = express();
 
+// Initialize Sentry before other middleware
+initSentry();
+
 // Configure CORS
 // SECURITY: Only allow specific origins in production
 const allowedOrigins = [
@@ -83,7 +88,7 @@ const allowedOrigins = [
   'https://animal-genius-frontend.vercel.app',
   'https://animal-genius-quiz-pro.vercel.app',
   env.FRONTEND_URL
-].filter(Boolean);
+].filter(Boolean) as string[];
 
 if (env.NODE_ENV === 'production') {
   jsonLogger.info('CORS configured for production', { origins: allowedOrigins });
@@ -98,7 +103,7 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'"],
       scriptSrc: ["'self'"],
       imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'", ...allowedOrigins].filter(Boolean),
+      connectSrc: ["'self'", ...allowedOrigins],
       fontSrc: ["'self'"],
       objectSrc: ["'none'"],
       mediaSrc: ["'self'"],
@@ -205,6 +210,9 @@ app.use((req, res, next) => {
 
     // 404 handler - must come after all routes
     app.use(notFoundHandler);
+
+    // Sentry error handler must be before any other error middleware
+    Sentry.setupExpressErrorHandler(app);
 
     // Global error handler - must be last
     app.use(errorHandler);

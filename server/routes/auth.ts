@@ -35,14 +35,28 @@ const router = Router();
 
 // Teacher registration - integrates with Supabase Auth
 router.post('/register', authLimiter, asyncWrapper(async (req, res, next) => {
+  // Debug logging
+  if (process.env.NODE_ENV === 'development') {
+    console.log('Registration request body:', JSON.stringify(req.body, null, 2));
+  }
+  
   // Validate request body
-  const userData = registrationSchema.parse(req.body);
+  let userData;
+  try {
+    userData = registrationSchema.parse(req.body);
+  } catch (validationError) {
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Validation error:', validationError);
+    }
+    throw validationError;
+  }
     
     if (process.env.NODE_ENV === 'development') {
       logger.debug('Registration attempt', { email: userData.email });
     }
     
     // Create user in Supabase Auth
+    console.log('About to call Supabase signUp...');
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email: userData.email,
       password: userData.password,
@@ -57,6 +71,7 @@ router.post('/register', authLimiter, asyncWrapper(async (req, res, next) => {
         }
       }
     });
+    console.log('Supabase signUp response:', { authData: !!authData, authError: !!authError });
 
     if (authError) {
       logger.error('Supabase auth error during registration', { 
@@ -64,8 +79,13 @@ router.post('/register', authLimiter, asyncWrapper(async (req, res, next) => {
         error: authError.message 
       });
       
+      // Temporarily show the actual error in development
+      if (process.env.NODE_ENV === 'development') {
+        console.error('ACTUAL SUPABASE ERROR:', authError.message);
+      }
+      
       if (authError.message.includes('already registered')) {
-        throw new ConflictError('User already exists with this email', ErrorCode.BIZ_006);
+        throw new ConflictError('An account already exists with this email address. Please log in instead.', ErrorCode.BIZ_006);
       }
       
       // Don't expose internal Supabase error messages

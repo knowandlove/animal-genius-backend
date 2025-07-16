@@ -15,10 +15,38 @@ interface SystemMetrics {
   lastRestart: Date;
 }
 
+interface UserJourneyMetrics {
+  // Quiz/Lesson creation by teachers
+  quizCreationAttempts: number;
+  quizCreationSuccess: number;
+  quizCreationFailures: number;
+  averageQuizCreationTime: number;
+  
+  // Student join flow
+  studentJoinAttempts: number;
+  studentJoinSuccess: number;
+  studentJoinFailures: number;
+  averageTimeToJoin: number;
+  
+  // Game start metrics
+  gameStartAttempts: number;
+  gameStartSuccess: number;
+  gameStartFailures: number;
+  
+  // Real-time tracking
+  recentEvents: Array<{
+    type: 'quiz_create' | 'student_join' | 'game_start';
+    status: 'attempt' | 'success' | 'failure';
+    timestamp: Date;
+    metadata?: any;
+  }>;
+}
+
 export interface PerformanceMetrics {
   timestamp: Date;
   database: DatabaseMetrics;
   system: SystemMetrics;
+  userJourney: UserJourneyMetrics;
 }
 
 class MetricsService {
@@ -51,6 +79,20 @@ class MetricsService {
         cpuUsage: 0,
         uptime: 0,
         lastRestart: this.startTime
+      },
+      userJourney: {
+        quizCreationAttempts: 0,
+        quizCreationSuccess: 0,
+        quizCreationFailures: 0,
+        averageQuizCreationTime: 0,
+        studentJoinAttempts: 0,
+        studentJoinSuccess: 0,
+        studentJoinFailures: 0,
+        averageTimeToJoin: 0,
+        gameStartAttempts: 0,
+        gameStartSuccess: 0,
+        gameStartFailures: 0,
+        recentEvents: []
       }
     };
   }
@@ -73,6 +115,11 @@ class MetricsService {
     // Clean up slow queries older than 1 hour
     this.metrics.database.slowQueries = this.metrics.database.slowQueries.filter(
       q => q.timestamp.getTime() > oneHourAgo
+    );
+    
+    // Clean up user journey events older than 1 hour
+    this.metrics.userJourney.recentEvents = this.metrics.userJourney.recentEvents.filter(
+      e => e.timestamp.getTime() > oneHourAgo
     );
   }
 
@@ -161,6 +208,85 @@ class MetricsService {
         memoryUsageMB: Math.round(this.metrics.system.memoryUsage),
         uptimeHours: Math.round(this.metrics.system.uptime / 1000 / 60 / 60 * 100) / 100
       }
+    };
+  }
+
+  // User Journey Tracking Methods
+  trackQuizCreation(status: 'attempt' | 'success' | 'failure', metadata?: any): void {
+    if (status === 'attempt') {
+      this.metrics.userJourney.quizCreationAttempts++;
+    } else if (status === 'success') {
+      this.metrics.userJourney.quizCreationSuccess++;
+    } else if (status === 'failure') {
+      this.metrics.userJourney.quizCreationFailures++;
+    }
+    
+    this.addRecentEvent('quiz_create', status, metadata);
+  }
+  
+  trackStudentJoin(status: 'attempt' | 'success' | 'failure', metadata?: any): void {
+    if (status === 'attempt') {
+      this.metrics.userJourney.studentJoinAttempts++;
+    } else if (status === 'success') {
+      this.metrics.userJourney.studentJoinSuccess++;
+    } else if (status === 'failure') {
+      this.metrics.userJourney.studentJoinFailures++;
+    }
+    
+    this.addRecentEvent('student_join', status, metadata);
+  }
+  
+  trackGameStart(status: 'attempt' | 'success' | 'failure', metadata?: any): void {
+    if (status === 'attempt') {
+      this.metrics.userJourney.gameStartAttempts++;
+    } else if (status === 'success') {
+      this.metrics.userJourney.gameStartSuccess++;
+    } else if (status === 'failure') {
+      this.metrics.userJourney.gameStartFailures++;
+    }
+    
+    this.addRecentEvent('game_start', status, metadata);
+  }
+  
+  private addRecentEvent(type: 'quiz_create' | 'student_join' | 'game_start', status: 'attempt' | 'success' | 'failure', metadata?: any): void {
+    this.metrics.userJourney.recentEvents.push({
+      type,
+      status,
+      timestamp: new Date(),
+      metadata
+    });
+    
+    // Keep only last 100 events
+    if (this.metrics.userJourney.recentEvents.length > 100) {
+      this.metrics.userJourney.recentEvents = this.metrics.userJourney.recentEvents.slice(-100);
+    }
+  }
+  
+  getUserJourneyMetrics() {
+    const journey = this.metrics.userJourney;
+    return {
+      quizCreation: {
+        attempts: journey.quizCreationAttempts,
+        success: journey.quizCreationSuccess,
+        failures: journey.quizCreationFailures,
+        successRate: journey.quizCreationAttempts > 0 ? 
+          (journey.quizCreationSuccess / journey.quizCreationAttempts * 100).toFixed(1) + '%' : '0%'
+      },
+      studentJoin: {
+        attempts: journey.studentJoinAttempts,
+        success: journey.studentJoinSuccess,
+        failures: journey.studentJoinFailures,
+        successRate: journey.studentJoinAttempts > 0 ? 
+          (journey.studentJoinSuccess / journey.studentJoinAttempts * 100).toFixed(1) + '%' : '0%'
+      },
+      gameStart: {
+        attempts: journey.gameStartAttempts,
+        success: journey.gameStartSuccess,
+        failures: journey.gameStartFailures,
+        successRate: journey.gameStartAttempts > 0 ? 
+          (journey.gameStartSuccess / journey.gameStartAttempts * 100).toFixed(1) + '%' : '0%'
+      },
+      recentEvents: journey.recentEvents.slice(-20) // Last 20 events for dashboard
     };
   }
 
