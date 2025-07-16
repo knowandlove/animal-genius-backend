@@ -17,7 +17,6 @@ import { httpMetricsMiddleware } from "./middleware/observability";
 import { jsonLogger } from "./lib/json-logger";
 import helmet from "helmet";
 import * as Sentry from "@sentry/node";
-import { initSentry } from "./sentry";
 // Vite imports removed - frontend is now separate
 
 // Get __dirname equivalent in ES modules
@@ -77,7 +76,7 @@ function registerCleanupHandlers(server: any, app: express.Express) {
 const app = express();
 
 // Initialize Sentry before other middleware
-initSentry();
+// Sentry is now initialized in instrument.ts via --import flag
 
 // Configure CORS
 // SECURITY: Only allow specific origins in production

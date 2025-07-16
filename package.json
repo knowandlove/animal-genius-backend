@@ -4,9 +4,10 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
-    "dev": "NODE_ENV=development tsx server/index.ts",
+    "dev": "NODE_ENV=development tsx --import ./server/instrument.ts server/index.ts",
     "build": "echo 'No build needed'",
-    "start": "tsx server/index.ts",
+    "start": "tsx --import ./server/instrument.ts server/index.ts",
+    "start:prod": "NODE_ENV=production tsx --import ./server/instrument.ts server/index.ts",
     "check": "tsc",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
