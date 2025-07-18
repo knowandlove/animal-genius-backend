@@ -151,6 +151,38 @@ router.post('/:id/import-students', requireAuth, async (req, res) => {
   res.status(501).json({ message: "Import functionality moved to separate handler" });
 });
 
+// Get all students in a class (for dashboard view)
+router.get('/:id/students', requireAuth, verifyClassAccess, asyncWrapper(async (req, res, next) => {
+  const authReq = req as AuthenticatedRequest;
+  const classId = authReq.params.id;
+  
+  try {
+    // Get class details
+    const classRecord = await uuidStorage.getClassById(classId);
+    if (!classRecord) {
+      throw new NotFoundError('Class not found', ErrorCode.RES_001);
+    }
+    
+    // Get all students in the class with their latest quiz data if available
+    const allStudents = await uuidStorage.getClassAnalytics(classId);
+    
+    res.json({
+      class: {
+        id: classRecord.id,
+        name: classRecord.name,
+        code: classRecord.classCode,
+        teacherId: classRecord.teacherId,
+      },
+      students: allStudents,
+      totalStudents: allStudents.length,
+      studentsWithQuiz: allStudents.filter(s => s.completedAt).length
+    });
+  } catch (error) {
+    logger.error('Failed to get class students', { error, classId });
+    throw error;
+  }
+}));
+
 // Get class analytics
 router.get('/:id/analytics', requireAuth, verifyClassAccess, asyncWrapper(async (req, res, next) => {
   const authReq = req as AuthenticatedRequest;
