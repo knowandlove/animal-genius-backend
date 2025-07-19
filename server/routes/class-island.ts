@@ -23,18 +23,26 @@ interface ClassIslandStudent {
 }
 
 export function registerClassIslandRoutes(app: Express) {
+  console.log('Registering class island routes...');
+  
+  // Test endpoint
+  app.get("/api/test/class-island", (req, res) => {
+    res.json({ message: "Class island routes are working!" });
+  });
   
   // Public class island view - no auth required
   app.get("/api/class/:classCode/island", async (req, res) => {
     try {
       const { classCode } = req.params;
+      console.log('Class island request for code:', classCode);
       
       // Check cache first
       const cacheKey = `public-class-island:${classCode.toUpperCase()}`;
-      const cached = cache.get(cacheKey);
-      if (cached) {
-        return res.json(cached);
-      }
+      // Temporarily disable cache for debugging
+      // const cached = cache.get(cacheKey);
+      // if (cached) {
+      //   return res.json(cached);
+      // }
       
       // Find class by code
       const [classData] = await db
@@ -44,11 +52,14 @@ export function registerClassIslandRoutes(app: Express) {
         .limit(1);
       
       if (!classData) {
+        console.log('Class not found for code:', classCode.toUpperCase());
         return res.status(404).json({ 
           message: "Class not found",
           suggestion: "Please check the class code your teacher provided" 
         });
       }
+      
+      console.log('Found class:', classData.name, 'with ID:', classData.id);
       
       // Get all students in the class (public info only)
       const studentsData = await db
@@ -67,6 +78,8 @@ export function registerClassIslandRoutes(app: Express) {
         .leftJoin(geniusTypes, eq(students.geniusTypeId, geniusTypes.id))
         .where(eq(students.classId, classData.id))
         .orderBy(students.studentName);
+      
+      console.log('Found students:', studentsData.length);
       
       // Format response - public view
       const island: ClassIslandStudent[] = studentsData.map(student => ({
@@ -95,6 +108,7 @@ export function registerClassIslandRoutes(app: Express) {
       // Cache for 2 minutes
       cache.set(cacheKey, response, 120);
       
+      console.log('Sending response:', JSON.stringify(response, null, 2));
       res.json(response);
     } catch (error) {
       console.error("Get public class island error:", error);

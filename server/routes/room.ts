@@ -117,6 +117,7 @@ export function registerRoomRoutes(app: Express) {
               rarity: storeItems.rarity,
               assetId: storeItems.assetId,
               assetType: storeItems.assetType, // Include assetType from DB
+              thumbnailUrl: storeItems.thumbnailUrl, // Include thumbnailUrl
               sortOrder: storeItems.sortOrder,
               isActive: storeItems.isActive,
               itemType: itemTypes.category, // Get the category which matches frontend expectations
@@ -171,6 +172,9 @@ export function registerRoomRoutes(app: Express) {
               case 'flooring':
               case 'room_flooring':
                 return 'room_flooring';
+              case 'pets':
+              case 'pet':
+                return 'pets';
               default:
                 console.log(`Unknown item type: ${itemType}`);
                 return 'avatar_accessory'; // Default fallback
@@ -185,6 +189,7 @@ export function registerRoomRoutes(app: Express) {
             description: item.description,
             rarity: item.rarity,
             imageUrl: item.imageUrl,
+            thumbnailUrl: item.thumbnailUrl, // Include thumbnail URL
             assetType: item.assetType, // Include asset type (camelCase)
             riveUrl: item.riveUrl // Include Rive URL for animations
           }));
