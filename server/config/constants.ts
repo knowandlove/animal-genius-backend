@@ -12,7 +12,7 @@ export const CONFIG = {
     },
     API: {
       WINDOW_MS: 15 * 60 * 1000, // 15 minutes
-      MAX_REQUESTS: 1000
+      MAX_REQUESTS: 5000 // Increased to support 150 students (5 classes × 30)
     },
     PASSWORD_RESET: {
       WINDOW_MS: 60 * 60 * 1000, // 1 hour
@@ -24,7 +24,7 @@ export const CONFIG = {
     },
     STORE_BROWSING: {
       WINDOW_MS: 60 * 1000, // 1 minute
-      MAX_REQUESTS: 60
+      MAX_REQUESTS: 300 // Support 150 students browsing store (2 requests/student/minute)
     },
     ROOM_SAVE: {
       WINDOW_MS: 2 * 60 * 1000, // 2 minutes
@@ -32,11 +32,11 @@ export const CONFIG = {
     },
     ROOM_BROWSING: {
       WINDOW_MS: 60 * 1000, // 1 minute
-      MAX_REQUESTS: 30
+      MAX_REQUESTS: 450 // Support 150 students viewing rooms (3 requests/student/minute)
     },
     PASSPORT_LOGIN: {
       WINDOW_MS: 15 * 60 * 1000, // 15 minutes
-      MAX_REQUESTS: 10
+      MAX_REQUESTS: 200 // Support 150 students logging in within 15 minutes
     },
     UPLOAD: {
       WINDOW_MS: 15 * 60 * 1000, // 15 minutes

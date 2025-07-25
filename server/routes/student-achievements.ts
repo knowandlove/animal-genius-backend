@@ -66,13 +66,13 @@ export function registerStudentAchievementRoutes(app: Express) {
       const unlockedAchievements = await db
         .select({
           id: studentAchievements.id,
-          achievementId: studentAchievements.achievementId,
-          unlockedAt: studentAchievements.unlockedAt,
+          achievementCode: studentAchievements.achievementCode,
+          earnedAt: studentAchievements.earnedAt,
           progressData: studentAchievements.progressData,
         })
         .from(studentAchievements)
         .where(eq(studentAchievements.studentId, studentId))
-        .orderBy(desc(studentAchievements.unlockedAt));
+        .orderBy(desc(studentAchievements.earnedAt));
 
       // Calculate current progress for progress-based achievements
       const progressData = await calculateAchievementProgress(studentId);
@@ -80,14 +80,14 @@ export function registerStudentAchievementRoutes(app: Express) {
       // Combine achievement definitions with unlock status and progress
       const achievementsWithStatus = Object.entries(ACHIEVEMENTS).map(([key, achievement]) => {
         const achievementId = key.toLowerCase();
-        const unlocked = unlockedAchievements.find(ua => ua.achievementId === achievementId);
+        const unlocked = unlockedAchievements.find(ua => ua.achievementCode === achievementId);
         const progress = progressData[achievementId] || {};
 
         return {
           ...achievement,
           id: achievementId,
           unlocked: !!unlocked,
-          unlockedAt: unlocked?.unlockedAt || null,
+          earnedAt: unlocked?.earnedAt || null,
           progress: achievement.type === "progress" ? {
             current: progress.current || 0,
             target: achievement.target || 1,
@@ -144,7 +144,7 @@ export function registerStudentAchievementRoutes(app: Express) {
         .from(studentAchievements)
         .where(and(
           eq(studentAchievements.studentId, studentId),
-          eq(studentAchievements.achievementId, achievementId)
+          eq(studentAchievements.achievementCode, achievementId)
         ))
         .limit(1);
 
@@ -174,7 +174,8 @@ export function registerStudentAchievementRoutes(app: Express) {
         .insert(studentAchievements)
         .values({
           studentId,
-          achievementId,
+          achievementCode: achievementId,
+          achievementName: achievement.name,
           progressData: progressData || {},
         })
         .returning();
@@ -186,7 +187,7 @@ export function registerStudentAchievementRoutes(app: Express) {
           ...achievement,
           id: achievementId,
           unlocked: true,
-          unlockedAt: newAchievement[0].unlockedAt,
+          earnedAt: newAchievement[0].earnedAt,
         },
         celebration: {
           title: `🎉 ${achievement.name}`,
@@ -247,7 +248,7 @@ export function registerStudentAchievementRoutes(app: Express) {
               .from(studentAchievements)
               .where(and(
                 eq(studentAchievements.studentId, studentId),
-                eq(studentAchievements.achievementId, achievementId)
+                eq(studentAchievements.achievementCode, achievementId)
               ))
               .limit(1);
 
@@ -316,7 +317,8 @@ async function calculateAchievementProgress(studentId: string): Promise<Record<s
       .from(roomVisits)
       .where(eq(roomVisits.visitorStudentId, studentId));
 
-    const uniqueVisits = uniqueVisitsResult[0]?.count || 0;
+    // The count() function returns a string, so we need to convert it to a number
+    const uniqueVisits = Number(uniqueVisitsResult[0]?.count) || 0;
 
     // Future achievements can be calculated here
     // Room Decorator: Could check for room customizations
@@ -331,8 +333,17 @@ async function calculateAchievementProgress(studentId: string): Promise<Record<s
       },
       // Add other progress calculations here as needed
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error("Calculate achievement progress error:", error);
+    console.error("Error details:", {
+      message: error.message,
+      code: error.code,
+      detail: error.detail,
+      hint: error.hint,
+      table: error.table,
+      column: error.column
+    });
+    // Return empty progress instead of throwing to allow the endpoint to continue
     return {};
   }
 }

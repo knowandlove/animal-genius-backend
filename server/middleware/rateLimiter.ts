@@ -50,6 +50,13 @@ export const storeBrowsingLimiter = rateLimit({
   message: 'Too many store requests. Please slow down.',
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => {
+    // Prefer passport code for per-student limiting
+    return req.headers['x-passport-code'] as string || 
+           req.params?.passportCode || 
+           req.body?.passportCode || 
+           req.ip;
+  },
 });
 
 // Room save operations rate limiter
@@ -73,7 +80,12 @@ export const roomBrowsingLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => {
-    return req.params?.passportCode || req.ip || 'unknown';
+    // Prefer passport code for per-student limiting
+    return req.headers['x-passport-code'] as string || 
+           req.params?.passportCode || 
+           req.body?.passportCode || 
+           req.ip || 
+           'unknown';
   },
 });
 

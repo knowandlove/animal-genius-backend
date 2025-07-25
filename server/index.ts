@@ -3,7 +3,7 @@ import { env } from "./config/env";
 import { registerRoutes } from "./routes";
 import path from "path";
 import { fileURLToPath } from "url";
-import { startPerformanceLogging } from "./middleware/auth-monitor";
+import { startPerformanceLogging, resetAuthMetrics } from "./middleware/auth-monitor";
 import cookieParser from "cookie-parser";
 import { db, pool } from "./db";
 import { sql } from "drizzle-orm";
@@ -160,8 +160,14 @@ app.use(setCacheHeaders);
 // Serve static files from public directory
 app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
 
-// Apply general rate limiting to all routes
-app.use(apiLimiter);
+// Apply general rate limiting to all routes EXCEPT health endpoints
+app.use((req, res, next) => {
+  // Skip rate limiting for health endpoints
+  if (req.path.startsWith('/api/health') || req.path.startsWith('/health')) {
+    return next();
+  }
+  apiLimiter(req, res, next);
+});
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -224,7 +230,8 @@ app.use((req, res, next) => {
     server.listen(portNumber, "0.0.0.0", () => {
       log(`serving on port ${portNumber}`);
       
-      // Start authentication performance monitoring
+      // Reset and start authentication performance monitoring
+      resetAuthMetrics(); // Clear old metrics on startup
       startPerformanceLogging();
       log('Authentication performance monitoring started');
       
