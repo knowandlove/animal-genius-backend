@@ -751,7 +751,7 @@ export function registerRoomRoutes(app: Express) {
   app.post("/api/room/:passportCode/avatar", optionalStudentAuth, checkRoomAccess, requireEditAccess, roomSaveLimiter, async (req, res) => {
     try {
       const { passportCode } = req.params;
-      const { equipped } = req.body;
+      const { equipped, colors } = req.body;
       
       // Check edit permission
       if (!req.roomAccess?.canEdit) {
@@ -833,7 +833,8 @@ export function registerRoomRoutes(app: Express) {
         
         const updatedAvatarData = {
           ...(currentAvatarData[0]?.avatarData || {}),
-          equipped: equipped || {}
+          equipped: equipped || {},
+          colors: colors || currentAvatarData[0]?.avatarData?.colors
         };
         
         await tx
@@ -1124,6 +1125,77 @@ export function registerRoomRoutes(app: Express) {
     } catch (error) {
       console.error("Save room error:", error);
       res.status(500).json({ message: "Failed to save room decoration" });
+    }
+  });
+
+  // Save avatar colors endpoint - Must have edit permission
+  app.post("/api/room/:passportCode/avatar-colors", optionalStudentAuth, checkRoomAccess, requireEditAccess, roomSaveLimiter, async (req, res) => {
+    try {
+      const { passportCode } = req.params;
+      const { primaryColor, secondaryColor } = req.body;
+      
+      // Check edit permission
+      if (!req.roomAccess?.canEdit) {
+        return res.status(403).json({ message: "You don't have permission to edit this room" });
+      }
+      
+      // Validate passport code
+      if (!isValidPassportCode(passportCode)) {
+        return res.status(400).json({ message: "Invalid passport code format" });
+      }
+      
+      // Validate colors are hex values
+      const hexColorRegex = /^#[0-9A-F]{6}$/i;
+      if (!hexColorRegex.test(primaryColor) || !hexColorRegex.test(secondaryColor)) {
+        return res.status(400).json({ message: "Invalid color format. Colors must be hex values (e.g., #FF0000)" });
+      }
+      
+      // Get student data
+      const studentData = await db
+        .select({
+          id: students.id,
+          avatarData: students.avatarData
+        })
+        .from(students)
+        .where(eq(students.passportCode, passportCode))
+        .limit(1);
+      
+      if (studentData.length === 0) {
+        return res.status(404).json({ message: "Student not found" });
+      }
+      
+      const student = studentData[0];
+      
+      // Update avatar data with colors
+      const updatedAvatarData = {
+        ...(student.avatarData || {}),
+        colors: {
+          primaryColor,
+          secondaryColor,
+          hasCustomized: true,
+          customizedAt: new Date().toISOString()
+        }
+      };
+      
+      // Update database
+      await db
+        .update(students)
+        .set({
+          avatarData: updatedAvatarData,
+          updatedAt: new Date()
+        })
+        .where(eq(students.id, student.id));
+      
+      // Clear cache
+      cache.del(`room-page-data:${passportCode}`);
+      
+      res.json({
+        message: "Avatar colors saved successfully!",
+        colors: updatedAvatarData.colors
+      });
+    } catch (error) {
+      console.error("Save avatar colors error:", error);
+      res.status(500).json({ message: "Failed to save avatar colors" });
     }
   });
 

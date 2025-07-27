@@ -106,7 +106,7 @@ router.post('/check-eligibility', apiLimiter, async (req, res) => {
       .where(eq(classes.classCode, classCode.toUpperCase()))
       .limit(1);
       
-    if (!classData || !classData.isActive) {
+    if (!classData || classData.isArchived) {
       return res.json({
         eligible: false,
         reason: 'INVALID_CLASS',

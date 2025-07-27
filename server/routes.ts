@@ -46,6 +46,7 @@ import classSettingsRouter from './routes/class-settings';
 import { registerRoomVisitRoutes } from './routes/room-visits';
 import { registerRoomGuestbookRoutes } from './routes/room-guestbook';
 import { registerStudentAchievementRoutes } from './routes/student-achievements';
+import communityRouter from './routes/community/index.js';
 
 // Feature flags to disable unused features
 const FEATURE_FLAGS = {
@@ -188,6 +189,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Register class values voting routes
   app.use('/api/class-values', classValuesRouter);
   
+  // Register community hub routes
+  app.use('/api/community', communityRouter);
   
   // Register admin upload routes
   app.use('/api/admin', adminUploadRoutes);

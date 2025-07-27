@@ -759,7 +759,11 @@ router.get('/check-voted/:sessionId', requireStudentAuth, async (req, res) => {
 });
 
 // POST /api/class-values/cleanup-sessions - Development helper to clean up active sessions
-router.post('/cleanup-sessions', async (req, res) => {
+router.post('/cleanup-sessions', requireAuth, async (req, res) => {
+  // Only allow admin users in development mode
+  if (process.env.NODE_ENV !== 'development' || !req.user?.isAdmin) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
   try {
     console.log('🧹 Cleaning up active sessions...');
     

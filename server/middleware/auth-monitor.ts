@@ -59,6 +59,10 @@ export function authPerformanceMonitor(req: Request, res: Response, next: NextFu
       authMetrics.successfulAuth++;
     } else if (res.statusCode >= 400) {
       authMetrics.failedAuth++;
+      // Log failed auth attempts in development
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`Auth failure: ${req.method} ${req.path} - Status: ${res.statusCode}`);
+      }
     }
     
     // Add performance headers for development

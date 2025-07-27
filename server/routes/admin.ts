@@ -5,11 +5,23 @@ import { uuidStorage } from '../storage-uuid';
 import { students, quizSubmissions, currencyTransactions, /* purchaseRequests, */ classes } from '@shared/schema';
 import { eq, inArray } from 'drizzle-orm';
 import { requireAuth, requireAdmin } from '../middleware/auth';
+import { validateParams, validateBody } from '../middleware/validation';
+import { z } from 'zod';
 
 const router = Router();
 
+// Validation schemas
+const adminSchemas = {
+  uuidParam: z.object({
+    id: z.string().uuid('Invalid UUID format')
+  }),
+  updateAdminStatus: z.object({
+    isAdmin: z.boolean()
+  })
+};
+
 // Admin force delete class (deletes class and all associated data)
-router.delete('/classes/:id/force', requireAuth, async (req: Request, res: Response) => {
+router.delete('/classes/:id/force', requireAuth, validateParams(adminSchemas.uuidParam), async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
   try {
     const classId = authReq.params.id;
@@ -78,7 +90,7 @@ router.get('/teachers', requireAuth, requireAdmin, async (req: Request, res: Res
 });
 
 // Update admin status
-router.put('/teachers/:id/admin', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+router.put('/teachers/:id/admin', requireAuth, requireAdmin, validateParams(adminSchemas.uuidParam), validateBody(adminSchemas.updateAdminStatus), async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
   try {
     const teacherId = authReq.params.id;

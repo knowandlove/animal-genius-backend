@@ -416,6 +416,102 @@ export const petInteractions = pgTable('pet_interactions', {
   };
 });
 
+// ============================
+// Community Hub Tables
+// ============================
+
+// Discussions table
+export const discussions = pgTable('discussions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  teacherId: uuid('teacher_id').notNull().references(() => profiles.id, { onDelete: 'cascade' }),
+  title: varchar('title', { length: 120 }).notNull(),
+  body: text('body').notNull(),
+  category: varchar('category', { length: 50 }).notNull(), // 'lessons', 'animals', 'challenges', 'success_stories', 'ask_teachers', 'feedback'
+  viewCount: integer('view_count').default(0).notNull(),
+  isPinned: boolean('is_pinned').default(false).notNull(),
+  status: varchar('status', { length: 20 }).default('active').notNull(), // 'active', 'resolved', 'archived'
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => {
+  return {
+    teacherIdIdx: index('idx_discussions_teacher_id').on(table.teacherId),
+    categoryIdx: index('idx_discussions_category').on(table.category),
+    createdAtIdx: index('idx_discussions_created_at').on(table.createdAt),
+    statusIdx: index('idx_discussions_status').on(table.status),
+  };
+});
+
+// Tags table
+export const tags = pgTable('tags', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: varchar('name', { length: 100 }).notNull(),
+  category: varchar('category', { length: 50 }).notNull(), // 'grade', 'animal_mix', 'challenge_type', 'class_dynamic', 'time_of_year'
+  slug: varchar('slug', { length: 100 }).notNull().unique(),
+  usageCount: integer('usage_count').default(0).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => {
+  return {
+    slugIdx: uniqueIndex('idx_tags_slug').on(table.slug),
+    categoryIdx: index('idx_tags_category').on(table.category),
+  };
+});
+
+// Discussion Tags junction table
+export const discussionTags = pgTable('discussion_tags', {
+  discussionId: uuid('discussion_id').notNull().references(() => discussions.id, { onDelete: 'cascade' }),
+  tagId: uuid('tag_id').notNull().references(() => tags.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => {
+  return {
+    primaryKey: { columns: [table.discussionId, table.tagId] },
+    discussionIdx: index('idx_discussion_tags_discussion').on(table.discussionId),
+    tagIdx: index('idx_discussion_tags_tag').on(table.tagId),
+  };
+});
+
+// Replies table
+export const replies = pgTable('replies', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  discussionId: uuid('discussion_id').notNull().references(() => discussions.id, { onDelete: 'cascade' }),
+  parentReplyId: uuid('parent_reply_id'),
+  teacherId: uuid('teacher_id').notNull().references(() => profiles.id, { onDelete: 'cascade' }),
+  body: text('body').notNull(),
+  helpfulCount: integer('helpful_count').default(0).notNull(),
+  isAcceptedAnswer: boolean('is_accepted_answer').default(false).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => {
+  return {
+    discussionIdx: index('idx_replies_discussion').on(table.discussionId),
+    parentIdx: index('idx_replies_parent').on(table.parentReplyId),
+    teacherIdx: index('idx_replies_teacher').on(table.teacherId),
+  };
+});
+
+// Interactions table
+export const interactions = pgTable('interactions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  teacherId: uuid('teacher_id').notNull().references(() => profiles.id, { onDelete: 'cascade' }),
+  discussionId: uuid('discussion_id').references(() => discussions.id, { onDelete: 'cascade' }),
+  replyId: uuid('reply_id').references(() => replies.id, { onDelete: 'cascade' }),
+  type: varchar('type', { length: 20 }).notNull(), // 'viewed', 'helpful', 'saved', 'tried_it', 'shared'
+  metadata: jsonb('metadata').default({}), // { workedForMe?: boolean, modifications?: string }
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => {
+  return {
+    teacherDiscussionIdx: index('idx_interactions_teacher_discussion').on(table.teacherId, table.discussionId),
+    teacherReplyIdx: index('idx_interactions_teacher_reply').on(table.teacherId, table.replyId),
+    typeIdx: index('idx_interactions_type').on(table.type),
+    // Ensure unique interactions per user per item
+    uniqueInteraction: uniqueIndex('idx_unique_interaction').on(
+      table.teacherId,
+      table.discussionId,
+      table.replyId,
+      table.type
+    ),
+  };
+});
+
 // Relations
 export const profilesRelations = relations(profiles, ({ many }) => ({
   classes: many(classes),
@@ -424,6 +520,9 @@ export const profilesRelations = relations(profiles, ({ many }) => ({
   storeSettings: many(storeSettings),
   classCollaborations: many(classCollaborators),
   invitedCollaborators: many(classCollaborators),
+  discussions: many(discussions),
+  replies: many(replies),
+  interactions: many(interactions),
 }));
 
 export const classesRelations = relations(classes, ({ one, many }) => ({
@@ -570,6 +669,64 @@ export const lessonActivityProgressRelations = relations(lessonActivityProgress,
   lessonProgress: one(lessonProgress, {
     fields: [lessonActivityProgress.lessonProgressId],
     references: [lessonProgress.id],
+  }),
+}));
+
+// Community Hub Relations
+export const discussionsRelations = relations(discussions, ({ one, many }) => ({
+  teacher: one(profiles, {
+    fields: [discussions.teacherId],
+    references: [profiles.id],
+  }),
+  tags: many(discussionTags),
+  replies: many(replies),
+  interactions: many(interactions),
+}));
+
+export const tagsRelations = relations(tags, ({ many }) => ({
+  discussions: many(discussionTags),
+}));
+
+export const discussionTagsRelations = relations(discussionTags, ({ one }) => ({
+  discussion: one(discussions, {
+    fields: [discussionTags.discussionId],
+    references: [discussions.id],
+  }),
+  tag: one(tags, {
+    fields: [discussionTags.tagId],
+    references: [tags.id],
+  }),
+}));
+
+export const repliesRelations = relations(replies, ({ one, many }) => ({
+  discussion: one(discussions, {
+    fields: [replies.discussionId],
+    references: [discussions.id],
+  }),
+  teacher: one(profiles, {
+    fields: [replies.teacherId],
+    references: [profiles.id],
+  }),
+  parentReply: one(replies, {
+    fields: [replies.parentReplyId],
+    references: [replies.id],
+  }),
+  childReplies: many(replies),
+  interactions: many(interactions),
+}));
+
+export const interactionsRelations = relations(interactions, ({ one }) => ({
+  teacher: one(profiles, {
+    fields: [interactions.teacherId],
+    references: [profiles.id],
+  }),
+  discussion: one(discussions, {
+    fields: [interactions.discussionId],
+    references: [discussions.id],
+  }),
+  reply: one(replies, {
+    fields: [interactions.replyId],
+    references: [replies.id],
   }),
 }));
 
@@ -722,6 +879,18 @@ export type RoomGuestbookMessage = typeof roomGuestbook.$inferSelect;
 export type NewRoomGuestbookMessage = typeof roomGuestbook.$inferInsert;
 export type StudentAchievement = typeof studentAchievements.$inferSelect;
 export type NewStudentAchievement = typeof studentAchievements.$inferInsert;
+
+// Community Hub type exports
+export type Discussion = typeof discussions.$inferSelect;
+export type NewDiscussion = typeof discussions.$inferInsert;
+export type Tag = typeof tags.$inferSelect;
+export type NewTag = typeof tags.$inferInsert;
+export type DiscussionTag = typeof discussionTags.$inferSelect;
+export type NewDiscussionTag = typeof discussionTags.$inferInsert;
+export type Reply = typeof replies.$inferSelect;
+export type NewReply = typeof replies.$inferInsert;
+export type Interaction = typeof interactions.$inferSelect;
+export type NewInteraction = typeof interactions.$inferInsert;
 
 // Re-export class values voting tables
 export { 

@@ -5,16 +5,17 @@ import { generatePassportCode, CURRENCY_CONSTANTS } from "@shared/currency-types
 
 /**
  * Maps animal codes to their primary genius type
+ * FIXED: Using actual genius type codes from database
  */
 const ANIMAL_TO_GENIUS_MAP: Record<string, string> = {
-  'meerkat': 'creative',
-  'parrot': 'creative',
-  'otter': 'creative',
-  'panda': 'analytical',
-  'owl': 'analytical',
-  'beaver': 'practical',
-  'border-collie': 'practical',
-  'elephant': 'social'
+  'meerkat': 'feeler',
+  'parrot': 'thinker',
+  'otter': 'doer',
+  'panda': 'feeler',
+  'owl': 'thinker',
+  'beaver': 'doer',
+  'border-collie': 'doer',
+  'elephant': 'feeler'
 };
 
 /**
