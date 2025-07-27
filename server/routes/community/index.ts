@@ -4,7 +4,7 @@ import discussionsRouter from './discussions.js';
 import repliesRouter from './replies.js';
 import tagsRouter from './tags.js';
 import interactionsRouter from './interactions.js';
-import { debugCommunityRequests } from './debug-middleware.js';
+import { debugCommunityRequests } from './request-logger.js';
 
 export const router = express.Router();
 
