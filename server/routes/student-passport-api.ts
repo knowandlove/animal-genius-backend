@@ -19,10 +19,10 @@ router.get('/profile', requireStudentAuth, async (req, res) => {
       success: true,
       student: {
         id: student.id,
-        name: student.name,
-        animalType: student.animalType,
-        geniusType: student.geniusType,
-        schoolYear: student.schoolYear,
+        name: student.studentName,
+        animalType: undefined, // Need to fetch from database
+        geniusType: undefined, // Need to fetch from database  
+        schoolYear: undefined, // Need to fetch from database
         passportCode: student.passportCode
       }
     });
@@ -159,7 +159,7 @@ router.post('/validate', passportLoginLimiter, async (req, res) => {
     // Use the same validation as our middleware
     const { data: studentData, error } = await supabaseAdmin
       .rpc('validate_student_login', { p_passport_code: passportCode })
-      .single();
+      .single() as { data: any, error: any };
     
     if (error || !studentData) {
       return res.status(401).json({ 
@@ -304,11 +304,11 @@ router.get('/dashboard', requireStudentAuth, async (req, res) => {
       student: {
         id: studentData.id,
         name: studentData.student_name,
-        animalType: studentData.animal_types?.name || studentData.personality_type || 'Unknown',
-        geniusType: studentData.genius_types?.name || '',
+        animalType: (studentData.animal_types as any)?.name || studentData.personality_type || 'Unknown',
+        geniusType: (studentData.genius_types as any)?.name || '',
         passportCode: student.passportCode,
-        classId: studentData.classes?.id || student.classId,
-        className: studentData.classes?.name,
+        classId: (studentData.classes as any)?.id || student.classId,
+        className: (studentData.classes as any)?.name,
         gradeLevel: studentData.grade_level,
         coins: studentData.currency_balance || 0,
         createdAt: studentData.created_at,

@@ -46,7 +46,7 @@ export function registerStudentApiRoutes(app: Express) {
         (req as any).studentId = req.auth.studentId;
       }
       
-      const studentId = req.studentId;
+      const studentId = (req as any).studentId as string;
       
       // Check cache first
       const cacheKey = `student:${studentId}:dashboard`;
@@ -109,7 +109,7 @@ export function registerStudentApiRoutes(app: Express) {
         const settings = storeSettingsData[0];
         const now = new Date();
         
-        let isOpen = settings.isOpen;
+        let isOpen = settings.isOpen || false;
         let message = "Store is open! Happy shopping!";
         
         if (!settings.isOpen) {
@@ -197,7 +197,7 @@ export function registerStudentApiRoutes(app: Express) {
           id: item.itemId,
           name: item.name,
           description: item.description,
-          itemTypeCode: item.itemTypeIdCode,
+          itemTypeCode: item.itemTypeCode,
           cost: item.cost,
           rarity: item.rarity,
           assetId: item.assetId,
@@ -259,7 +259,7 @@ export function registerStudentApiRoutes(app: Express) {
   // Update avatar data
   app.post("/api/student/avatar", requireUnifiedAuth, requireStudent, async (req, res) => {
     try {
-      const studentId = req.studentId;
+      const studentId = (req as any).studentId as string;
       
       // Validate request body
       const validationResult = avatarUpdateRequestSchema.safeParse(req.body);
@@ -316,7 +316,7 @@ export function registerStudentApiRoutes(app: Express) {
   // Update room data  
   app.post("/api/student/room", requireUnifiedAuth, requireStudent, async (req, res) => {
     try {
-      const studentId = req.studentId;
+      const studentId = (req as any).studentId as string;
       
       // Validate request body
       const validationResult = roomUpdateRequestSchema.safeParse(req.body);

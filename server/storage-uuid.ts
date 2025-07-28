@@ -675,7 +675,6 @@ export class UUIDStorage implements IUUIDStorage {
         isArchived: classes.isArchived,
         numberOfStudents: classes.numberOfStudents,
         hasValuesSet: classes.hasValuesSet,
-        isActive: classes.isActive,
         deletedAt: classes.deletedAt,
         teacherName: profiles.fullName,
         studentCount: sql<number>`COUNT(${students.id})`.as('studentCount')
@@ -750,7 +749,7 @@ export class UUIDStorage implements IUUIDStorage {
       .from(storeSettings)
       .where(eq(storeSettings.teacherId, teacherId));
     
-    return settings?.settings || {} as StoreSettings;
+    return (settings?.settings || {}) as any;
   }
 
   async updateStoreSettings(teacherId: string, settings: StoreSettings): Promise<void> {

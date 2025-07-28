@@ -211,7 +211,7 @@ export function registerRoomRoutes(app: Express) {
       };
 
       // 5. Get inventory items from student_inventory table
-      let inventoryItems = [];
+      let inventoryItems: any[] = [];
       
       try {
         // First, get the student's inventory items
@@ -309,7 +309,7 @@ export function registerRoomRoutes(app: Express) {
 
       // Update avatarData to include equipped items (for compatibility)
       const updatedAvatarData = {
-        ...student.avatarData,
+        ...(student.avatarData || {}),
         equipped: equippedItems,
         owned: inventoryItems.map(item => item.id) // For legacy compatibility
       };
@@ -318,7 +318,7 @@ export function registerRoomRoutes(app: Express) {
       console.log(`[DEBUG] Student ${student.studentName} inventory:`, inventoryItems.length, 'items');
       
       // Enrich room data with pattern details if needed
-      let enrichedRoomData = student.roomData || { furniture: [] };
+      let enrichedRoomData: any = student.roomData || { furniture: [] };
       
       // Check if we need to fetch pattern details
       const patternCodes: string[] = [];
@@ -353,8 +353,8 @@ export function registerRoomRoutes(app: Express) {
             enrichedRoomData.wall = {
               type: 'pattern',
               value: enrichedRoomData.wallPattern,
-              patternType: wallPattern.patternType,
-              patternValue: wallPattern.patternValue
+              patternType: wallPattern!.patternType,
+              patternValue: wallPattern!.patternValue
             };
           }
           
@@ -363,8 +363,8 @@ export function registerRoomRoutes(app: Express) {
             enrichedRoomData.floor = {
               type: 'pattern',
               value: enrichedRoomData.floorPattern,
-              patternType: floorPattern.patternType,
-              patternValue: floorPattern.patternValue
+              patternType: floorPattern!.patternType,
+              patternValue: floorPattern!.patternValue
             };
           }
           
@@ -388,7 +388,7 @@ export function registerRoomRoutes(app: Express) {
       const pageData = {
         room: {
           id: student.id,
-          passportCode: student.passportCode, // Include passport code!
+          passportCode: passportCode, // Use from route parameter
           studentName: student.studentName,
           gradeLevel: student.gradeLevel,
           animalType: student.animalType || student.animalTypeId,
@@ -601,12 +601,12 @@ export function registerRoomRoutes(app: Express) {
       
       // Merge new data with existing data
       const updatedAvatarData = {
-        ...student.avatarData,
+        ...(student.avatarData || {}),
         ...avatarData
       };
       
       const updatedRoomData = {
-        ...student.roomData,
+        ...(student.roomData || {}),
         ...roomData
       };
       
@@ -695,8 +695,7 @@ export function registerRoomRoutes(app: Express) {
         // First, unequip any item currently in this slot
         const itemsInSlot = await tx
           .select({
-            storeItemId: studentInventory.storeItemId,
-            itemType: storeItems.itemType
+            storeItemId: studentInventory.storeItemId
           })
           .from(studentInventory)
           .innerJoin(storeItems, eq(studentInventory.storeItemId, storeItems.id))
@@ -831,10 +830,11 @@ export function registerRoomRoutes(app: Express) {
           .where(eq(students.id, student.id))
           .limit(1);
         
+        const currentData = currentAvatarData[0]?.avatarData as any || {};
         const updatedAvatarData = {
-          ...(currentAvatarData[0]?.avatarData || {}),
+          ...currentData,
           equipped: equipped || {},
-          colors: colors || currentAvatarData[0]?.avatarData?.colors
+          colors: colors || currentData.colors
         };
         
         await tx
@@ -1068,18 +1068,19 @@ export function registerRoomRoutes(app: Express) {
       }
       
       // Update room data with new structure support
+      const existingRoomData = student.roomData as any || {};
       const updatedRoomData = {
-        ...student.roomData,
-        theme: theme || student.roomData?.theme || 'wood',
+        ...existingRoomData,
+        theme: theme || existingRoomData.theme || 'wood',
         // Handle new wall/floor structure - use parsed values
-        wall: parsedWall || (wallPattern ? { type: 'pattern', value: wallPattern } : wallColor ? { type: 'color', value: wallColor } : student.roomData?.wall),
-        floor: parsedFloor || (floorPattern ? { type: 'pattern', value: floorPattern } : floorColor ? { type: 'color', value: floorColor } : student.roomData?.floor),
+        wall: parsedWall || (wallPattern ? { type: 'pattern', value: wallPattern } : wallColor ? { type: 'color', value: wallColor } : existingRoomData.wall),
+        floor: parsedFloor || (floorPattern ? { type: 'pattern', value: floorPattern } : floorColor ? { type: 'color', value: floorColor } : existingRoomData.floor),
         // Maintain backwards compatibility - use parsed values
-        wallColor: parsedWall?.type === 'color' ? parsedWall.value : (wallColor || student.roomData?.wallColor),
-        floorColor: parsedFloor?.type === 'color' ? parsedFloor.value : (floorColor || student.roomData?.floorColor),
-        wallPattern: parsedWall?.type === 'pattern' ? parsedWall.value : (wallPattern !== undefined ? wallPattern : student.roomData?.wallPattern),
-        floorPattern: parsedFloor?.type === 'pattern' ? parsedFloor.value : (floorPattern !== undefined ? floorPattern : student.roomData?.floorPattern),
-        furniture: furniture || student.roomData?.furniture || []
+        wallColor: parsedWall?.type === 'color' ? parsedWall.value : (wallColor || existingRoomData.wallColor),
+        floorColor: parsedFloor?.type === 'color' ? parsedFloor.value : (floorColor || existingRoomData.floorColor),
+        wallPattern: parsedWall?.type === 'pattern' ? parsedWall.value : (wallPattern !== undefined ? wallPattern : existingRoomData.wallPattern),
+        floorPattern: parsedFloor?.type === 'pattern' ? parsedFloor.value : (floorPattern !== undefined ? floorPattern : existingRoomData.floorPattern),
+        furniture: furniture || existingRoomData.furniture || []
       };
       
       console.log('Updating room data in database:', {
@@ -1281,7 +1282,7 @@ export function registerRoomRoutes(app: Express) {
       
       // Prepare updated room data with new format while maintaining backwards compatibility
       const currentRoomData = student.roomData || {};
-      const updatedRoomData = { ...currentRoomData };
+      const updatedRoomData: any = { ...currentRoomData };
       
       // Update wall surface - use parsed values
       if (parsedWall) {
@@ -1354,14 +1355,14 @@ export function registerRoomRoutes(app: Express) {
           // Add pattern details to response
           if (responseData.wall?.type === 'pattern' && patternMap.has(responseData.wall.value)) {
             const wallPattern = patternMap.get(responseData.wall.value);
-            responseData.wall.patternType = wallPattern.patternType;
-            responseData.wall.patternValue = wallPattern.patternValue;
+            responseData.wall.patternType = wallPattern!.patternType;
+            responseData.wall.patternValue = wallPattern!.patternValue;
           }
           
           if (responseData.floor?.type === 'pattern' && patternMap.has(responseData.floor.value)) {
             const floorPattern = patternMap.get(responseData.floor.value);
-            responseData.floor.patternType = floorPattern.patternType;
-            responseData.floor.patternValue = floorPattern.patternValue;
+            responseData.floor.patternType = floorPattern!.patternType;
+            responseData.floor.patternValue = floorPattern!.patternValue;
           }
         } catch (error) {
           console.error('Error fetching pattern details for response:', error);

@@ -1,6 +1,10 @@
 // Additional tables found in database that need to be added to schema.ts
 // Add these to your shared/schema.ts file to prevent Drizzle from dropping them
 
+import { pgTable, varchar, integer, timestamp, uuid, text, boolean, jsonb } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { students } from './schema';
+
 // Animals table (different from animal_types - stores avatar image metadata)
 export const animals = pgTable('animals', {
   animalType: varchar('animal_type', { length: 50 }).primaryKey(),

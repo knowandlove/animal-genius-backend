@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { db } from '../db';
-import { assets, type Asset, type InsertAsset } from '@shared/schema';
+import { assets, type Asset, type NewAsset } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import * as mime from 'mime-types';
 import path from 'path';
@@ -134,15 +134,13 @@ export class EnhancedStorageService {
    * Create an asset record in the database
    */
   static async createAsset(uploadResult: UploadResult, metadata: UploadFile['metadata']): Promise<Asset> {
-    const assetData: InsertAsset = {
-      type: metadata.type,
-      category: metadata.category,
-      name: metadata.name,
-      bucket: uploadResult.bucket,
-      path: uploadResult.path,
-      mimeType: uploadResult.mimeType,
-      sizeBytes: uploadResult.size,
-      metadata: {}
+    const assetData: NewAsset = {
+      fileName: metadata.name,
+      fileType: uploadResult.mimeType,
+      fileSize: uploadResult.size,
+      storagePath: `${uploadResult.bucket}/${uploadResult.path}`,
+      publicUrl: `${supabaseUrl}/storage/v1/object/public/${uploadResult.bucket}/${uploadResult.path}`,
+      category: metadata.category
     };
 
     const [asset] = await db.insert(assets).values(assetData).returning();
@@ -212,15 +210,19 @@ export class EnhancedStorageService {
     // Delete from database first (safer for data consistency)
     await db.delete(assets).where(eq(assets.id, assetId));
 
+    // Extract bucket and path from storagePath
+    const [bucket, ...pathParts] = asset.storagePath.split('/');
+    const filePath = pathParts.join('/');
+
     // Then delete from storage
     const { error } = await supabase.storage
-      .from(asset.bucket)
-      .remove([asset.path]);
+      .from(bucket)
+      .remove([filePath]);
 
     if (error) {
       // Log error but don't throw - DB record is already gone
       // The cleanup queue will handle orphaned files
-      console.error(`Failed to delete file ${asset.path} from bucket ${asset.bucket}. Error: ${error.message}`);
+      console.error(`Failed to delete file ${filePath} from bucket ${bucket}. Error: ${error.message}`);
       // File is now queued for cleanup via the trigger we set up
     }
   }
@@ -271,22 +273,25 @@ export class EnhancedStorageService {
     };
 
     assetsData.forEach(asset => {
-      const size = asset.sizeBytes || 0;
+      const size = asset.fileSize || 0;
       stats.totalSize += size;
 
+      // Extract bucket from storagePath
+      const [bucket] = asset.storagePath.split('/');
+      
       // By bucket
-      if (!stats.byBucket[asset.bucket]) {
-        stats.byBucket[asset.bucket] = { count: 0, size: 0 };
+      if (!stats.byBucket[bucket]) {
+        stats.byBucket[bucket] = { count: 0, size: 0 };
       }
-      stats.byBucket[asset.bucket].count++;
-      stats.byBucket[asset.bucket].size += size;
+      stats.byBucket[bucket].count++;
+      stats.byBucket[bucket].size += size;
 
-      // By type
-      if (!stats.byType[asset.type]) {
-        stats.byType[asset.type] = { count: 0, size: 0 };
+      // By type (using fileType)
+      if (!stats.byType[asset.fileType]) {
+        stats.byType[asset.fileType] = { count: 0, size: 0 };
       }
-      stats.byType[asset.type].count++;
-      stats.byType[asset.type].size += size;
+      stats.byType[asset.fileType].count++;
+      stats.byType[asset.fileType].size += size;
     });
 
     return stats;
