@@ -25,7 +25,7 @@ const ANIMAL_PREFIXES = {
 const generateSuffix = customAlphabet('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ', 6);
 
 export function generateEnhancedPassportCode(animalType: string): string {
-  const prefix = ANIMAL_PREFIXES[animalType] || 'UNK';
+  const prefix = ANIMAL_PREFIXES[animalType as keyof typeof ANIMAL_PREFIXES] || 'UNK';
   const suffix = generateSuffix();
   return `${prefix}-${suffix}`;
 }

@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { animalTypes, itemTypes, geniusTypes, quizAnswerTypes } from "@shared/schema";
+import { animalTypes, itemTypes, geniusTypes } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -193,12 +193,13 @@ export class TypeLookupService {
    * Load answer types into memory
    */
   private async loadAnswerTypes(): Promise<void> {
-    const answers = await db.select().from(quizAnswerTypes);
-    
-    for (const answer of answers) {
-      this.answerTypesByCode.set(answer.code, { id: answer.id, label: answer.label });
-      this.answerTypesById.set(answer.id, { code: answer.code, label: answer.label });
-    }
+    // TODO: Implement when quizAnswerTypes table is added
+    // const answers = await db.select().from(quizAnswerTypes);
+    // 
+    // for (const answer of answers) {
+    //   this.answerTypesByCode.set(answer.code, { id: answer.id, label: answer.label });
+    //   this.answerTypesById.set(answer.id, { code: answer.code, label: answer.label });
+    // }
   }
   
   // ===== ANIMAL TYPE METHODS =====

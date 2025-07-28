@@ -63,7 +63,7 @@ export interface IUUIDStorage {
   generateUniqueClassCode(): Promise<string>;
   
   // Student operations
-  createStudent(studentData: NewStudent): Promise<Student>;
+  createStudent(studentData: StudentData): Promise<Student>;
   getStudentById(id: string): Promise<Student | undefined>;
   getStudentsByClassId(classId: string): Promise<Student[]>;
   updateStudent(id: string, data: Partial<Student>): Promise<Student>;
@@ -174,6 +174,8 @@ export class UUIDStorage implements IUUIDStorage {
         backgroundColor: classes.backgroundColor,
         numberOfStudents: classes.numberOfStudents,
         isArchived: classes.isArchived,
+        hasValuesSet: classes.hasValuesSet,
+        valuesSetAt: classes.valuesSetAt,
         createdAt: classes.createdAt,
         updatedAt: classes.updatedAt,
         deletedAt: classes.deletedAt,
@@ -380,24 +382,29 @@ export class UUIDStorage implements IUUIDStorage {
   }
 
   async getSubmissionsByStudentId(studentId: string): Promise<SubmissionDetails[]> {
-    return await db
+    const results = await db
       .select({
         id: quizSubmissions.id,
         studentId: quizSubmissions.studentId,
-        animalType: animalTypes.code,
-        animalTypeName: animalTypes.name,
-        geniusType: geniusTypes.name,
-        geniusTypeName: geniusTypes.name,
+        animalType: sql<string>`COALESCE(${animalTypes.code}, 'unknown')`,
+        animalTypeName: sql<string>`COALESCE(${animalTypes.name}, 'Unknown')`,
+        geniusType: sql<string>`COALESCE(${geniusTypes.name}, 'Unknown')`,
+        geniusTypeName: sql<string>`COALESCE(${geniusTypes.name}, 'Unknown')`,
         answers: quizSubmissions.answers,
-        coinsEarned: quizSubmissions.coinsEarned,
+        coinsEarned: sql<number>`COALESCE(${quizSubmissions.coinsEarned}, 0)`,
         completedAt: quizSubmissions.completedAt,
-        createdAt: quizSubmissions.createdAt
+        createdAt: sql<Date>`COALESCE(${quizSubmissions.createdAt}, NOW())`
       })
       .from(quizSubmissions)
       .leftJoin(animalTypes, eq(quizSubmissions.animalTypeId, animalTypes.id))
       .leftJoin(geniusTypes, eq(quizSubmissions.geniusTypeId, geniusTypes.id))
       .where(eq(quizSubmissions.studentId, studentId))
       .orderBy(desc(quizSubmissions.completedAt));
+    
+    return results.map(row => ({
+      ...row,
+      answers: row.answers as QuizAnswers
+    }));
   }
 
   async getSubmissionsByClassId(classId: string): Promise<QuizSubmission[]> {
@@ -490,8 +497,8 @@ export class UUIDStorage implements IUUIDStorage {
         studentName: row.studentName || 'Unknown',
         gradeLevel: gradeLevel,
         personalityType: personalityType,
-        animalType: row.animalTypeName || '',
-        geniusType: row.geniusType || '',
+        animalType: row.animalTypeName || null,
+        geniusType: row.geniusType || null,
         learningStyle: learningStyle,
         learningScores: {
           visual: 0,
@@ -500,7 +507,7 @@ export class UUIDStorage implements IUUIDStorage {
           readingWriting: 0
         },
         scores: scores,
-        completedAt: row.completedAt,
+        completedAt: row.completedAt as Date | null,
         passportCode: row.passportCode,
         currencyBalance: row.currencyBalance || 0
       };
@@ -639,13 +646,15 @@ export class UUIDStorage implements IUUIDStorage {
         lastName: profiles.lastName,
         schoolOrganization: profiles.schoolOrganization,
         roleTitle: profiles.roleTitle,
+        howHeardAbout: profiles.howHeardAbout,
         phoneNumber: profiles.phoneNumber,
+        personalityAnimal: profiles.personalityAnimal,
         avatarUrl: profiles.avatarUrl,
         isAdmin: profiles.isAdmin,
         isAnonymous: profiles.isAnonymous,
+        lastLoginAt: profiles.lastLoginAt,
         createdAt: profiles.createdAt,
         updatedAt: profiles.updatedAt,
-        lastLoginAt: profiles.lastLoginAt,
         classCount: sql<number>`COUNT(DISTINCT ${classes.id})`.as('classCount'),
         studentCount: sql<number>`COUNT(DISTINCT ${students.id})`.as('studentCount')
       })
@@ -675,8 +684,9 @@ export class UUIDStorage implements IUUIDStorage {
         isArchived: classes.isArchived,
         numberOfStudents: classes.numberOfStudents,
         hasValuesSet: classes.hasValuesSet,
+        valuesSetAt: classes.valuesSetAt,
         deletedAt: classes.deletedAt,
-        teacherName: profiles.fullName,
+        teacherName: sql<string>`COALESCE(${profiles.fullName}, '')`,
         studentCount: sql<number>`COUNT(${students.id})`.as('studentCount')
       })
       .from(classes)

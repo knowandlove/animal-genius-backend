@@ -313,14 +313,14 @@ router.get('/dashboard', requireStudentAuth, async (req, res) => {
         coins: studentData.currency_balance || 0,
         createdAt: studentData.created_at,
         animalDetails: studentData.animal_types ? {
-          name: studentData.animal_types.name,
-          code: studentData.animal_types.code,
-          description: studentData.animal_types.description
+          name: (studentData.animal_types as any).name,
+          code: (studentData.animal_types as any).code,
+          description: (studentData.animal_types as any).description
         } : null,
         geniusDetails: studentData.genius_types ? {
-          name: studentData.genius_types.name,
-          code: studentData.genius_types.code,
-          description: studentData.genius_types.description
+          name: (studentData.genius_types as any).name,
+          code: (studentData.genius_types as any).code,
+          description: (studentData.genius_types as any).description
         } : null,
         quizResults: quizData ? {
           personalityType: quizData.personality_type,
@@ -405,7 +405,7 @@ router.get('/public-content', optionalStudentAuth, async (req, res) => {
   const content = {
     message: 'This is public content',
     personalizedMessage: req.student 
-      ? `Hello ${req.student.name}! Welcome back.`
+      ? `Hello ${req.student.studentName}! Welcome back.`
       : 'Hello anonymous visitor!'
   };
   

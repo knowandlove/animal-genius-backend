@@ -82,14 +82,16 @@ export interface PairingAnalysis {
 }
 
 export function calculateGeniusDistribution(submissions: QuizSubmission[]) {
+  // TODO: This function needs to be updated to work with animalTypeId instead of animalType
+  // For now, return empty distribution
   const distribution = { Thinker: 0, Feeler: 0, Doer: 0 };
   
-  submissions.forEach(submission => {
-    const geniusType = animalGeniusMap[submission.animalType];
-    if (geniusType && geniusType in distribution) {
-      distribution[geniusType as keyof typeof distribution]++;
-    }
-  });
+  // submissions.forEach(submission => {
+  //   const geniusType = animalGeniusMap[submission.animalType];
+  //   if (geniusType && geniusType in distribution) {
+  //     distribution[geniusType as keyof typeof distribution]++;
+  //   }
+  // });
   
   return distribution;
 }

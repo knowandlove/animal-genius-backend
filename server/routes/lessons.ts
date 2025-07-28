@@ -443,7 +443,7 @@ router.post('/:classId/lessons/4/activity/2/start-voting', requireAuth, verifyCl
       .returning();
 
     // Mark lesson as in progress if not already
-    let progress = await db
+    const progress = await db
       .select()
       .from(lessonProgress)
       .where(

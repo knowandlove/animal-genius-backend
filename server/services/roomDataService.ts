@@ -159,7 +159,7 @@ export class RoomDataService {
         learningStyle: student.learningStyle,
         currencyBalance: student.currencyBalance || 0,
         avatarData: {
-          ...student.avatarData,
+          ...(student.avatarData || {}),
           equipped: inventoryData.equipped,
           owned: inventoryData.owned
         },

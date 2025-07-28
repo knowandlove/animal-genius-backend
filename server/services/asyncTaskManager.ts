@@ -99,7 +99,7 @@ export class AsyncTaskManager {
       // Log the issue for investigation
       console.error('Stuck submission found:', {
         submissionId: submission.id,
-        studentName: submission.studentName,
+        studentId: submission.studentId,
         completedAt: submission.completedAt
       });
     }

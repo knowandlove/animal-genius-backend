@@ -1,7 +1,7 @@
 // Storage interface updates for Supabase Auth integration
 // This file contains the key method signatures that need to be updated
 
-import { User, Class, QuizSubmission, Student, CurrencyTransaction, AdminLog } from "@shared/schema";
+import { Profile, Class, QuizSubmission, Student, CurrencyTransaction, AdminLog } from "@shared/schema";
 
 // Updated types with UUID support
 export interface ProfileData {

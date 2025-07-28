@@ -65,9 +65,9 @@ export class StorageRouter {
     const asset = await EnhancedStorageService.createAsset(uploadResult, uploadFile.metadata);
 
     return {
-      url: EnhancedStorageService.getPublicUrl(asset.bucket, asset.path),
+      url: asset.publicUrl,
       assetId: asset.id,
-      path: asset.path
+      path: asset.storagePath
     };
   }
 

@@ -318,7 +318,7 @@ export function registerRoomRoutes(app: Express) {
       console.log(`[DEBUG] Student ${student.studentName} inventory:`, inventoryItems.length, 'items');
       
       // Enrich room data with pattern details if needed
-      let enrichedRoomData: any = student.roomData || { furniture: [] };
+      const enrichedRoomData: any = student.roomData || { furniture: [] };
       
       // Check if we need to fetch pattern details
       const patternCodes: string[] = [];

@@ -105,7 +105,7 @@ router.get('/', async (req: Request, res: Response) => {
     }
 
     // Base query
-    let query = db.select({
+    const query = db.select({
       discussion: discussions,
       teacher: {
         id: profiles.id,
@@ -334,8 +334,8 @@ router.get('/:id', async (req: Request, res: Response) => {
     res.json(response);
   } catch (error) {
     logger.error('Failed to get discussion', { 
-      error: error.message, 
-      stack: error.stack,
+      error: error instanceof Error ? error.message : 'Unknown error', 
+      stack: error instanceof Error ? error.stack : undefined,
       discussionId: req.params.id 
     });
     res.status(500).json({ error: 'Failed to get discussion' });
@@ -481,7 +481,7 @@ router.get('/debug/:discussionId/test', async (req: Request, res: Response) => {
     });
   } catch (error) {
     logger.error('Debug endpoint error', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
   }
 });
 

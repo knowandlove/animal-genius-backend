@@ -81,7 +81,8 @@ async function provisionTeacher(userData: JITUserData): Promise<any> {
   }
   
   // Check if user exists in Supabase
-  const { data: existingUser } = await supabaseAdmin.auth.admin.getUserByEmail(email);
+  const { data: users } = await supabaseAdmin.auth.admin.listUsers();
+  const existingUser = users?.users?.find(u => u.email === email) || null;
   
   if (existingUser) {
     // User exists, ensure profile exists
@@ -142,7 +143,7 @@ async function provisionStudent(userData: JITUserData): Promise<any> {
   const [student] = await db
     .select()
     .from(students)
-    .where(eq(students.passportCode, metadata.passportCode))
+    .where(eq(students.passportCode, metadata.passportCode!))
     .limit(1);
     
   if (!student) {
@@ -164,11 +165,11 @@ async function provisionStudent(userData: JITUserData): Promise<any> {
   });
   
   // Check by email instead of ID since Supabase generates its own UUIDs
-  const { data: existingUser, error: getUserError } = await supabaseAdmin.auth.admin.getUserByEmail(studentEmail);
+  const { data: users } = await supabaseAdmin.auth.admin.listUsers();
+  const existingUser = users?.users?.find(u => u.email === studentEmail) || null;
   console.log('🔍 Existing user result:', existingUser);
-  console.log('🔍 Get user error:', getUserError);
   
-  if (!existingUser?.user) {
+  if (!existingUser) {
     // Create Supabase auth account for student
     logger.debug('Creating Supabase account for student', { studentId: student.id });
     console.log('🔧 Creating new Supabase user with email:', studentEmail);
@@ -202,7 +203,7 @@ async function provisionStudent(userData: JITUserData): Promise<any> {
     supabaseUser = newUser.user;
     isNewUser = true;
   } else {
-    supabaseUser = existingUser.user;
+    supabaseUser = existingUser;
   }
   
   // Create or update profile
@@ -233,12 +234,7 @@ async function provisionStudent(userData: JITUserData): Promise<any> {
         firstName: student.studentName || 'Student',
         lastName: '',
         isAdmin: false,
-        // Store student reference in profile metadata
-        metadata: {
-          role: 'student',
-          studentId: student.id,
-          classId: student.classId
-        }
+        isAnonymous: true // Mark as anonymous since it's a student account
       })
       .returning();
   } else {
@@ -336,7 +332,7 @@ export async function migrateStudentSession(studentId: string): Promise<{
       role: 'student',
       metadata: {
         studentId: student.id,
-        studentName: student.studentName,
+        studentName: student.studentName || 'Unknown Student',
         classId: student.classId,
         passportCode: student.passportCode
       }
@@ -346,11 +342,12 @@ export async function migrateStudentSession(studentId: string): Promise<{
       success: true,
       session: result.session
     };
-  } catch (error) {
+  } catch (error: any) {
+    const errorMessage = error instanceof Error ? error.message : 'Migration failed';
     logger.error('Failed to migrate student session', { error });
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Migration failed'
+      error: errorMessage
     };
   }
 }

@@ -86,6 +86,8 @@ export function registerRoomGuestbookRoutes(app: Express) {
           roomOwnerStudentId: roomOwner.id,
           visitorStudentId,
           message: message.trim(),
+          visitorName: req.student.studentName,
+          visitorAnimalType: undefined, // TODO: Get from database if needed
         })
         .returning();
 

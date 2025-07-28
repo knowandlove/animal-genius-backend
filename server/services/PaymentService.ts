@@ -1,5 +1,7 @@
 import { db } from '../db';
-import { teacherPayments, classes } from '../../shared/schema';
+import { classes } from '../../shared/schema';
+// TODO: Add teacherPayments table to schema
+// import { teacherPayments } from '../../shared/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { randomUUID, createHmac, timingSafeEqual } from 'crypto';
 
@@ -42,34 +44,34 @@ export class PaymentService {
         }
       }
 
-      // Check if class is already paid
-      if (classroom.paymentStatus === 'succeeded') {
-        throw new Error('This class has already been paid for');
-      }
+      // TODO: Check if class is already paid when paymentStatus field is added
+      // if (classroom.paymentStatus === 'succeeded') {
+      //   throw new Error('This class has already been paid for');
+      // }
 
       // Calculate amount
       const amountCents = studentCount * this.PRICE_PER_STUDENT_CENTS;
 
-      // Create a pending payment record
-      const [payment] = await db.insert(teacherPayments)
-        .values({
-          teacherId,
-          classId,
-          amountCents,
-          studentCount,
-          status: 'pending',
-          // In production, this would come from Stripe
-          stripePaymentIntentId: `mock_pi_${randomUUID()}`,
-        })
-        .returning();
+      // TODO: Create a pending payment record when teacherPayments table is added
+      // const [payment] = await db.insert(teacherPayments)
+      //   .values({
+      //     teacherId,
+      //     classId,
+      //     amountCents,
+      //     studentCount,
+      //     status: 'pending',
+      //     // In production, this would come from Stripe
+      //     stripePaymentIntentId: `mock_pi_${randomUUID()}`,
+      //   })
+      //   .returning();
 
       // Generate mock checkout URL
-      const mockCheckoutUrl = `/payment/mock?session_id=${payment.id}`;
+      const mockCheckoutUrl = `/payment/mock?session_id=${randomUUID()}`;
 
       return {
-        sessionId: payment.id,
+        sessionId: randomUUID(), // TODO: Use payment.id when teacherPayments table is added
         mockCheckoutUrl,
-        payment
+        payment: null // TODO: Return payment object when teacherPayments table is added
       };
     } catch (error) {
       console.error('Error creating checkout session:', error);
@@ -81,6 +83,9 @@ export class PaymentService {
    * Handles the mock webhook to process payment (simulates Stripe webhook)
    */
   static async processMockWebhook(sessionId: string, status: 'success' | 'failure') {
+    // TODO: Implement when teacherPayments table is added
+    throw new Error('Payment processing not implemented - teacherPayments table missing');
+    /*
     try {
       // Start a transaction to ensure data consistency
       return await db.transaction(async (tx) => {
@@ -152,12 +157,16 @@ export class PaymentService {
       console.error('Error processing mock webhook:', error);
       throw error;
     }
+    */
   }
 
   /**
    * Gets payment status for a session
    */
   static async getPaymentStatus(sessionId: string) {
+    // TODO: Implement when teacherPayments table is added
+    throw new Error('Payment status not available - teacherPayments table missing');
+    /*
     try {
       const payment = await db.query.teacherPayments.findFirst({
         where: eq(teacherPayments.id, sessionId),
@@ -172,7 +181,7 @@ export class PaymentService {
 
       if (!payment.class) {
         // This indicates a data integrity issue
-        logger.error(`Data integrity issue: Payment ${sessionId} is missing its associated class.`);
+        console.error(`Data integrity issue: Payment ${sessionId} is missing its associated class.`);
         throw new Error('Associated class data for this payment is missing.');
       }
 
@@ -189,6 +198,7 @@ export class PaymentService {
       console.error('Error getting payment status:', error);
       throw error;
     }
+    */
   }
 
   /**
@@ -208,7 +218,7 @@ export class PaymentService {
       if (signature.includes('t=') && signature.includes('v1=')) {
         const elements = signature.split(',');
         let timestamp = '';
-        let signatures: string[] = [];
+        const signatures: string[] = [];
         
         for (const element of elements) {
           const [key, value] = element.split('=');

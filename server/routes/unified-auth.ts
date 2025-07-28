@@ -67,7 +67,7 @@ router.post('/student/login', authLimiter, checkPassportLockout, asyncWrapper(as
     });
     
     logger.info('Student provisioned successfully', { 
-      studentId: result.student.id,
+      studentId: verification.student.id,
       isNewUser: result.isNewUser 
     });
     
@@ -75,8 +75,8 @@ router.post('/student/login', authLimiter, checkPassportLockout, asyncWrapper(as
     // In production, we'd return a Supabase session token
     res.json({
       success: true,
-      studentId: result.student.id,
-      studentName: result.student.studentName,
+      studentId: verification.student.id,
+      studentName: verification.student.studentName,
       message: 'Welcome to Animal Genius!',
       // Include migration info for frontend
       migrationStatus: {

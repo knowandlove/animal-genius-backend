@@ -163,7 +163,7 @@ export function registerStoreManagementRoutes(app: Express) {
         settings: {
           openedAt: storeData.openedAt,
           closesAt: storeData.closesAt,
-          autoApprovalThreshold: storeData.autoApprovalThreshold,
+          autoApprovalThreshold: (storeData.settings as any)?.autoApprovalThreshold || 0,
           lastUpdated: storeData.updatedAt,
           updatedBy: storeData.teacherId
         }
@@ -196,7 +196,7 @@ export function registerStoreManagementRoutes(app: Express) {
             teacherId: teacherId!,
             classId,
             isOpen: false,
-            autoApprovalThreshold: threshold,
+            settings: { autoApprovalThreshold: threshold },
             createdAt: new Date()
           });
       } else {
@@ -204,7 +204,7 @@ export function registerStoreManagementRoutes(app: Express) {
         await db
           .update(storeSettings)
           .set({
-            autoApprovalThreshold: threshold,
+            settings: { ...(existingSettings[0].settings as any || {}), autoApprovalThreshold: threshold },
             updatedAt: new Date()
           })
           .where(eq(storeSettings.classId, classId));

@@ -8,7 +8,7 @@ Sentry.init({
   enabled: process.env.NODE_ENV === 'production' && !!process.env.SENTRY_DSN,
   integrations: [
     // Automatically instrument Node.js libraries and frameworks
-    ...Sentry.getDefaultIntegrations(),
+    ...Sentry.getDefaultIntegrations({}),
     nodeProfilingIntegration(),
   ],
   // Performance Monitoring
@@ -33,7 +33,7 @@ Sentry.init({
       }
       
       // Scrub sensitive query params
-      if (event.request.query_string) {
+      if (event.request.query_string && typeof event.request.query_string === 'string') {
         event.request.query_string = event.request.query_string
           .replace(/passportCode=[^&]+/gi, 'passportCode=[REDACTED]')
           .replace(/token=[^&]+/gi, 'token=[REDACTED]');

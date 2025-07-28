@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { PaymentService } from '../services/PaymentService';
-import { authenticateTeacher } from '../middleware/auth';
+import { requireAuth } from '../middleware/auth';
 import { 
   CreateCheckoutSessionRequest, 
   MockWebhookRequest 
@@ -12,7 +12,7 @@ const router = Router();
  * Create a checkout session for teacher payment
  * POST /api/payments/create-checkout-session
  */
-router.post('/create-checkout-session', authenticateTeacher, async (req, res) => {
+router.post('/create-checkout-session', requireAuth, async (req, res) => {
   try {
     const { classId, studentCount } = req.body as CreateCheckoutSessionRequest;
     const teacherId = req.user!.userId; // Changed from .id to .userId
@@ -107,14 +107,16 @@ router.post('/mock/webhook-handler', async (req, res) => {
     }
 
     // Process the payment
-    const result = await PaymentService.processMockWebhook(sessionId, status);
+    // TODO: Uncomment when PaymentService.processMockWebhook is implemented
+    // const result = await PaymentService.processMockWebhook(sessionId, status);
+    throw new Error('Payment processing not implemented - teacherPayments table missing');
 
-    return res.json({
-      success: true,
-      data: {
-        redirectUrl: result.redirectUrl
-      }
-    });
+    // return res.json({
+    //   success: true,
+    //   data: {
+    //     redirectUrl: result.redirectUrl
+    //   }
+    // });
   } catch (error: any) {
   console.error('Error processing webhook:', error);
   

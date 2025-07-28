@@ -2,7 +2,7 @@
 // This is the new "room" version of the island-secure routes for Phase 1 migration
 import type { Express } from "express";
 import { db } from "../db";
-import { quizSubmissions, students, classes, purchaseRequests, currencyTransactions, storeSettings, storeItems, animalTypes, geniusTypes } from "@shared/schema";
+import { quizSubmissions, students, classes, currencyTransactions, storeSettings, storeItems, animalTypes, geniusTypes } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { isValidPassportCode, TRANSACTION_REASONS } from "@shared/currency-types";
 import { z } from "zod";
@@ -84,7 +84,7 @@ export function registerSecureRoomRoutes(app: Express) {
           id: student.id,
           name: student.studentName,
           classId: student.classId,
-          passportCode: student.passportCode
+          passportCode: passportCode // Use the passportCode from request, not from query
         },
         studentName: student.studentName,
         message: "Welcome to your class island!"
@@ -145,7 +145,7 @@ export function registerSecureRoomRoutes(app: Express) {
           id: student.id,
           name: student.studentName,
           classId: student.classId,
-          passportCode: student.passportCode
+          passportCode: passportCode // Use the passportCode from request, not from query
         },
         studentName: student.studentName,
         message: "Welcome to your class island!"
@@ -242,7 +242,7 @@ export function registerSecureRoomRoutes(app: Express) {
         roomData: student.roomData || { furniture: [] },
         className: student.className,
         classId: student.classId,
-        completedAt: student.completedAt
+        createdAt: student.createdAt
       };
 
       res.json(roomData);
