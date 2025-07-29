@@ -370,6 +370,7 @@ export const lessonProgress = pgTable('lesson_progress', {
   currentActivity: integer('current_activity').default(1), // 1-4
   startedAt: timestamp('started_at', { withTimezone: true }),
   completedAt: timestamp('completed_at', { withTimezone: true }),
+  coinsAwardedAt: timestamp('coins_awarded_at', { withTimezone: true }), // Track when coins were awarded to prevent double rewards
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => {

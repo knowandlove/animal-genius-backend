@@ -2,10 +2,11 @@ import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { verifyClassAccess } from '../middleware/ownership-collaborator';
 import { db } from '../db';
-import { lessonProgress, lessonActivityProgress, classValuesSessions, classes, classValuesVotes, classValuesResults } from '../../shared/schema';
+import { lessonProgress, lessonActivityProgress, classValuesSessions, classes, classValuesVotes, classValuesResults, students, currencyTransactions } from '../../shared/schema';
 import { eq, and } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import { lessons } from '../../shared/lessons';
+import { CURRENCY_CONSTANTS, TRANSACTION_REASONS } from '../../shared/currency-types';
 
 const router = Router();
 
@@ -231,16 +232,56 @@ router.post('/:classId/lessons/:lessonId/activities/:activityNumber/complete', r
 
     const completedCount = allActivities.filter(a => a.completed).length;
     
-    // If all 4 activities are complete, mark lesson as complete
+    // If all 4 activities are complete, mark lesson as complete and award coins
     if (completedCount >= 4 && progress.status !== 'completed') {
-      await db
-        .update(lessonProgress)
-        .set({
-          status: 'completed',
-          completedAt: new Date(),
-          updatedAt: new Date(),
-        })
-        .where(eq(lessonProgress.id, progress.id));
+      const userId = (req as any).user?.userId;
+      
+      // Use a transaction to ensure atomicity
+      await db.transaction(async (tx) => {
+        // Mark lesson as complete
+        await tx
+          .update(lessonProgress)
+          .set({
+            status: 'completed',
+            completedAt: new Date(),
+            coinsAwardedAt: new Date(), // Mark coins as awarded
+            updatedAt: new Date(),
+          })
+          .where(eq(lessonProgress.id, progress.id));
+        
+        // Award coins only if not already awarded
+        if (!progress.coinsAwardedAt) {
+          // Get all active students in the class
+          const activeStudents = await tx
+            .select()
+            .from(students)
+            .where(eq(students.classId, classId));
+
+          // Create currency transactions for each student
+          const coinAmount = CURRENCY_CONSTANTS.LESSON_COMPLETION_REWARD;
+          const transactionPromises = activeStudents.map(async (student) => {
+            // Create transaction record
+            await tx.insert(currencyTransactions).values({
+              studentId: student.id,
+              amount: coinAmount,
+              transactionType: 'lesson_complete',
+              description: `${TRANSACTION_REASONS.LESSON_COMPLETE} - Lesson ${lessonIdNum}`,
+              teacherId: userId,
+            });
+
+            // Update student balance
+            await tx
+              .update(students)
+              .set({
+                currencyBalance: student.currencyBalance + coinAmount,
+                updatedAt: new Date(),
+              })
+              .where(eq(students.id, student.id));
+          });
+
+          await Promise.all(transactionPromises);
+        }
+      });
     }
 
     res.json({ success: true, completedActivities: completedCount });
@@ -251,79 +292,131 @@ router.post('/:classId/lessons/:lessonId/activities/:activityNumber/complete', r
 });
 
 // POST /api/classes/:classId/lessons/:lessonId/complete
-// Mark entire lesson as complete
+// Mark entire lesson as complete and award coins to all students
 router.post('/:classId/lessons/:lessonId/complete', requireAuth, verifyClassAccess, async (req, res) => {
   try {
     const { classId, lessonId } = req.params;
     const lessonIdNum = parseInt(lessonId);
+    const userId = (req as any).user?.userId;
 
-    // Get or create lesson progress
-    let [progress] = await db
-      .select()
-      .from(lessonProgress)
-      .where(
-        and(
-          eq(lessonProgress.classId, classId),
-          eq(lessonProgress.lessonId, lessonIdNum)
-        )
-      );
-
-    if (!progress) {
-      // Create lesson progress if it doesn't exist
-      [progress] = await db
-        .insert(lessonProgress)
-        .values({
-          classId,
-          lessonId: lessonIdNum,
-          status: 'completed',
-          currentActivity: 4,
-          startedAt: new Date(),
-          completedAt: new Date(),
-        })
-        .returning();
-    } else {
-      // Update existing progress
-      await db
-        .update(lessonProgress)
-        .set({
-          status: 'completed',
-          completedAt: new Date(),
-          updatedAt: new Date(),
-        })
-        .where(eq(lessonProgress.id, progress.id));
-    }
-
-    // Mark all activities as complete
-    for (let i = 1; i <= 4; i++) {
-      const [existing] = await db
+    // Start a database transaction to ensure atomicity
+    await db.transaction(async (tx) => {
+      // Get or create lesson progress
+      let [progress] = await tx
         .select()
-        .from(lessonActivityProgress)
+        .from(lessonProgress)
         .where(
           and(
-            eq(lessonActivityProgress.lessonProgressId, progress.id),
-            eq(lessonActivityProgress.activityNumber, i)
+            eq(lessonProgress.classId, classId),
+            eq(lessonProgress.lessonId, lessonIdNum)
           )
         );
 
-      if (!existing) {
-        await db
-          .insert(lessonActivityProgress)
+      if (!progress) {
+        // Create lesson progress if it doesn't exist
+        [progress] = await tx
+          .insert(lessonProgress)
           .values({
-            lessonProgressId: progress.id,
-            activityNumber: i,
-            completed: true,
+            classId,
+            lessonId: lessonIdNum,
+            status: 'completed',
+            currentActivity: 4,
+            startedAt: new Date(),
             completedAt: new Date(),
-          });
-      } else if (!existing.completed) {
-        await db
-          .update(lessonActivityProgress)
-          .set({
-            completed: true,
-            completedAt: new Date(),
+            coinsAwardedAt: new Date(), // Mark coins as awarded immediately
           })
-          .where(eq(lessonActivityProgress.id, existing.id));
+          .returning();
+      } else {
+        // Check if coins have already been awarded
+        if (progress.coinsAwardedAt) {
+          // Coins already awarded, just update the status
+          await tx
+            .update(lessonProgress)
+            .set({
+              status: 'completed',
+              completedAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .where(eq(lessonProgress.id, progress.id));
+        } else {
+          // Update existing progress and mark coins as awarded
+          await tx
+            .update(lessonProgress)
+            .set({
+              status: 'completed',
+              completedAt: new Date(),
+              coinsAwardedAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .where(eq(lessonProgress.id, progress.id));
+        }
       }
-    }
+
+      // Mark all activities as complete
+      for (let i = 1; i <= 4; i++) {
+        const [existing] = await tx
+          .select()
+          .from(lessonActivityProgress)
+          .where(
+            and(
+              eq(lessonActivityProgress.lessonProgressId, progress.id),
+              eq(lessonActivityProgress.activityNumber, i)
+            )
+          );
+
+        if (!existing) {
+          await tx
+            .insert(lessonActivityProgress)
+            .values({
+              lessonProgressId: progress.id,
+              activityNumber: i,
+              completed: true,
+              completedAt: new Date(),
+            });
+        } else if (!existing.completed) {
+          await tx
+            .update(lessonActivityProgress)
+            .set({
+              completed: true,
+              completedAt: new Date(),
+            })
+            .where(eq(lessonActivityProgress.id, existing.id));
+        }
+      }
+
+      // Award coins only if not already awarded
+      if (!progress.coinsAwardedAt) {
+        // Get all active students in the class
+        const activeStudents = await tx
+          .select()
+          .from(students)
+          .where(eq(students.classId, classId));
+
+        // Create currency transactions for each student
+        const coinAmount = CURRENCY_CONSTANTS.LESSON_COMPLETION_REWARD;
+        const transactionPromises = activeStudents.map(async (student) => {
+          // Create transaction record
+          await tx.insert(currencyTransactions).values({
+            studentId: student.id,
+            amount: coinAmount,
+            transactionType: 'lesson_complete',
+            description: `${TRANSACTION_REASONS.LESSON_COMPLETE} - Lesson ${lessonIdNum}`,
+            teacherId: userId,
+          });
+
+          // Update student balance
+          await tx
+            .update(students)
+            .set({
+              currencyBalance: student.currencyBalance + coinAmount,
+              updatedAt: new Date(),
+            })
+            .where(eq(students.id, student.id));
+        });
+
+        await Promise.all(transactionPromises);
+      }
+    });
 
     res.json({ success: true });
   } catch (error) {
@@ -658,6 +751,121 @@ router.post('/:classId/lessons/4/activity/2/complete', requireAuth, verifyClassA
   } catch (error) {
     console.error('Error completing Activity 2:', error);
     res.status(500).json({ error: 'Failed to complete Activity 2' });
+  }
+});
+
+// POST /api/classes/:classId/lessons/:lessonId/reset
+// Reset lesson progress (but keep coins with students)
+router.post('/:classId/lessons/:lessonId/reset', requireAuth, verifyClassAccess, async (req, res) => {
+  try {
+    const { classId, lessonId } = req.params;
+    const lessonIdNum = parseInt(lessonId);
+
+    // Get lesson progress
+    const [progress] = await db
+      .select()
+      .from(lessonProgress)
+      .where(
+        and(
+          eq(lessonProgress.classId, classId),
+          eq(lessonProgress.lessonId, lessonIdNum)
+        )
+      );
+
+    if (!progress) {
+      return res.status(404).json({ error: 'Lesson progress not found' });
+    }
+
+    // Start a transaction to ensure atomicity
+    await db.transaction(async (tx) => {
+      // Reset lesson progress to in_progress
+      // Note: We do NOT reset coinsAwardedAt - students keep their coins
+      await tx
+        .update(lessonProgress)
+        .set({
+          status: 'in_progress',
+          completedAt: null,
+          currentActivity: 1,
+          updatedAt: new Date(),
+        })
+        .where(eq(lessonProgress.id, progress.id));
+
+      // Delete all activity progress for this lesson
+      await tx
+        .delete(lessonActivityProgress)
+        .where(eq(lessonActivityProgress.lessonProgressId, progress.id));
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error resetting lesson:', error);
+    res.status(500).json({ error: 'Failed to reset lesson' });
+  }
+});
+
+// POST /api/classes/:classId/lessons/:lessonId/activities/:activityNumber/reset
+// Reset specific activity progress
+router.post('/:classId/lessons/:lessonId/activities/:activityNumber/reset', requireAuth, verifyClassAccess, async (req, res) => {
+  try {
+    const { classId, lessonId, activityNumber } = req.params;
+    const lessonIdNum = parseInt(lessonId);
+    const activityNum = parseInt(activityNumber);
+
+    // Get lesson progress
+    const [progress] = await db
+      .select()
+      .from(lessonProgress)
+      .where(
+        and(
+          eq(lessonProgress.classId, classId),
+          eq(lessonProgress.lessonId, lessonIdNum)
+        )
+      );
+
+    if (!progress) {
+      return res.status(404).json({ error: 'Lesson progress not found' });
+    }
+
+    // Start a transaction
+    await db.transaction(async (tx) => {
+      // Delete the activity progress
+      await tx
+        .delete(lessonActivityProgress)
+        .where(
+          and(
+            eq(lessonActivityProgress.lessonProgressId, progress.id),
+            eq(lessonActivityProgress.activityNumber, activityNum)
+          )
+        );
+
+      // If lesson was completed, change it back to in_progress
+      if (progress.status === 'completed') {
+        await tx
+          .update(lessonProgress)
+          .set({
+            status: 'in_progress',
+            completedAt: null,
+            updatedAt: new Date(),
+          })
+          .where(eq(lessonProgress.id, progress.id));
+      }
+
+      // Update current activity if needed
+      if (progress.currentActivity && progress.currentActivity > activityNum) {
+        await tx
+          .update(lessonProgress)
+          .set({
+            currentActivity: activityNum,
+            updatedAt: new Date(),
+          })
+          .where(eq(lessonProgress.id, progress.id));
+      }
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error resetting activity:', error);
+    res.status(500).json({ error: 'Failed to reset activity' });
   }
 });
 
