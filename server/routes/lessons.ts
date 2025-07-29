@@ -262,11 +262,13 @@ router.post('/:classId/lessons/:lessonId/activities/:activityNumber/complete', r
           const transactionPromises = activeStudents.map(async (student) => {
             // Create transaction record
             await tx.insert(currencyTransactions).values({
+              id: uuidv7(),
               studentId: student.id,
               amount: coinAmount,
               transactionType: 'lesson_complete',
-              description: `${TRANSACTION_REASONS.LESSON_COMPLETE} - Lesson ${lessonIdNum}`,
+              description: `${TRANSACTION_REASONS.LESSON_COMPLETE} - Lesson ${progress.lessonId}`,
               teacherId: userId,
+              createdAt: new Date(),
             });
 
             // Update student balance
@@ -397,11 +399,13 @@ router.post('/:classId/lessons/:lessonId/complete', requireAuth, verifyClassAcce
         const transactionPromises = activeStudents.map(async (student) => {
           // Create transaction record
           await tx.insert(currencyTransactions).values({
+            id: uuidv7(),
             studentId: student.id,
             amount: coinAmount,
             transactionType: 'lesson_complete',
             description: `${TRANSACTION_REASONS.LESSON_COMPLETE} - Lesson ${lessonIdNum}`,
             teacherId: userId,
+            createdAt: new Date(),
           });
 
           // Update student balance
