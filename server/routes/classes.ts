@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import { uuidStorage } from '../storage-uuid';
 import { requireAuth } from '../middleware/auth';
 import { verifyClassAccess, verifyClassEditAccess } from '../middleware/ownership-collaborator';
@@ -11,12 +12,12 @@ import { createSecureLogger } from '../utils/secure-logger';
 import { NotFoundError, ErrorCode } from '../utils/errors';
 import type { AuthenticatedRequest } from '../types/api';
 
-const _logger = createSecureLogger('ClassRoutes');
+const logger = createSecureLogger('ClassRoutes');
 
 const router = Router();
 
 // Create class
-router.post('/', requireAuth, async (_req, res) => {
+router.post('/', requireAuth, async (req, res) => {
   const authReq = req as AuthenticatedRequest;
   try {
     // Validate request body
@@ -58,7 +59,7 @@ router.post('/', requireAuth, async (_req, res) => {
 });
 
 // Get teacher's classes
-router.get('/', requireAuth, async (_req, res) => {
+router.get('/', requireAuth, async (req, res) => {
   const authReq = req as AuthenticatedRequest;
   try {
     // Get classes owned by the teacher with student counts
@@ -83,7 +84,7 @@ router.get('/', requireAuth, async (_req, res) => {
 });
 
 // Get individual class by ID
-router.get('/:id', requireAuth, verifyClassAccess, async (_req, res) => {
+router.get('/:id', requireAuth, verifyClassAccess, async (req, res) => {
   const authReq = req as AuthenticatedRequest;
   try {
     const classId = authReq.params.id;
@@ -103,7 +104,7 @@ router.get('/:id', requireAuth, verifyClassAccess, async (_req, res) => {
 });
 
 // Get class by class code (for students)
-router.get('/class-code/:code', async (_req, res) => {
+router.get('/class-code/:code', async (req, res) => {
   try {
     const { code } = req.params;
     const classRecord = await uuidStorage.getClassByClassCode(code);
@@ -125,7 +126,7 @@ router.get('/class-code/:code', async (_req, res) => {
 });
 
 // Delete class (regular - fails if has students)
-router.delete('/:id', requireAuth, verifyClassEditAccess, async (_req, res) => {
+router.delete('/:id', requireAuth, verifyClassEditAccess, async (req, res) => {
   const authReq = req as AuthenticatedRequest;
   try {
     const classId = authReq.params.id;
@@ -144,7 +145,7 @@ router.delete('/:id', requireAuth, verifyClassEditAccess, async (_req, res) => {
 });
 
 // Import students from CSV
-router.post('/:id/import-students', requireAuth, async (_req, res) => {
+router.post('/:id/import-students', requireAuth, async (req, res) => {
   const authReq = req as AuthenticatedRequest;
   // This will be handled by the import-students middleware
   res.status(501).json({ message: "Import functionality moved to separate handler" });
@@ -397,7 +398,7 @@ router.get('/:id/analytics', requireAuth, verifyClassAccess, asyncWrapper(async 
 }));
 
 // Get pairings (now non-blocking!)
-router.get('/:id/pairings', requireAuth, verifyClassAccess, async (_req, res) => {
+router.get('/:id/pairings', requireAuth, verifyClassAccess, async (req, res) => {
   const authReq = req as AuthenticatedRequest;
   try {
     const classId = authReq.params.id;

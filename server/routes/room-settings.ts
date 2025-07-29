@@ -1,5 +1,6 @@
 // Room settings endpoints
 import type { Express } from "express";
+import { z } from "zod";
 import { db } from "../db";
 import { students } from "@shared/schema";
 import { eq } from "drizzle-orm";
@@ -14,7 +15,7 @@ const updateVisibilitySchema = z.object({
 export function registerRoomSettingsRoutes(app: Express) {
   
   // Get room settings
-  app.get("/api/room/:passportCode/settings", checkRoomAccess, async (_req, res) => {
+  app.get("/api/room/:passportCode/settings", checkRoomAccess, async (req, res) => {
     try {
       // Must be owner to view settings
       if (!req.roomAccess?.isOwner && !req.roomAccess?.isTeacher) {
@@ -60,7 +61,7 @@ export function registerRoomSettingsRoutes(app: Express) {
   });
 
   // Update room visibility
-  app.patch("/api/room/:passportCode/settings/visibility", optionalStudentAuth, checkRoomAccess, async (_req, res) => {
+  app.patch("/api/room/:passportCode/settings/visibility", optionalStudentAuth, checkRoomAccess, async (req, res) => {
     try {
       // Must be owner to change settings
       if (!req.roomAccess?.isOwner && !req.roomAccess?.isTeacher) {

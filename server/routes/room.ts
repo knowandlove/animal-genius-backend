@@ -1,5 +1,6 @@
 // Student Room Routes - No authentication required
 import type { Express } from "express";
+import { z } from "zod";
 import { db } from "../db";
 import { students, classes, currencyTransactions, storeItems, quizSubmissions, studentInventory, itemTypes, animalTypes, geniusTypes, patterns } from "@shared/schema";
 import { eq, and, or, desc, asc, inArray, sql } from "drizzle-orm";

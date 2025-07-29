@@ -1,3 +1,4 @@
+import { z } from 'zod';
 
 // Class creation schema
 export const createClassSchema = z.object({

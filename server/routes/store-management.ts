@@ -1,5 +1,6 @@
 // Store Management Routes - Teacher controls for store hours
 import type { Express } from "express";
+import { z } from "zod";
 import { AuthenticatedRequest } from "../types/api";
 import { db } from "../db";
 import { storeSettings, classes } from "@shared/schema";

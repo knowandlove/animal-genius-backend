@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
 import { uuidSchema } from '../../shared/validation';
 
 /**
@@ -7,7 +8,7 @@ import { uuidSchema } from '../../shared/validation';
  * @returns Express middleware function
  */
 export function validateUUID(paramName: string = 'id') {
-  return (req: Request, res: Response, _next: NextFunction) => {
+  return (req: Request, res: Response, next: NextFunction) => {
     try {
       const value = req.params[paramName];
       
@@ -56,7 +57,7 @@ export function validateUUID(paramName: string = 'id') {
  * @returns Express middleware function
  */
 export function validateUUIDs(...paramNames: string[]) {
-  return (req: Request, res: Response, _next: NextFunction) => {
+  return (req: Request, res: Response, next: NextFunction) => {
     try {
       for (const paramName of paramNames) {
         const value = req.params[paramName];
@@ -107,7 +108,7 @@ export function validateUUIDs(...paramNames: string[]) {
  * @returns Express middleware function
  */
 export function validateBodyUUID(fieldName: string) {
-  return (req: Request, res: Response, _next: NextFunction) => {
+  return (req: Request, res: Response, next: NextFunction) => {
     try {
       const value = req.body[fieldName];
       

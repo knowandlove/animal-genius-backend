@@ -6,6 +6,7 @@
  */
 
 import { Router } from 'express';
+import { z } from 'zod';
 import { supabaseAnon } from '../supabase-clients';
 import { provisionUser, verifyPassportCode } from '../services/jit-provisioning';
 import { authLimiter, passwordResetLimiter } from '../middleware/rateLimiter';
@@ -15,7 +16,7 @@ import { AuthenticationError, ValidationError, BusinessError, ErrorCode } from '
 import { createSecureLogger } from '../utils/secure-logger';
 
 const router = Router();
-const _logger = createSecureLogger('UnifiedAuth');
+const logger = createSecureLogger('UnifiedAuth');
 
 // Validation schemas
 const studentAuthSchema = z.object({

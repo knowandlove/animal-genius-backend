@@ -1,4 +1,5 @@
 import express from 'express';
+import { z } from "zod";
 import { db } from '../../db.js';
 import { tags } from '@shared/schema';
 import { eq, ilike, desc, and, inArray } from 'drizzle-orm';

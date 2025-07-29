@@ -1,4 +1,5 @@
 // Room Visit Tracking API - For achievement system and analytics
+import { z } from "zod";
 import type { Express } from "express";
 import { db } from "../db.js";
 import { roomVisits, students, classes } from "@shared/schema";

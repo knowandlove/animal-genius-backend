@@ -1,4 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import { z } from "zod";
 import { db } from '../db';
 import { patterns, storeItems, studentInventory, itemTypes, students } from '@shared/schema';
 import { eq, and, inArray, isNotNull } from 'drizzle-orm';

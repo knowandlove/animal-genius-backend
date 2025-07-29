@@ -1,4 +1,5 @@
 // Student API Routes - Uses passport code authentication system
+import { z } from "zod";
 import type { Express } from "express";
 import { db } from "../db";
 import { 

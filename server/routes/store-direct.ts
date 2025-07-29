@@ -1,4 +1,5 @@
 // Direct Store Purchase Routes (No Approval Required)
+import { z } from "zod";
 import { Router } from 'express';
 import { db } from '../db';
 import { students, storeItems, studentInventory, currencyTransactions, classes } from '@shared/schema';

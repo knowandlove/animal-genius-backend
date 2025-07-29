@@ -1,4 +1,5 @@
 import express from 'express';
+import { z } from "zod";
 import { db } from '../../db.js';
 import { interactions, replies, discussions } from '@shared/schema';
 import { eq, and, sql } from 'drizzle-orm';

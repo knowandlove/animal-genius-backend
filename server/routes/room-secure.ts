@@ -1,6 +1,7 @@
 // Secure Student Room Routes - Using session tokens
 // This is the new "room" version of the island-secure routes for Phase 1 migration
 import type { Express } from "express";
+import { z } from "zod";
 import { db } from "../db";
 import { quizSubmissions, students, classes, currencyTransactions, storeSettings, storeItems, animalTypes, geniusTypes } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
@@ -20,7 +21,7 @@ const passportCodeSchema = z.string().regex(/^[A-Z]{3}-[A-Z0-9]{3,4}$/, "Invalid
 export function registerSecureRoomRoutes(app: Express) {
   // ========== CLASS-SCOPED AUTHENTICATION ENDPOINT ==========
   // Exchange passport code for secure session, scoped to a class
-  app.post("/api/class/:classCode/authenticate", authLimiter, checkPassportLockout, async (_req, res) => {
+  app.post("/api/class/:classCode/authenticate", authLimiter, checkPassportLockout, async (req, res) => {
     try {
       const { classCode } = req.params;
       const { passportCode } = req.body;
@@ -96,7 +97,7 @@ export function registerSecureRoomRoutes(app: Express) {
   
   // ========== AUTHENTICATION ENDPOINT ==========
   // Exchange passport code for secure session (no class scope)
-  app.post("/api/room/authenticate", authLimiter, checkPassportLockout, async (_req, res) => {
+  app.post("/api/room/authenticate", authLimiter, checkPassportLockout, async (req, res) => {
     try {
       const { passportCode } = req.body;
       
@@ -164,7 +165,7 @@ export function registerSecureRoomRoutes(app: Express) {
   });
 
   // ========== CHECK SESSION ENDPOINT ==========
-  app.get("/api/room/check-session", requireUnifiedAuth, requireStudent, async (_req, res) => {
+  app.get("/api/room/check-session", requireUnifiedAuth, requireStudent, async (req, res) => {
     try {
       const [student] = await db
         .select({
@@ -192,7 +193,7 @@ export function registerSecureRoomRoutes(app: Express) {
   // ========== SECURE ENDPOINTS (require session) ==========
   
   // Get student room data (secure version)
-  app.get("/api/room/me", requireUnifiedAuth, requireStudent, async (_req, res) => {
+  app.get("/api/room/me", requireUnifiedAuth, requireStudent, async (req, res) => {
     try {
       const studentData = await db
         .select({
@@ -252,7 +253,7 @@ export function registerSecureRoomRoutes(app: Express) {
   });
 
   // Check store status (secure version)
-  app.get("/api/room/me/store", requireUnifiedAuth, requireStudent, async (_req, res) => {
+  app.get("/api/room/me/store", requireUnifiedAuth, requireStudent, async (req, res) => {
     try {
       // Get student's class
       const studentClass = await db
@@ -287,7 +288,7 @@ export function registerSecureRoomRoutes(app: Express) {
 
 
   // Equip/unequip items endpoint (secure version)
-  app.post("/api/room/me/equip", requireUnifiedAuth, requireStudent, async (_req, res) => {
+  app.post("/api/room/me/equip", requireUnifiedAuth, requireStudent, async (req, res) => {
     try {
       const { slot, itemId } = req.body;
       

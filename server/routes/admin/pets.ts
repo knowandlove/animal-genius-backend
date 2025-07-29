@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import { db } from '../../db';
 import { pets, studentPets } from '@shared/schema';
 import { eq, sql } from 'drizzle-orm';
@@ -81,7 +82,7 @@ const upload = multer({
  * GET /api/admin/pets
  * Get all pets with ownership stats
  */
-router.get('/', async (_req, res) => {
+router.get('/', async (req, res) => {
   try {
     // Get all pets with ownership count
     const petsWithStats = await db
@@ -108,7 +109,7 @@ router.get('/', async (_req, res) => {
  * GET /api/admin/pets/:id
  * Get a specific pet by ID
  */
-router.get('/:id', async (_req, res) => {
+router.get('/:id', async (req, res) => {
   try {
     const [pet] = await db
       .select()
@@ -131,7 +132,7 @@ router.get('/:id', async (_req, res) => {
  * POST /api/admin/pets
  * Create a new pet
  */
-router.post('/', async (_req, res) => {
+router.post('/', async (req, res) => {
   try {
     const validatedData = createPetSchema.parse(req.body);
 
@@ -163,7 +164,7 @@ router.post('/', async (_req, res) => {
  * PUT /api/admin/pets/:id
  * Update a pet
  */
-router.put('/:id', async (_req, res) => {
+router.put('/:id', async (req, res) => {
   try {
     const validatedData = updatePetSchema.parse(req.body);
 
@@ -201,7 +202,7 @@ router.put('/:id', async (_req, res) => {
  * DELETE /api/admin/pets/:id
  * Soft delete a pet (set inactive)
  */
-router.delete('/:id', async (_req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
     // Soft delete by setting inactive
     // Existing owners keep their pets, but no new purchases allowed
@@ -232,7 +233,7 @@ router.delete('/:id', async (_req, res) => {
  * POST /api/admin/pets/:id/upload-sprite
  * Upload a sprite sheet for a pet
  */
-router.post('/:id/upload-sprite', upload.single('sprite'), async (_req, res) => {
+router.post('/:id/upload-sprite', upload.single('sprite'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: 'No file uploaded' });

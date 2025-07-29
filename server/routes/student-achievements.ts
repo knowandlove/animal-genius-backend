@@ -1,4 +1,5 @@
 // Student Achievement System API - For tracking and unlocking achievements
+import { z } from "zod";
 import type { Express } from "express";
 import { db } from "../db.js";
 import { studentAchievements, students, roomVisits, roomGuestbook } from "@shared/schema";

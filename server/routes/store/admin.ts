@@ -1,5 +1,6 @@
 // Store Admin Routes - Database-driven store management
 import type { Express } from "express";
+import { z } from "zod";
 import { db } from "../../db";
 import { storeItems, itemTypes, patterns } from "@shared/schema";
 import { eq, desc, asc } from "drizzle-orm";

@@ -1,5 +1,6 @@
 // Pet System Routes
 import { Router, Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
 import { requireUnifiedAuth, requireStudent } from '../middleware/unified-auth';
 import { validateOwnDataAccess } from '../middleware/validate-student-class';
 import { storePurchaseLimiter, storeBrowsingLimiter } from '../middleware/rateLimiter';
@@ -20,7 +21,7 @@ import { asyncWrapper } from '../utils/async-wrapper';
 import { ValidationError, BusinessError, InternalError, ErrorCode } from '../utils/errors';
 import { createSecureLogger } from '../utils/secure-logger';
 
-const _logger = createSecureLogger('PetRoutes');
+const logger = createSecureLogger('PetRoutes');
 
 const router = Router();
 
@@ -30,7 +31,7 @@ logger.log('Pets router loaded');
  * Middleware that allows either student session or teacher auth
  * Teachers can interact with any pet, students only with their own
  */
-async function flexiblePetAuth(req: Request, res: Response, _next: NextFunction) {
+async function flexiblePetAuth(req: Request, res: Response, next: NextFunction) {
   // Use unified auth which handles both student and teacher authentication
   return requireUnifiedAuth(req, res, (err) => {
     if (err) return; // Error already handled by unified auth

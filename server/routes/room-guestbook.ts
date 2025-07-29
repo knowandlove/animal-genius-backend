@@ -1,5 +1,6 @@
 // Room Guestbook API - For visitor messages and social features
 import type { Express } from "express";
+import { z } from "zod";
 import { db } from "../db.js";
 import { roomGuestbook, students, roomVisits } from "@shared/schema";
 import { eq, and, desc, count, isNotNull } from "drizzle-orm";

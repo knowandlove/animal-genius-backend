@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { z } from "zod";
 import { uuidStorage } from '../storage-uuid';
 import { requireAuth } from '../middleware/auth';
 import { verifyClassEditAccess } from '../middleware/ownership-collaborator';

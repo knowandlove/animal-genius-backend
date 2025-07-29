@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import { db } from '../db';
 import { classes, students, classValuesSessions, classValuesVotes, classValuesResults } from '../../shared/schema';
 import { CORE_VALUE_CLUSTERS, isValidValueCode, getValueByCode, getClusterById } from '../../shared/core-values-constants';
@@ -28,7 +29,7 @@ const submitVotesSchema = z.object({
 });
 
 // GET /api/class-values/clusters - Get all value clusters and options
-router.get('/clusters', async (_req, res) => {
+router.get('/clusters', async (req, res) => {
   try {
     res.json({
       clusters: CORE_VALUE_CLUSTERS,
@@ -40,7 +41,7 @@ router.get('/clusters', async (_req, res) => {
 });
 
 // POST /api/class-values/start-session - Teacher starts a voting session
-router.post('/start-session', requireAuth, async (_req, res) => {
+router.post('/start-session', requireAuth, async (req, res) => {
   try {
     const { classId } = startSessionSchema.parse(req.body);
     const teacherId = req.user!.userId;
@@ -128,7 +129,7 @@ router.post('/start-session', requireAuth, async (_req, res) => {
 });
 
 // GET /api/class-values/session/:classCode - Get active session for a class (by class code)
-router.get('/session/:classCode', async (_req, res) => {
+router.get('/session/:classCode', async (req, res) => {
   try {
     const { classCode } = req.params;
 
@@ -179,7 +180,7 @@ router.get('/session/:classCode', async (_req, res) => {
 });
 
 // GET /api/class-values/session-by-id/:sessionId - Get session info by sessionId (for students)
-router.get('/session-by-id/:sessionId', async (_req, res) => {
+router.get('/session-by-id/:sessionId', async (req, res) => {
   try {
     const { sessionId } = req.params;
 
@@ -223,7 +224,7 @@ router.get('/session-by-id/:sessionId', async (_req, res) => {
 });
 
 // POST /api/class-values/extend-session/:sessionId - Extend session time by 15 minutes
-router.post('/extend-session/:sessionId', requireAuth, async (_req, res) => {
+router.post('/extend-session/:sessionId', requireAuth, async (req, res) => {
   try {
     const { sessionId } = req.params;
 
@@ -269,7 +270,7 @@ router.post('/extend-session/:sessionId', requireAuth, async (_req, res) => {
 });
 
 // POST /api/class-values/reset-session/:sessionId - Reset session and delete all votes
-router.post('/reset-session/:sessionId', requireAuth, async (_req, res) => {
+router.post('/reset-session/:sessionId', requireAuth, async (req, res) => {
   try {
     const { sessionId } = req.params;
 
@@ -337,7 +338,7 @@ router.post('/reset-session/:sessionId', requireAuth, async (_req, res) => {
 });
 
 // POST /api/class-values/vote - Student submits their votes
-router.post('/vote', requireStudentAuth, async (_req, res) => {
+router.post('/vote', requireStudentAuth, async (req, res) => {
   try {
     console.log('Vote submission received:', {
       body: req.body,
@@ -477,7 +478,7 @@ router.post('/vote', requireStudentAuth, async (_req, res) => {
 });
 
 // GET /api/class-values/progress/:sessionId - Get voting progress
-router.get('/progress/:sessionId', requireAuth, async (_req, res) => {
+router.get('/progress/:sessionId', requireAuth, async (req, res) => {
   try {
     const { sessionId } = req.params;
 
@@ -538,7 +539,7 @@ router.get('/progress/:sessionId', requireAuth, async (_req, res) => {
 });
 
 // POST /api/class-values/finalize/:sessionId - Finalize voting and calculate results
-router.post('/finalize/:sessionId', requireAuth, async (_req, res) => {
+router.post('/finalize/:sessionId', requireAuth, async (req, res) => {
   try {
     const { sessionId } = req.params;
 
@@ -671,7 +672,7 @@ router.post('/finalize/:sessionId', requireAuth, async (_req, res) => {
 });
 
 // GET /api/class-values/results/:classId - Get class values results
-router.get('/results/:classId', async (_req, res) => {
+router.get('/results/:classId', async (req, res) => {
   try {
     const { classId } = req.params;
     console.log('🚀 RESULTS ENDPOINT HIT! classId:', classId);
@@ -734,7 +735,7 @@ router.get('/results/:classId', async (_req, res) => {
 });
 
 // GET /api/class-values/check-voted/:sessionId - Check if student has voted
-router.get('/check-voted/:sessionId', requireStudentAuth, async (_req, res) => {
+router.get('/check-voted/:sessionId', requireStudentAuth, async (req, res) => {
   try {
     const { sessionId } = req.params;
     const studentId = req.student!.id; // From passport authentication
@@ -758,7 +759,7 @@ router.get('/check-voted/:sessionId', requireStudentAuth, async (_req, res) => {
 });
 
 // POST /api/class-values/cleanup-sessions - Development helper to clean up active sessions
-router.post('/cleanup-sessions', requireAuth, async (_req, res) => {
+router.post('/cleanup-sessions', requireAuth, async (req, res) => {
   // Only allow admin users in development mode
   if (process.env.NODE_ENV !== 'development' || !req.user?.isAdmin) {
     return res.status(403).json({ error: 'Access denied' });
