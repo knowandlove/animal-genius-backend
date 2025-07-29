@@ -133,6 +133,7 @@ router.post('/:classId/lessons/:lessonId/start', requireAuth, verifyClassAccess,
     const [newProgress] = await db
       .insert(lessonProgress)
       .values({
+        id: uuidv7(),
         classId,
         lessonId: lessonIdNum,
         status: 'in_progress',
@@ -172,6 +173,7 @@ router.post('/:classId/lessons/:lessonId/activities/:activityNumber/complete', r
       [progress] = await db
         .insert(lessonProgress)
         .values({
+          id: uuidv7(),
           classId,
           lessonId: lessonIdNum,
           status: 'in_progress',
@@ -197,6 +199,7 @@ router.post('/:classId/lessons/:lessonId/activities/:activityNumber/complete', r
       await db
         .insert(lessonActivityProgress)
         .values({
+          id: uuidv7(),
           lessonProgressId: progress.id,
           activityNumber: activityNum,
           completed: true,
@@ -224,13 +227,16 @@ router.post('/:classId/lessons/:lessonId/activities/:activityNumber/complete', r
         .where(eq(lessonProgress.id, progress.id));
     }
 
-    // Check if all activities are complete
+    // Check if all activities are complete - re-fetch to get updated count
     const allActivities = await db
       .select()
       .from(lessonActivityProgress)
       .where(eq(lessonActivityProgress.lessonProgressId, progress.id));
 
+    // Include the current activity we just marked complete
     const completedCount = allActivities.filter(a => a.completed).length;
+    
+    console.log(`Activity ${activityNum} completed. Total completed: ${completedCount}/4. Lesson status: ${progress.status}`);
     
     // If all 4 activities are complete, mark lesson as complete and award coins
     if (completedCount >= 4 && progress.status !== 'completed') {
@@ -319,6 +325,7 @@ router.post('/:classId/lessons/:lessonId/complete', requireAuth, verifyClassAcce
         [progress] = await tx
           .insert(lessonProgress)
           .values({
+            id: uuidv7(),
             classId,
             lessonId: lessonIdNum,
             status: 'completed',
@@ -370,6 +377,7 @@ router.post('/:classId/lessons/:lessonId/complete', requireAuth, verifyClassAcce
           await tx
             .insert(lessonActivityProgress)
             .values({
+              id: uuidv7(),
               lessonProgressId: progress.id,
               activityNumber: i,
               completed: true,
@@ -554,6 +562,7 @@ router.post('/:classId/lessons/4/activity/2/start-voting', requireAuth, verifyCl
       [progress[0]] = await db
         .insert(lessonProgress)
         .values({
+          id: uuidv7(),
           classId,
           lessonId: 4,
           status: 'in_progress',
@@ -698,6 +707,7 @@ router.post('/:classId/lessons/4/activity/2/complete', requireAuth, verifyClassA
       [progress] = await db
         .insert(lessonProgress)
         .values({
+          id: uuidv7(),
           classId,
           lessonId: lessonIdNum,
           status: 'in_progress',
@@ -723,6 +733,7 @@ router.post('/:classId/lessons/4/activity/2/complete', requireAuth, verifyClassA
       await db
         .insert(lessonActivityProgress)
         .values({
+          id: uuidv7(),
           lessonProgressId: progress.id,
           activityNumber: activityNum,
           completed: true,
