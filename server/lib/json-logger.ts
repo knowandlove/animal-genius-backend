@@ -43,7 +43,7 @@ class JSONLogger {
     
     if (typeof obj === 'string') {
       // Check if string contains sensitive patterns
-      for (const [key, pattern] of Object.entries(SENSITIVE_PATTERNS)) {
+      for (const [_key, pattern] of Object.entries(SENSITIVE_PATTERNS)) {
         if (pattern.test(obj)) {
           return '[REDACTED]';
         }

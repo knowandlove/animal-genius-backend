@@ -1,6 +1,5 @@
 // Pet System Routes
 import { Router, Request, Response, NextFunction } from 'express';
-import { z } from 'zod';
 import { requireUnifiedAuth, requireStudent } from '../middleware/unified-auth';
 import { validateOwnDataAccess } from '../middleware/validate-student-class';
 import { storePurchaseLimiter, storeBrowsingLimiter } from '../middleware/rateLimiter';
@@ -21,7 +20,7 @@ import { asyncWrapper } from '../utils/async-wrapper';
 import { ValidationError, BusinessError, InternalError, ErrorCode } from '../utils/errors';
 import { createSecureLogger } from '../utils/secure-logger';
 
-const logger = createSecureLogger('PetRoutes');
+const _logger = createSecureLogger('PetRoutes');
 
 const router = Router();
 
@@ -31,7 +30,7 @@ logger.log('Pets router loaded');
  * Middleware that allows either student session or teacher auth
  * Teachers can interact with any pet, students only with their own
  */
-async function flexiblePetAuth(req: Request, res: Response, next: NextFunction) {
+async function flexiblePetAuth(req: Request, res: Response, _next: NextFunction) {
   // Use unified auth which handles both student and teacher authentication
   return requireUnifiedAuth(req, res, (err) => {
     if (err) return; // Error already handled by unified auth
@@ -79,7 +78,7 @@ const renameSchema = z.object({
  * GET /api/pets/catalog
  * Get all available pets
  */
-router.get('/catalog', storeBrowsingLimiter, asyncWrapper(async (req, res, next) => {
+router.get('/catalog', storeBrowsingLimiter, asyncWrapper(async (req, res, _next) => {
   logger.debug('Pet catalog endpoint hit');
   const pets = await getAvailablePets();
   res.json(pets);
@@ -90,7 +89,7 @@ router.get('/catalog', storeBrowsingLimiter, asyncWrapper(async (req, res, next)
  * Get student's pet with current state
  * Requires student authentication
  */
-router.get('/my-pet', requireUnifiedAuth, requireStudent, asyncWrapper(async (req, res, next) => {
+router.get('/my-pet', requireUnifiedAuth, requireStudent, asyncWrapper(async (req, res, _next) => {
   // Bridge: Set req.studentId for legacy compatibility
   if (req.auth?.role === 'student') {
     (req as any).studentId = req.auth.studentId;
@@ -112,7 +111,7 @@ router.get('/my-pet', requireUnifiedAuth, requireStudent, asyncWrapper(async (re
  * Purchase a pet
  * Requires student authentication
  */
-router.post('/purchase', requireUnifiedAuth, requireStudent, storePurchaseLimiter, asyncWrapper(async (req, res, next) => {
+router.post('/purchase', requireUnifiedAuth, requireStudent, storePurchaseLimiter, asyncWrapper(async (req, res, _next) => {
   // Bridge: Set req.studentId for legacy compatibility
   if (req.auth?.role === 'student') {
     (req as any).studentId = req.auth.studentId;
@@ -162,7 +161,7 @@ router.post('/purchase', requireUnifiedAuth, requireStudent, storePurchaseLimite
  * Interact with a pet (feed, play, pet)
  * Requires student or teacher authentication
  */
-router.post('/:petId/interact', optionalAuth, flexiblePetAuth, storePurchaseLimiter, asyncWrapper(async (req, res, next) => {
+router.post('/:petId/interact', optionalAuth, flexiblePetAuth, storePurchaseLimiter, asyncWrapper(async (req, res, _next) => {
   const petId = req.params.petId;
   const { interactionType } = interactSchema.parse(req.body);
   
@@ -196,7 +195,7 @@ router.post('/:petId/interact', optionalAuth, flexiblePetAuth, storePurchaseLimi
  * Update pet position in room
  * Requires student authentication
  */
-router.put('/:petId/position', requireUnifiedAuth, requireStudent, asyncWrapper(async (req, res, next) => {
+router.put('/:petId/position', requireUnifiedAuth, requireStudent, asyncWrapper(async (req, res, _next) => {
   const studentId = req.studentId!;
   const petId = req.params.petId;
   const position = positionSchema.parse(req.body);
@@ -215,7 +214,7 @@ router.put('/:petId/position', requireUnifiedAuth, requireStudent, asyncWrapper(
  * Rename a pet
  * Requires student authentication
  */
-router.put('/:petId/rename', requireUnifiedAuth, requireStudent, asyncWrapper(async (req, res, next) => {
+router.put('/:petId/rename', requireUnifiedAuth, requireStudent, asyncWrapper(async (req, res, _next) => {
   const studentId = req.studentId!;
   const petId = req.params.petId;
   const { newName } = renameSchema.parse(req.body);
@@ -242,7 +241,7 @@ router.put('/:petId/rename', requireUnifiedAuth, requireStudent, asyncWrapper(as
  * GET /api/pets/:passportCode/pet
  * Get a student's pet by passport code (public endpoint for viewing other students' pets)
  */
-router.get('/:passportCode/pet', storeBrowsingLimiter, validateOwnDataAccess, asyncWrapper(async (req, res, next) => {
+router.get('/:passportCode/pet', storeBrowsingLimiter, validateOwnDataAccess, asyncWrapper(async (req, res, _next) => {
   const studentId = res.locals.studentId;
   const pet = await getStudentPet(studentId);
   

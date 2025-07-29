@@ -8,7 +8,7 @@ import { eq } from "drizzle-orm";
 
 export function registerNormalizedItemPositionRoutes(app: Express) {
   // Public endpoint to get normalized item positions
-  app.get("/api/item-positions-normalized", async (req, res) => {
+  app.get("/api/item-positions-normalized", async (_req, res) => {
     try {
       const result = await db.execute(sql`
         SELECT 
@@ -30,7 +30,7 @@ export function registerNormalizedItemPositionRoutes(app: Express) {
   });
 
   // Admin endpoint to get all positions with metadata
-  app.get("/api/admin/item-positions-normalized", requireAuth, requireAdmin, async (req, res) => {
+  app.get("/api/admin/item-positions-normalized", requireAuth, requireAdmin, async (_req, res) => {
     const authReq = req as AuthenticatedRequest;
     try {
 
@@ -54,7 +54,7 @@ export function registerNormalizedItemPositionRoutes(app: Express) {
   });
 
   // Save/update normalized position
-  app.post("/api/admin/item-positions-normalized", requireAuth, requireAdmin, async (req, res) => {
+  app.post("/api/admin/item-positions-normalized", requireAuth, requireAdmin, async (_req, res) => {
     const authReq = req as AuthenticatedRequest;
     try {
 
@@ -121,7 +121,7 @@ export function registerNormalizedItemPositionRoutes(app: Express) {
   });
 
   // Copy positions to all animals
-  app.post("/api/admin/item-positions-normalized/copy-all", requireAuth, requireAdmin, async (req, res) => {
+  app.post("/api/admin/item-positions-normalized/copy-all", requireAuth, requireAdmin, async (_req, res) => {
     const authReq = req as AuthenticatedRequest;
     try {
 
@@ -178,7 +178,7 @@ export function registerNormalizedItemPositionRoutes(app: Express) {
   });
 
   // Batch update positions
-  app.post("/api/admin/item-positions-normalized/batch", requireAuth, requireAdmin, async (req, res) => {
+  app.post("/api/admin/item-positions-normalized/batch", requireAuth, requireAdmin, async (_req, res) => {
     const authReq = req as AuthenticatedRequest;
     try {
       const { positions } = req.body;
@@ -234,7 +234,7 @@ export function registerNormalizedItemPositionRoutes(app: Express) {
   });
 
   // Get animal metadata
-  app.get("/api/animals", async (req, res) => {
+  app.get("/api/animals", async (_req, res) => {
     try {
       const result = await db.execute(sql`
         SELECT * FROM animals ORDER BY display_name

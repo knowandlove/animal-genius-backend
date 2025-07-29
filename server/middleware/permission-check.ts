@@ -4,8 +4,8 @@ import { Request, Response, NextFunction } from 'express';
  * Placeholder for permission check middleware
  * All collaborator functionality has been removed
  */
-export function requirePermission(permission: string) {
-  return async (req: Request, res: Response, next: NextFunction) => {
+export function requirePermission(_permission: string) {
+  return async (_req: Request, _res: Response, next: NextFunction) => {
     // Permission checks have been removed - using simple ownership checks instead
     next();
   };

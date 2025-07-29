@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 
 // Debug middleware to log all community requests
-export function debugCommunityRequests(req: Request, res: Response, next: NextFunction) {
+export function debugCommunityRequests(req: Request, res: Response, _next: NextFunction) {
   console.log(`[COMMUNITY DEBUG] ${req.method} ${req.originalUrl}`);
   console.log('[COMMUNITY DEBUG] Headers:', {
     authorization: req.headers.authorization ? 'Bearer token present' : 'No auth header',

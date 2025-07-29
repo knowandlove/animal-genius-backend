@@ -31,7 +31,7 @@ export function registerClassIslandRoutes(app: Express) {
   });
   
   // Public class island view - no auth required
-  app.get("/api/class/:classCode/island", async (req, res) => {
+  app.get("/api/class/:classCode/island", async (_req, res) => {
     try {
       const { classCode } = req.params;
       console.log('Class island request for code:', classCode);
@@ -117,7 +117,7 @@ export function registerClassIslandRoutes(app: Express) {
   });
   
   // Get class island for teachers
-  app.get("/api/classes/:classId/island", requireAuth, async (req, res) => {
+  app.get("/api/classes/:classId/island", requireAuth, async (_req, res) => {
     try {
       const { classId } = req.params;
       const teacherId = req.user?.userId;
@@ -188,7 +188,7 @@ export function registerClassIslandRoutes(app: Express) {
   });
   
   // Get class island for students (limited view)
-  app.get("/api/room/my-class-island", requireUnifiedAuth, requireStudent, async (req, res) => {
+  app.get("/api/room/my-class-island", requireUnifiedAuth, requireStudent, async (_req, res) => {
     try {
       const studentId = req.student?.id!;
       

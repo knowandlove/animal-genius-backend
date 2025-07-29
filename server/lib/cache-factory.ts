@@ -7,7 +7,7 @@ import { redisCache } from './redis-cache';
 import * as nodeCache from './cache';
 import { createSecureLogger } from '../utils/secure-logger';
 
-const logger = createSecureLogger('CacheFactory');
+const _logger = createSecureLogger('CacheFactory');
 
 export interface CacheInterface {
   get<T>(key: string): Promise<T | undefined> | T | undefined;

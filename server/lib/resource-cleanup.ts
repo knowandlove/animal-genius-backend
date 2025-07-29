@@ -5,7 +5,7 @@
 
 import { createSecureLogger } from '../utils/secure-logger';
 
-const logger = createSecureLogger('ResourceCleanup');
+const _logger = createSecureLogger('ResourceCleanup');
 
 export interface CleanupHandler {
   name: string;

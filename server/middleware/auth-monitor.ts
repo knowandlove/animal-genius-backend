@@ -25,7 +25,7 @@ const ROLLING_WINDOW_SIZE = CONFIG.MONITORING.METRICS_ROLLING_WINDOW;
 /**
  * Middleware to monitor authentication performance
  */
-export function authPerformanceMonitor(req: Request, res: Response, next: NextFunction) {
+export function authPerformanceMonitor(req: Request, res: Response, _next: NextFunction) {
   const startTime = Date.now();
   
   // Track the response

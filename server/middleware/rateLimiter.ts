@@ -1,5 +1,4 @@
 import rateLimit from 'express-rate-limit';
-import { Request, Response } from 'express';
 import { CONFIG } from '../config/constants';
 
 // General rate limiter for all API endpoints

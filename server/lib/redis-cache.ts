@@ -8,7 +8,7 @@ import { createClient, RedisClientType } from 'redis';
 import { createSecureLogger } from '../utils/secure-logger';
 import { CONFIG } from '../config/constants';
 
-const logger = createSecureLogger('RedisCache');
+const _logger = createSecureLogger('RedisCache');
 
 // Default TTL in seconds
 const DEFAULT_TTL = CONFIG.CACHE.DEFAULT_TTL;

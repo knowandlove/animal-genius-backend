@@ -33,7 +33,7 @@ export const optionalAuth = baseOptionalAuth as unknown as (
 /**
  * Type-safe student authentication middleware
  */
-export const requireStudentAuth = ((req: StudentAuthenticatedRequest, res: Response, next: NextFunction) => {
+export const requireStudentAuth = ((req: StudentAuthenticatedRequest, res: Response, _next: NextFunction) => {
   return requireUnifiedAuth(req, res, () => requireStudent(req, res, next));
 }) as unknown as (
   req: StudentAuthenticatedRequest,

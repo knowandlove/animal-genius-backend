@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import type { Profile } from '@shared/schema';
-import { supabaseAdmin, supabaseAnon } from '../supabase-clients';
+import { supabaseAnon } from '../supabase-clients';
 import { db } from '../db';
 import { profiles } from '@shared/schema';
 import { eq } from 'drizzle-orm';

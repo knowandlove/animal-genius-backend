@@ -17,7 +17,7 @@ Sentry.init({
   profilesSampleRate: 1.0,
   
   // Privacy and security settings
-  beforeSend(event, hint) {
+  beforeSend(event, _hint) {
     // Don't send events in development
     if (process.env.NODE_ENV !== 'production') {
       return null;

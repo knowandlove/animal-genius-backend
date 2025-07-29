@@ -1,4 +1,3 @@
-import { z } from 'zod';
 import { emailSchema, passwordSchema } from '@shared/validation';
 
 // Registration schema

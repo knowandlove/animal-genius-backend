@@ -12,7 +12,7 @@ const router = Router();
  * Create a checkout session for teacher payment
  * POST /api/payments/create-checkout-session
  */
-router.post('/create-checkout-session', requireAuth, async (req, res) => {
+router.post('/create-checkout-session', requireAuth, async (_req, res) => {
   try {
     const { classId, studentCount } = req.body as CreateCheckoutSessionRequest;
     const teacherId = req.user!.userId; // Changed from .id to .userId
@@ -73,7 +73,7 @@ router.post('/create-checkout-session', requireAuth, async (req, res) => {
  * POST /api/payments/mock/webhook-handler
  * Note: In production, this would be an unauthenticated endpoint that verifies Stripe signatures
  */
-router.post('/mock/webhook-handler', async (req, res) => {
+router.post('/mock/webhook-handler', async (_req, res) => {
   try {
     // Verify webhook signature
     const signature = req.headers['stripe-signature'] || req.headers['x-webhook-signature'];
@@ -140,7 +140,7 @@ router.post('/mock/webhook-handler', async (req, res) => {
  * Get payment status
  * GET /api/payments/status/:sessionId
  */
-router.get('/status/:sessionId', async (req, res) => {
+router.get('/status/:sessionId', async (_req, res) => {
   try {
     const { sessionId } = req.params;
 

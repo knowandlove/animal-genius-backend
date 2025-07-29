@@ -66,7 +66,7 @@ export function getSessionCount(userId: string): number {
 /**
  * Middleware to track concurrent sessions
  */
-export function sessionTracker(req: Request, res: Response, next: NextFunction) {
+export function sessionTracker(req: Request, res: Response, _next: NextFunction) {
   // Only track sessions for authenticated users
   if (req.user?.userId) {
     const sessionId = generateSessionId(req);

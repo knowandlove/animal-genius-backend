@@ -2,7 +2,6 @@ import { Router } from 'express';
 import { requireAuth, requireAdmin } from '../../middleware/auth';
 import StorageRouter from '../../services/storage-router';
 import multer from 'multer';
-import { z } from 'zod';
 import rateLimit from 'express-rate-limit';
 import sharp from 'sharp';
 import path from 'path';
@@ -65,7 +64,7 @@ const uploadAssetSchema = z.object({
  * - name: Display name for the asset
  * - bucket: Target bucket (defaults to 'store-items')
  */
-router.post('/upload-asset', requireAuth, requireAdmin, uploadLimiter, upload.single('file'), async (req, res) => {
+router.post('/upload-asset', requireAuth, requireAdmin, uploadLimiter, upload.single('file'), async (_req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ 
@@ -272,7 +271,7 @@ router.post('/upload-asset', requireAuth, requireAdmin, uploadLimiter, upload.si
  * DELETE /api/admin/delete-asset/:assetId
  * Delete an asset (only for cloud storage)
  */
-router.delete('/delete-asset/:assetId', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/delete-asset/:assetId', requireAuth, requireAdmin, async (_req, res) => {
   try {
     const { assetId } = req.params;
 
@@ -303,7 +302,7 @@ router.delete('/delete-asset/:assetId', requireAuth, requireAdmin, async (req, r
  * GET /api/admin/storage-stats
  * Get storage usage statistics
  */
-router.get('/storage-stats', requireAuth, requireAdmin, async (req, res) => {
+router.get('/storage-stats', requireAuth, requireAdmin, async (_req, res) => {
   try {
     const stats = await StorageRouter.getStorageStats();
     
@@ -326,7 +325,7 @@ router.get('/storage-stats', requireAuth, requireAdmin, async (req, res) => {
  * GET /api/admin/storage-status
  * Check storage configuration and feature flag status
  */
-router.get('/storage-status', requireAuth, requireAdmin, async (req, res) => {
+router.get('/storage-status', requireAuth, requireAdmin, async (_req, res) => {
   const status = {
     cloudStorageEnabled: StorageRouter.isCloudStorageEnabled(),
     supabaseConfigured: !!(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY),

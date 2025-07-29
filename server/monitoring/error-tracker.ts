@@ -181,7 +181,7 @@ class ErrorTracker {
   } {
     // Find all stats entries for this error code
     const relevantStats: ErrorStats[] = [];
-    const recentOccurrences: TrackedError[] = [];
+    const _recentOccurrences: TrackedError[] = [];
     
     this.errorStats.forEach((stats, key) => {
       if (key.startsWith(`${errorCode}:`)) {

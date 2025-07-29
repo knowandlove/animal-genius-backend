@@ -1,7 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { Request, Response } from "express";
-import { authLimiter } from "./middleware/rateLimiter";
 import { handleImportStudents, uploadCSV } from "./routes/import-students";
 import { metricsService } from "./monitoring/metrics-service";
 import { metricsEndpoint } from "./middleware/observability";

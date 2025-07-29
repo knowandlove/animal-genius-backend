@@ -1,19 +1,18 @@
-import { Router, Request, Response } from 'express';
+import { Router } from 'express';
 import { AuthenticatedRequest } from '../types/api';
 import { uuidStorage } from '../storage-uuid';
 import { requireAuth } from '../middleware/auth';
 import { parseSubmissionDetails } from '../utils/submission-parser';
-import { generateClassInsights } from '../services/pairingService';
 import { asyncWrapper } from '../utils/async-wrapper';
-import { NotFoundError, AuthorizationError, InternalError, ErrorCode } from '../utils/errors';
+import { NotFoundError, AuthorizationError, ErrorCode } from '../utils/errors';
 import { createSecureLogger } from '../utils/secure-logger';
 
-const logger = createSecureLogger('AnalyticsRoutes');
+const _logger = createSecureLogger('AnalyticsRoutes');
 
 const router = Router();
 
 // Get student data for teacher view
-router.get('/teacher/students/:studentId', requireAuth, asyncWrapper(async (req, res, next) => {
+router.get('/teacher/students/:studentId', requireAuth, asyncWrapper(async (req, res) => {
   const authReq = req as AuthenticatedRequest;
   const studentId = authReq.params.studentId;
   const teacherId = authReq.user!.userId;

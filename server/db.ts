@@ -63,11 +63,11 @@ pool.on('error', (err) => {
 });
 
 // Connection pool monitoring for classroom load
-pool.on('connect', (client) => {
+pool.on('connect', (_client) => {
   console.log(`🔗 New client connected. Pool: ${pool.totalCount}/${POOL_MAX} connections`);
 });
 
-pool.on('acquire', (client) => {
+pool.on('acquire', (_client) => {
   const waiting = pool.waitingCount;
   if (waiting > 0) {
     console.warn(`⏳ Connection acquired. ${waiting} requests waiting in queue`);
@@ -75,7 +75,7 @@ pool.on('acquire', (client) => {
 });
 
 // Import cleanup utilities if available
-let dbMonitorInterval: NodeJS.Timeout;
+let _dbMonitorInterval: NodeJS.Timeout;
 
 // Log pool stats every 30 seconds during operation
 const monitorDbPool = () => {

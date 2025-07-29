@@ -3,13 +3,10 @@ import { requireAuth, requireAdmin } from '../../middleware/auth';
 import { db } from '../../db';
 import { 
   profiles, 
-  classes, 
-  quizSubmissions, 
-  storeItems, 
-  currencyTransactions,
+  storeItems,
   students 
 } from '@shared/schema';
-import { sql, count, avg, desc, and, gte, eq } from 'drizzle-orm';
+import { sql, count, avg, desc, and, gte } from 'drizzle-orm';
 import { errorTracker } from '../../monitoring/error-tracker';
 import { getHttpMetrics } from '../../middleware/observability';
 import { metricsService } from '../../monitoring/metrics-service';
@@ -20,12 +17,12 @@ const router = Router();
  * GET /api/admin/quick-stats
  * Get quick statistics for the admin dashboard
  */
-router.get('/quick-stats', requireAuth, requireAdmin, async (req, res) => {
+router.get('/quick-stats', requireAuth, requireAdmin, async (_req, res) => {
   try {
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const _monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
     // Teacher stats
     const teacherStats = await db.select({

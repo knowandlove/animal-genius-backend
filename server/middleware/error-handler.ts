@@ -18,12 +18,12 @@ import {
 import { createSecureLogger } from '../utils/secure-logger';
 import { errorTracker } from '../monitoring/error-tracker';
 
-const logger = createSecureLogger('ErrorHandler');
+const _logger = createSecureLogger('ErrorHandler');
 
 /**
  * Request ID middleware - adds unique ID to each request
  */
-export function requestIdMiddleware(req: Request, res: Response, next: NextFunction) {
+export function requestIdMiddleware(req: Request, res: Response, _next: NextFunction) {
   req.id = uuidv4();
   res.setHeader('X-Request-Id', req.id);
   next();
@@ -34,7 +34,7 @@ export function requestIdMiddleware(req: Request, res: Response, next: NextFunct
  * Catches async errors and passes them to error middleware
  */
 export function asyncHandler(fn: Function) {
-  return (req: Request, res: Response, next: NextFunction) => {
+  return (req: Request, res: Response, _next: NextFunction) => {
     Promise.resolve(fn(req, res, next)).catch(next);
   };
 }

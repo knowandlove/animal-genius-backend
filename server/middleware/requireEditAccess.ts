@@ -19,7 +19,7 @@ interface RoomAccessRequest extends Request {
  * Middleware to require edit access to a room
  * Must be used after checkRoomAccess middleware
  */
-export function requireEditAccess(req: RoomAccessRequest, res: Response, next: NextFunction) {
+export function requireEditAccess(req: RoomAccessRequest, res: Response, _next: NextFunction) {
   if (!req.roomAccess) {
     return res.status(403).json({ message: "Access denied - no room access information" });
   }

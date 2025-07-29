@@ -1,4 +1,4 @@
-import { Router, Response } from 'express';
+import { Router } from 'express';
 import { AuthenticatedRequest } from '../../types/api';
 import { requireAuth, requireAdmin } from '../../middleware/auth';
 import multer from 'multer';
@@ -94,7 +94,7 @@ router.post('/upload', requireAuth, requireAdmin, upload.fields([
       return res.status(400).json({ error: 'No main file uploaded' });
     }
 
-    const { type, assetType, storeItemId } = authReq.body;
+    const { type, storeItemId } = authReq.body;
     if (!type) {
       return res.status(400).json({ error: 'Item type is required' });
     }
@@ -187,7 +187,7 @@ router.post('/upload', requireAuth, requireAdmin, upload.fields([
     
     // Create asset record in database using raw SQL with proper result handling
     const assetId = crypto.randomUUID();
-    const result = await db.execute(sql`
+    await db.execute(sql`
       INSERT INTO assets (id, file_name, file_type, file_size, storage_path, public_url, category, created_at, updated_at)
       VALUES (${assetId}, ${mainFile.originalname}, ${mainFile.mimetype}, ${mainFile.size}, ${mainPath}, ${mainUrl}, ${type}, NOW(), NOW())
     `);
@@ -234,8 +234,7 @@ router.post('/upload', requireAuth, requireAdmin, upload.fields([
  * GET /api/admin/assets/test-connection
  * Test Supabase connection and configuration
  */
-router.get('/test-connection', requireAuth, requireAdmin, async (req, res) => {
-  const authReq = req as AuthenticatedRequest;
+router.get('/test-connection', requireAuth, requireAdmin, async (_req, res) => {
   try {
     // Test environment variables
     const envCheck = {

@@ -117,13 +117,13 @@ export const CURRENCY_CONSTANTS = {
 export const STORE_CATALOG: StoreItem[] = [];
 
 /** @deprecated This function always returns undefined. Use server data instead. */
-export function getItemById(itemId: string): StoreItem | undefined {
+export function getItemById(_itemId: string): StoreItem | undefined {
   console.warn('getItemById is deprecated. Store items should come from the server.');
   return undefined;
 }
 
 /** @deprecated This function always returns empty array. Use server data instead. */
-export function getItemsByType(type: ItemType): StoreItem[] {
+export function getItemsByType(_type: ItemType): StoreItem[] {
   console.warn('getItemsByType is deprecated. Store items should come from the server.');
   return [];
 }

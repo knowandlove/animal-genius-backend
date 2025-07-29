@@ -4,7 +4,7 @@ import type { AuthenticatedRequest, StudentAuthenticatedRequest } from '../types
 /**
  * Helper function to properly type route handlers with custom request types
  */
-export function typedHandler<T = AuthenticatedRequest>(
+export function typedHandler(
   ...handlers: RequestHandler[]
 ): RequestHandler[] {
   return handlers as any;

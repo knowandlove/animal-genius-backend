@@ -57,7 +57,7 @@ router.get('/live', (req, res) => {
  * GET /health/ready
  * Readiness probe - checks if service is ready to accept traffic
  */
-router.get('/ready', asyncWrapper(async (req, res, next) => {
+router.get('/ready', asyncWrapper(async (req, res, _next) => {
   const checks: HealthStatus['checks'] = {
     database: await checkDatabase(),
     memory: checkMemory()
@@ -91,7 +91,7 @@ router.get('/ready', asyncWrapper(async (req, res, next) => {
  * GET /health/detailed
  * Detailed health check with all subsystem checks
  */
-router.get('/detailed', asyncWrapper(async (req, res, next) => {
+router.get('/detailed', asyncWrapper(async (req, res, _next) => {
   // Only allow detailed checks from admin or internal IPs
   const isInternal = req.ip === '127.0.0.1' || req.ip === '::1' || req.ip?.includes('10.');
   const isAdmin = req.user?.isAdmin;

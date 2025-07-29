@@ -15,7 +15,7 @@ const quizLimiter = apiLimiter;
 
 // Legacy quiz submission endpoint (for backward compatibility)
 // New frontend should use Supabase Edge Functions directly
-router.post('/submissions', quizLimiter, validateClassAccess, async (req, res) => {
+router.post('/submissions', quizLimiter, validateClassAccess, async (_req, res) => {
   const startTime = Date.now();
   
   // Track student join attempt
@@ -86,7 +86,7 @@ router.post('/submissions', quizLimiter, validateClassAccess, async (req, res) =
 });
 
 // New endpoint to check quiz eligibility (proxy to Edge Function)
-router.post('/check-eligibility', apiLimiter, async (req, res) => {
+router.post('/check-eligibility', apiLimiter, async (_req, res) => {
   try {
     const { classCode, firstName, lastInitial, grade } = req.body;
     

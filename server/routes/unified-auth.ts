@@ -6,7 +6,6 @@
  */
 
 import { Router } from 'express';
-import { z } from 'zod';
 import { supabaseAnon } from '../supabase-clients';
 import { provisionUser, verifyPassportCode } from '../services/jit-provisioning';
 import { authLimiter, passwordResetLimiter } from '../middleware/rateLimiter';
@@ -16,7 +15,7 @@ import { AuthenticationError, ValidationError, BusinessError, ErrorCode } from '
 import { createSecureLogger } from '../utils/secure-logger';
 
 const router = Router();
-const logger = createSecureLogger('UnifiedAuth');
+const _logger = createSecureLogger('UnifiedAuth');
 
 // Validation schemas
 const studentAuthSchema = z.object({
@@ -34,7 +33,7 @@ const teacherLoginSchema = z.object({
  * Authenticate student with passport code
  * Creates Supabase account if needed (JIT provisioning)
  */
-router.post('/student/login', authLimiter, checkPassportLockout, asyncWrapper(async (req, res, next) => {
+router.post('/student/login', authLimiter, checkPassportLockout, asyncWrapper(async (req, res, _next) => {
   const { passportCode, classCode } = studentAuthSchema.parse(req.body);
   
   logger.debug('Student login attempt', { passportCode: passportCode.substring(0, 3) + '-XXX' });
@@ -98,7 +97,7 @@ router.post('/student/login', authLimiter, checkPassportLockout, asyncWrapper(as
  * POST /api/unified-auth/teacher/login
  * Standard teacher login (existing Supabase flow)
  */
-router.post('/teacher/login', authLimiter, asyncWrapper(async (req, res, next) => {
+router.post('/teacher/login', authLimiter, asyncWrapper(async (req, res, _next) => {
   const { email, password } = teacherLoginSchema.parse(req.body);
   
   // Use existing Supabase auth
@@ -146,7 +145,7 @@ router.post('/teacher/login', authLimiter, asyncWrapper(async (req, res, next) =
  * GET /api/unified-auth/session
  * Check current session status
  */
-router.get('/session', asyncWrapper(async (req, res, next) => {
+router.get('/session', asyncWrapper(async (req, res, _next) => {
   const authHeader = req.headers.authorization;
   const token = authHeader?.split(' ')[1];
   
@@ -176,7 +175,7 @@ router.get('/session', asyncWrapper(async (req, res, next) => {
  * POST /api/unified-auth/logout
  * Unified logout endpoint
  */
-router.post('/logout', asyncWrapper(async (req, res, next) => {
+router.post('/logout', asyncWrapper(async (req, res, _next) => {
   // Token-based auth - logout handled client-side
   
   // Sign out from Supabase if token present

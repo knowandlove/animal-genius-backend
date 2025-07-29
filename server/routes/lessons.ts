@@ -11,7 +11,7 @@ const router = Router();
 
 // GET /api/classes/:classId/lessons/progress
 // Get all lesson progress for a class
-router.get('/:classId/lessons/progress', requireAuth, verifyClassAccess, async (req, res) => {
+router.get('/:classId/lessons/progress', requireAuth, verifyClassAccess, async (_req, res) => {
   try {
     const { classId } = req.params;
 
@@ -55,7 +55,7 @@ router.get('/:classId/lessons/progress', requireAuth, verifyClassAccess, async (
 
 // GET /api/classes/:classId/lessons/:lessonId/progress
 // Get specific lesson progress
-router.get('/:classId/lessons/:lessonId/progress', requireAuth, verifyClassAccess, async (req, res) => {
+router.get('/:classId/lessons/:lessonId/progress', requireAuth, verifyClassAccess, async (_req, res) => {
   try {
     const { classId, lessonId } = req.params;
 
@@ -97,7 +97,7 @@ router.get('/:classId/lessons/:lessonId/progress', requireAuth, verifyClassAcces
 
 // POST /api/classes/:classId/lessons/:lessonId/start
 // Start or resume a lesson
-router.post('/:classId/lessons/:lessonId/start', requireAuth, verifyClassAccess, async (req, res) => {
+router.post('/:classId/lessons/:lessonId/start', requireAuth, verifyClassAccess, async (_req, res) => {
   try {
     const { classId, lessonId } = req.params;
     const lessonIdNum = parseInt(lessonId);
@@ -149,7 +149,7 @@ router.post('/:classId/lessons/:lessonId/start', requireAuth, verifyClassAccess,
 
 // POST /api/classes/:classId/lessons/:lessonId/activities/:activityNumber/complete
 // Mark an activity as complete
-router.post('/:classId/lessons/:lessonId/activities/:activityNumber/complete', requireAuth, verifyClassAccess, async (req, res) => {
+router.post('/:classId/lessons/:lessonId/activities/:activityNumber/complete', requireAuth, verifyClassAccess, async (_req, res) => {
   try {
     const { classId, lessonId, activityNumber } = req.params;
     const lessonIdNum = parseInt(lessonId);
@@ -252,7 +252,7 @@ router.post('/:classId/lessons/:lessonId/activities/:activityNumber/complete', r
 
 // POST /api/classes/:classId/lessons/:lessonId/complete
 // Mark entire lesson as complete
-router.post('/:classId/lessons/:lessonId/complete', requireAuth, verifyClassAccess, async (req, res) => {
+router.post('/:classId/lessons/:lessonId/complete', requireAuth, verifyClassAccess, async (_req, res) => {
   try {
     const { classId, lessonId } = req.params;
     const lessonIdNum = parseInt(lessonId);
@@ -334,7 +334,7 @@ router.post('/:classId/lessons/:lessonId/complete', requireAuth, verifyClassAcce
 
 // GET /api/classes/:classId/lessons/4/activity/2/status
 // Check status of Activity 2 (Class Values Voting) for Lesson 4
-router.get('/:classId/lessons/4/activity/2/status', requireAuth, verifyClassAccess, async (req, res) => {
+router.get('/:classId/lessons/4/activity/2/status', requireAuth, verifyClassAccess, async (_req, res) => {
   try {
     const { classId } = req.params;
 
@@ -390,7 +390,7 @@ router.get('/:classId/lessons/4/activity/2/status', requireAuth, verifyClassAcce
 
 // POST /api/classes/:classId/lessons/4/activity/2/start-voting
 // Start a class values voting session for Activity 2 of Lesson 4
-router.post('/:classId/lessons/4/activity/2/start-voting', requireAuth, verifyClassAccess, async (req, res) => {
+router.post('/:classId/lessons/4/activity/2/start-voting', requireAuth, verifyClassAccess, async (_req, res) => {
   try {
     const { classId } = req.params;
     const userId = (req as any).user?.userId;
@@ -481,7 +481,7 @@ router.post('/:classId/lessons/4/activity/2/start-voting', requireAuth, verifyCl
 
 // POST /api/classes/:classId/lessons/4/activity/2/complete
 // Complete Activity 2 (Class Values Voting) and finalize the session
-router.post('/:classId/lessons/4/activity/2/complete', requireAuth, verifyClassAccess, async (req, res) => {
+router.post('/:classId/lessons/4/activity/2/complete', requireAuth, verifyClassAccess, async (_req, res) => {
   try {
     const { classId } = req.params;
     const { sessionId } = req.body;

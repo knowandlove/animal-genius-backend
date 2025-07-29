@@ -1,12 +1,11 @@
 // Store Management Routes - Teacher controls for store hours
-import type { Express, Response } from "express";
+import type { Express } from "express";
 import { AuthenticatedRequest } from "../types/api";
 import { db } from "../db";
 import { storeSettings, classes } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth";
 import { verifyClassEditAccess } from "../middleware/ownership-collaborator";
-import { z } from "zod";
 import { getCache } from "../lib/cache-factory";
 
 const cache = getCache();
@@ -36,7 +35,7 @@ const storeHoursSchema = z.object({
 export function registerStoreManagementRoutes(app: Express) {
   
   // Toggle store open/closed status
-  app.post("/api/currency/store/toggle", requireAuth, verifyClassEditAccess, async (req, res) => {
+  app.post("/api/currency/store/toggle", requireAuth, verifyClassEditAccess, async (_req, res) => {
     const authReq = req as AuthenticatedRequest;
     try {
       console.log('[STORE TOGGLE] Request body:', JSON.stringify(authReq.body));
@@ -115,7 +114,7 @@ export function registerStoreManagementRoutes(app: Express) {
   });
 
   // Get current store status for a class
-  app.get("/api/classes/:classId/store-status", requireAuth, validateUUID('classId'), verifyClassEditAccess, async (req, res) => {
+  app.get("/api/classes/:classId/store-status", requireAuth, validateUUID('classId'), verifyClassEditAccess, async (_req, res) => {
     const authReq = req as AuthenticatedRequest;
     try {
       const { classId } = authReq.params;
@@ -175,7 +174,7 @@ export function registerStoreManagementRoutes(app: Express) {
   });
 
   // Set auto-approval threshold
-  app.post("/api/currency/store/auto-approval", requireAuth, verifyClassEditAccess, async (req, res) => {
+  app.post("/api/currency/store/auto-approval", requireAuth, verifyClassEditAccess, async (_req, res) => {
     const authReq = req as AuthenticatedRequest;
     try {
       const { classId, threshold } = autoApprovalSchema.parse(authReq.body);
@@ -229,7 +228,7 @@ export function registerStoreManagementRoutes(app: Express) {
   });
 
   // Set store hours (future feature)
-  app.post("/api/currency/store/hours", requireAuth, verifyClassEditAccess, async (req, res) => {
+  app.post("/api/currency/store/hours", requireAuth, verifyClassEditAccess, async (_req, res) => {
     const authReq = req as AuthenticatedRequest;
     try {
       const { classId, openTime, closeTime, timezone } = storeHoursSchema.parse(authReq.body);

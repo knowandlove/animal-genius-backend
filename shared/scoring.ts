@@ -1,5 +1,5 @@
 import { questions } from './quiz-questions';
-import { calculateLearningStyle, type LearningStyleScores, type LearningStyleType } from './learning-styles';
+import { type LearningStyleScores, type LearningStyleType } from './learning-styles';
 
 export interface QuizAnswer {
   questionId: number;

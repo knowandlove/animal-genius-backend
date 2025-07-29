@@ -8,7 +8,7 @@ const router = Router();
  * Save a game score
  * Requires student authentication
  */
-router.post('/api/game-scores', requireUnifiedAuth, requireStudent, async (req, res) => {
+router.post('/api/game-scores', requireUnifiedAuth, requireStudent, async (_req, res) => {
   const client = await pool.connect();
   try {
     const { gameType, score, gameData = {} } = req.body;
@@ -71,7 +71,7 @@ router.post('/api/game-scores', requireUnifiedAuth, requireStudent, async (req, 
  * Get class leaderboard for a specific game
  * Can be accessed by authenticated students or via passport code
  */
-router.get('/api/game-scores/leaderboard/:gameType', async (req, res) => {
+router.get('/api/game-scores/leaderboard/:gameType', async (_req, res) => {
   const client = await pool.connect();
   try {
     const { gameType } = req.params;
@@ -175,7 +175,7 @@ router.get('/api/game-scores/leaderboard/:gameType', async (req, res) => {
  * Get a student's game history
  * Requires student authentication
  */
-router.get('/api/game-scores/history/:gameType', requireUnifiedAuth, requireStudent, async (req, res) => {
+router.get('/api/game-scores/history/:gameType', requireUnifiedAuth, requireStudent, async (_req, res) => {
   const client = await pool.connect();
   try {
     const { gameType } = req.params;

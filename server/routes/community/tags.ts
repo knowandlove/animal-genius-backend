@@ -1,12 +1,11 @@
 import express from 'express';
-import { z } from 'zod';
 import { db } from '../../db.js';
 import { tags } from '@shared/schema';
 import { eq, ilike, desc, and, inArray } from 'drizzle-orm';
 import { createSecureLogger } from '../../utils/secure-logger.js';
 import type { Request, Response } from 'express';
 
-const logger = createSecureLogger('CommunityTags');
+const _logger = createSecureLogger('CommunityTags');
 const router = express.Router();
 
 // Validation schemas

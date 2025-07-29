@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Router } from 'express';
 import { AuthenticatedRequest } from '../types/api';
 import { db } from '../db';
 import { uuidStorage } from '../storage-uuid';
@@ -78,8 +78,7 @@ router.delete('/classes/:id/force', requireAuth, validateParams(adminSchemas.uui
 });
 
 // Get all teachers/profiles
-router.get('/teachers', requireAuth, requireAdmin, async (req: Request, res: Response) => {
-  const authReq = req as AuthenticatedRequest;
+router.get('/teachers', requireAuth, requireAdmin, async (_req: Request, res: Response) => {
   try {
     const teachers = await uuidStorage.getAllProfiles();
     res.json(teachers);
@@ -117,8 +116,7 @@ router.put('/teachers/:id/admin', requireAuth, requireAdmin, validateParams(admi
 });
 
 // Get all classes
-router.get('/classes', requireAuth, requireAdmin, async (req: Request, res: Response) => {
-  const authReq = req as AuthenticatedRequest;
+router.get('/classes', requireAuth, requireAdmin, async (_req: Request, res: Response) => {
   try {
     const classes = await uuidStorage.getAllClassesWithStats();
     res.json(classes);
@@ -129,8 +127,7 @@ router.get('/classes', requireAuth, requireAdmin, async (req: Request, res: Resp
 });
 
 // Get admin stats
-router.get('/stats', requireAuth, requireAdmin, async (req: Request, res: Response) => {
-  const authReq = req as AuthenticatedRequest;
+router.get('/stats', requireAuth, requireAdmin, async (_req: Request, res: Response) => {
   try {
     const stats = await uuidStorage.getAdminStats();
     res.json(stats);

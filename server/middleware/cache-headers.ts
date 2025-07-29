@@ -3,7 +3,7 @@ import { Request, Response, NextFunction } from 'express';
 /**
  * Middleware to set appropriate cache headers for different types of content
  */
-export function setCacheHeaders(req: Request, res: Response, next: NextFunction) {
+export function setCacheHeaders(req: Request, res: Response, _next: NextFunction) {
   // Skip cache headers for API endpoints
   if (req.path.startsWith('/api/')) {
     // API responses should not be cached by default

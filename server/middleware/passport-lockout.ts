@@ -116,7 +116,7 @@ export function getLockoutStatus(passportCode: string) {
 /**
  * Middleware to check passport code lockout
  */
-export function checkPassportLockout(req: Request, res: Response, next: NextFunction) {
+export function checkPassportLockout(req: Request, res: Response, _next: NextFunction) {
   const passportCode = req.body.passportCode || req.params.passportCode;
   
   if (!passportCode) {

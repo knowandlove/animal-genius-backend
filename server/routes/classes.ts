@@ -2,7 +2,6 @@ import { Router } from 'express';
 import { uuidStorage } from '../storage-uuid';
 import { requireAuth } from '../middleware/auth';
 import { verifyClassAccess, verifyClassEditAccess } from '../middleware/ownership-collaborator';
-import { z } from 'zod';
 import { createClassSchema } from '../validation/class-schemas';
 import { generateClassInsights, generatePairings } from '../services/pairingService';
 import { getPaginationParams, addPaginationToResponse, setPaginationHeaders } from '../utils/pagination-wrapper';
@@ -12,12 +11,12 @@ import { createSecureLogger } from '../utils/secure-logger';
 import { NotFoundError, ErrorCode } from '../utils/errors';
 import type { AuthenticatedRequest } from '../types/api';
 
-const logger = createSecureLogger('ClassRoutes');
+const _logger = createSecureLogger('ClassRoutes');
 
 const router = Router();
 
 // Create class
-router.post('/', requireAuth, async (req, res) => {
+router.post('/', requireAuth, async (_req, res) => {
   const authReq = req as AuthenticatedRequest;
   try {
     // Validate request body
@@ -59,7 +58,7 @@ router.post('/', requireAuth, async (req, res) => {
 });
 
 // Get teacher's classes
-router.get('/', requireAuth, async (req, res) => {
+router.get('/', requireAuth, async (_req, res) => {
   const authReq = req as AuthenticatedRequest;
   try {
     // Get classes owned by the teacher with student counts
@@ -84,7 +83,7 @@ router.get('/', requireAuth, async (req, res) => {
 });
 
 // Get individual class by ID
-router.get('/:id', requireAuth, verifyClassAccess, async (req, res) => {
+router.get('/:id', requireAuth, verifyClassAccess, async (_req, res) => {
   const authReq = req as AuthenticatedRequest;
   try {
     const classId = authReq.params.id;
@@ -104,7 +103,7 @@ router.get('/:id', requireAuth, verifyClassAccess, async (req, res) => {
 });
 
 // Get class by class code (for students)
-router.get('/class-code/:code', async (req, res) => {
+router.get('/class-code/:code', async (_req, res) => {
   try {
     const { code } = req.params;
     const classRecord = await uuidStorage.getClassByClassCode(code);
@@ -126,7 +125,7 @@ router.get('/class-code/:code', async (req, res) => {
 });
 
 // Delete class (regular - fails if has students)
-router.delete('/:id', requireAuth, verifyClassEditAccess, async (req, res) => {
+router.delete('/:id', requireAuth, verifyClassEditAccess, async (_req, res) => {
   const authReq = req as AuthenticatedRequest;
   try {
     const classId = authReq.params.id;
@@ -145,14 +144,14 @@ router.delete('/:id', requireAuth, verifyClassEditAccess, async (req, res) => {
 });
 
 // Import students from CSV
-router.post('/:id/import-students', requireAuth, async (req, res) => {
+router.post('/:id/import-students', requireAuth, async (_req, res) => {
   const authReq = req as AuthenticatedRequest;
   // This will be handled by the import-students middleware
   res.status(501).json({ message: "Import functionality moved to separate handler" });
 });
 
 // Get all students in a class (for dashboard view)
-router.get('/:id/students', requireAuth, verifyClassAccess, asyncWrapper(async (req, res, next) => {
+router.get('/:id/students', requireAuth, verifyClassAccess, asyncWrapper(async (req, res, _next) => {
   const authReq = req as AuthenticatedRequest;
   const classId = authReq.params.id;
   
@@ -184,7 +183,7 @@ router.get('/:id/students', requireAuth, verifyClassAccess, asyncWrapper(async (
 }));
 
 // Get class analytics
-router.get('/:id/analytics', requireAuth, verifyClassAccess, asyncWrapper(async (req, res, next) => {
+router.get('/:id/analytics', requireAuth, verifyClassAccess, asyncWrapper(async (req, res, _next) => {
   const authReq = req as AuthenticatedRequest;
   const classId = authReq.params.id;
   
@@ -398,7 +397,7 @@ router.get('/:id/analytics', requireAuth, verifyClassAccess, asyncWrapper(async 
 }));
 
 // Get pairings (now non-blocking!)
-router.get('/:id/pairings', requireAuth, verifyClassAccess, async (req, res) => {
+router.get('/:id/pairings', requireAuth, verifyClassAccess, async (_req, res) => {
   const authReq = req as AuthenticatedRequest;
   try {
     const classId = authReq.params.id;

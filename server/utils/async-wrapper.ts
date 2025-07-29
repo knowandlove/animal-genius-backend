@@ -11,9 +11,9 @@ import { Request, Response, NextFunction } from 'express';
  * Wraps an async route handler to catch errors
  */
 export function asyncWrapper(
-  fn: (req: Request, res: Response, next: NextFunction) => Promise<void>
+  fn: (req: Request, res: Response, _next: NextFunction) => Promise<void>
 ) {
-  return (req: Request, res: Response, next: NextFunction) => {
+  return (req: Request, res: Response, _next: NextFunction) => {
     Promise.resolve(fn(req, res, next)).catch(next);
   };
 }
@@ -24,7 +24,7 @@ export function asyncWrapper(
 export function asyncHandler<T = any>(
   fn: (req: Request, res: Response) => Promise<T>
 ) {
-  return async (req: Request, res: Response, next: NextFunction) => {
+  return async (req: Request, res: Response, _next: NextFunction) => {
     try {
       const result = await fn(req, res);
       

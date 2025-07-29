@@ -5,13 +5,13 @@ import { createSecureLogger } from '../utils/secure-logger';
 import { passportLoginLimiter } from '../middleware/rateLimiter';
 
 const router = Router();
-const logger = createSecureLogger('StudentPassportAPI');
+const _logger = createSecureLogger('StudentPassportAPI');
 
 /**
  * GET /api/student-passport/profile
  * Get current student's profile information
  */
-router.get('/profile', requireStudentAuth, async (req, res) => {
+router.get('/profile', requireStudentAuth, async (_req, res) => {
   try {
     const student = req.student!; // We know it exists because of requireStudentAuth
     
@@ -36,7 +36,7 @@ router.get('/profile', requireStudentAuth, async (req, res) => {
  * GET /api/student-passport/class-info
  * Get information about the student's class
  */
-router.get('/class-info', requireStudentAuth, async (req, res) => {
+router.get('/class-info', requireStudentAuth, async (_req, res) => {
   try {
     const student = req.student!;
     
@@ -78,7 +78,7 @@ router.get('/class-info', requireStudentAuth, async (req, res) => {
  * GET /api/student-passport/progress
  * Get student's quiz progress and scores
  */
-router.get('/progress', requireStudentAuth, async (req, res) => {
+router.get('/progress', requireStudentAuth, async (_req, res) => {
   try {
     const student = req.student!;
     
@@ -113,7 +113,7 @@ router.get('/progress', requireStudentAuth, async (req, res) => {
  * GET /api/student-passport/classmates
  * Get list of classmates (names only for privacy)
  */
-router.get('/classmates', requireStudentAuth, async (req, res) => {
+router.get('/classmates', requireStudentAuth, async (_req, res) => {
   try {
     const student = req.student!;
     
@@ -148,7 +148,7 @@ router.get('/classmates', requireStudentAuth, async (req, res) => {
  * POST /api/student-passport/validate
  * Validate passport code (useful for frontend to check auth status)
  */
-router.post('/validate', passportLoginLimiter, async (req, res) => {
+router.post('/validate', passportLoginLimiter, async (_req, res) => {
   const { passportCode } = req.body;
   
   if (!passportCode) {
@@ -185,7 +185,7 @@ router.post('/validate', passportLoginLimiter, async (req, res) => {
  * GET /api/student-passport/dashboard
  * Get comprehensive dashboard data for the authenticated student
  */
-router.get('/dashboard', requireStudentAuth, async (req, res) => {
+router.get('/dashboard', requireStudentAuth, async (_req, res) => {
   try {
     const student = req.student!;
     
@@ -343,7 +343,7 @@ router.get('/dashboard', requireStudentAuth, async (req, res) => {
  * GET /api/student-passport/quiz-results
  * Get detailed quiz results for the authenticated student
  */
-router.get('/quiz-results', requireStudentAuth, async (req, res) => {
+router.get('/quiz-results', requireStudentAuth, async (_req, res) => {
   try {
     const student = req.student!;
     
@@ -401,7 +401,7 @@ router.get('/quiz-results', requireStudentAuth, async (req, res) => {
 /**
  * Example of optional auth - works for both authenticated and anonymous users
  */
-router.get('/public-content', optionalStudentAuth, async (req, res) => {
+router.get('/public-content', optionalStudentAuth, async (_req, res) => {
   const content = {
     message: 'This is public content',
     personalizedMessage: req.student 

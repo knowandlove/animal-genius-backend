@@ -21,7 +21,7 @@ const router = Router();
  * Get error tracking summary
  * Requires authentication
  */
-router.get('/summary', requireAuth, asyncWrapper(async (req, res, next) => {
+router.get('/summary', requireAuth, asyncWrapper(async (req, res, _next) => {
   const summary = errorTracker.getErrorSummary();
   
   res.json({
@@ -51,7 +51,7 @@ router.get('/summary', requireAuth, asyncWrapper(async (req, res, next) => {
  * Get detailed information about a specific error code
  * Requires authentication
  */
-router.get('/:code', requireAuth, asyncWrapper(async (req, res, next) => {
+router.get('/:code', requireAuth, asyncWrapper(async (req, res, _next) => {
   const errorCode = req.params.code as ErrorCode;
   const details = errorTracker.getErrorDetails(errorCode);
   

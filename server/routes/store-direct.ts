@@ -3,7 +3,6 @@ import { Router } from 'express';
 import { db } from '../db';
 import { students, storeItems, studentInventory, currencyTransactions, classes } from '@shared/schema';
 import { eq, and, sql, asc } from 'drizzle-orm';
-import { z } from 'zod';
 import StorageRouter from '../services/storage-router';
 import { storePurchaseLimiter, storeBrowsingLimiter } from '../middleware/rateLimiter';
 import { requireStudentAuth } from '../middleware/passport-auth';
@@ -27,7 +26,7 @@ const purchaseSchema = z.object({
  * GET /api/store-direct/catalog
  * Get all active store items (with caching)
  */
-router.get('/catalog', storeBrowsingLimiter, async (req, res) => {
+router.get('/catalog', storeBrowsingLimiter, async (_req, res) => {
   try {
     // Check cache first
     const cachedData = await cache.get<any[]>(CATALOG_CACHE_KEY);
@@ -59,7 +58,7 @@ router.get('/catalog', storeBrowsingLimiter, async (req, res) => {
  * Direct purchase - coins are deducted immediately
  * REQUIRES AUTHENTICATION - students can only purchase for themselves
  */
-router.post('/purchase', requireStudentAuth, storePurchaseLimiter, async (req, res) => {
+router.post('/purchase', requireStudentAuth, storePurchaseLimiter, async (_req, res) => {
   const purchaseStartTime = Date.now();
   const clientIP = req.ip || req.connection.remoteAddress;
   
@@ -217,7 +216,7 @@ router.post('/purchase', requireStudentAuth, storePurchaseLimiter, async (req, r
  * GET /api/store-direct/inventory
  * Get authenticated student's owned items
  */
-router.get('/inventory', requireStudentAuth, storeBrowsingLimiter, async (req, res) => {
+router.get('/inventory', requireStudentAuth, storeBrowsingLimiter, async (_req, res) => {
   try {
     const studentId = req.student!.id;
     

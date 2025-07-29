@@ -3,7 +3,6 @@
  * Prevents XSS attacks by strictly validating all user-controlled data
  */
 
-import { z } from 'zod';
 
 // UUID validation pattern
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

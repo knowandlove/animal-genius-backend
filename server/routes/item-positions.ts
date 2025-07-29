@@ -7,7 +7,7 @@ import { requireAuth } from "../middleware/auth";
 
 export function registerItemPositionRoutes(app: Express) {
   // Public endpoint to get item positions (for avatar display)
-  app.get("/api/item-positions", async (req, res) => {
+  app.get("/api/item-positions", async (_req, res) => {
     try {
       const positions = await db
         .select({
@@ -53,7 +53,7 @@ export function registerItemPositionRoutes(app: Express) {
   });
 
   // Save/update item position
-  app.post("/api/admin/item-positions", requireAuth, async (req, res) => {
+  app.post("/api/admin/item-positions", requireAuth, async (_req, res) => {
     const authReq = req as AuthenticatedRequest;
     console.log('=== SAVE ITEM POSITION REQUEST ===');
     console.log('Request body:', authReq.body);
@@ -160,7 +160,7 @@ export function registerItemPositionRoutes(app: Express) {
   });
 
   // Bulk copy positions from one animal to others
-  app.post("/api/admin/item-positions/bulk-copy", requireAuth, async (req, res) => {
+  app.post("/api/admin/item-positions/bulk-copy", requireAuth, async (_req, res) => {
     const authReq = req as AuthenticatedRequest;
     try {
       // Get user details to verify admin access
@@ -250,7 +250,7 @@ export function registerItemPositionRoutes(app: Express) {
   });
 
   // Batch update positions
-  app.post("/api/admin/item-positions/batch", requireAuth, async (req, res) => {
+  app.post("/api/admin/item-positions/batch", requireAuth, async (_req, res) => {
     const authReq = req as AuthenticatedRequest;
     try {
       // Get user details to verify admin access

@@ -24,7 +24,7 @@ interface RequestMetrics {
  * HTTP request metrics middleware
  * Tracks request duration, status codes, and error rates
  */
-export function httpMetricsMiddleware(req: Request, res: Response, next: NextFunction) {
+export function httpMetricsMiddleware(req: Request, res: Response, _next: NextFunction) {
   const startTime = Date.now();
   const method = req.method;
   const path = req.path;

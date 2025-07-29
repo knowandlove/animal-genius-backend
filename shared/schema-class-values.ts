@@ -1,7 +1,7 @@
 // CLASS VALUES VOTING SYSTEM TABLES
 // Add these to the main schema.ts file
 
-import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, uuid, numeric, uniqueIndex, index, pgSchema } from 'drizzle-orm/pg-core';
+import { pgTable, varchar, integer, boolean, timestamp, uuid, uniqueIndex, index } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
 import { classes, students, profiles } from './schema';
 

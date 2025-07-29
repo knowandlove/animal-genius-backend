@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { db } from '../db';
 import { classes, students } from '@shared/schema';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { createSecureLogger } from '../utils/secure-logger';
 import type { AuthenticatedRequest } from '../types/api';
 

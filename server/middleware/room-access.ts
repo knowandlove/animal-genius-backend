@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { db } from '../db';
-import { students, quizSubmissions, profiles } from '@shared/schema';
+import { students } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { supabaseAdmin } from '../supabase-clients';
 import { getCachedProfile } from './profile-cache';

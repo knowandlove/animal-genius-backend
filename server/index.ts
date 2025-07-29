@@ -1,4 +1,4 @@
-import express, { type Request, Response, NextFunction } from "express";
+import express from "express";
 import { env } from "./config/env";
 import { registerRoutes } from "./routes";
 import path from "path";
@@ -29,7 +29,7 @@ function log(message: string) {
 }
 
 // Register all cleanup handlers
-function registerCleanupHandlers(server: any, app: express.Express) {
+function registerCleanupHandlers(server: any, _app: express.Express) {
   // Database pool cleanup
   cleanupManager.register({
     name: 'database-pool',
@@ -170,16 +170,11 @@ app.use((req, res, next) => {
 });
 
 app.use((req, res, next) => {
-  const start = Date.now();
-  const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
-
   const originalResJson = res.json;
   res.json = function (bodyJson, ...args) {
     try {
       // Test if the response can be serialized
       JSON.stringify(bodyJson);
-      capturedJsonResponse = bodyJson;
       return originalResJson.apply(res, [bodyJson, ...args]);
     } catch (error) {
       jsonLogger.error('Failed to serialize response', error, {
@@ -191,12 +186,6 @@ app.use((req, res, next) => {
       return originalResJson.apply(res, [{ message: 'Internal server error: Response serialization failed' }, ...args]);
     }
   };
-
-  res.on("finish", () => {
-    const duration = Date.now() - start;
-    // Observability middleware now handles logging
-    // Remove duplicate logging here
-  });
 
   next();
 });

@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Router } from 'express';
 import { AuthenticatedRequest } from '../types/api';
 import { db } from '../db';
 import { uuidStorage } from '../storage-uuid';

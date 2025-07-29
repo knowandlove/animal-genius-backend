@@ -22,7 +22,6 @@ if (process.env.NODE_ENV === 'development') {
 // import { insertUserSchema, updateUserProfileSchema, updatePasswordSchema } from '@shared/schema';
 import { getProfileById, updateLastLoginSupabase as updateLastLogin } from '../storage-supabase';
 import { authLimiter, passwordResetLimiter } from '../middleware/rateLimiter';
-import { z } from 'zod';
 import { 
   registrationSchema, 
   loginSchema, 
@@ -34,7 +33,7 @@ import {
 const router = Router();
 
 // Teacher registration - integrates with Supabase Auth
-router.post('/register', authLimiter, asyncWrapper(async (req, res, next) => {
+router.post('/register', authLimiter, asyncWrapper(async (req, res, _next) => {
   // Debug logging
   if (process.env.NODE_ENV === 'development') {
     console.log('Registration request body:', JSON.stringify(req.body, null, 2));
@@ -151,7 +150,7 @@ router.post('/register', authLimiter, asyncWrapper(async (req, res, next) => {
 }));
 
 // Teacher login - uses Supabase Auth
-router.post('/login', authLimiter, asyncWrapper(async (req, res, next) => {
+router.post('/login', authLimiter, asyncWrapper(async (req, res, _next) => {
   // Validate request body
   const { email, password } = loginSchema.parse(req.body);
     
@@ -229,7 +228,7 @@ router.post('/login', authLimiter, asyncWrapper(async (req, res, next) => {
 }));
 
 // Refresh token - uses Supabase Auth
-router.post('/refresh-token', asyncWrapper(async (req, res, next) => {
+router.post('/refresh-token', asyncWrapper(async (req, res, _next) => {
   // Validate request body
   const { refreshToken } = refreshTokenSchema.parse(req.body);
   
@@ -249,7 +248,7 @@ router.post('/refresh-token', asyncWrapper(async (req, res, next) => {
 }));
 
 // Logout - invalidates Supabase session
-router.post('/logout', requireAuth, asyncWrapper(async (req, res, next) => {
+router.post('/logout', requireAuth, asyncWrapper(async (req, res, _next) => {
   const token = req.headers.authorization?.split(' ')[1];
   
   if (token) {
@@ -275,7 +274,7 @@ router.post('/logout', requireAuth, asyncWrapper(async (req, res, next) => {
 }));
 
 // Password reset request
-router.post('/forgot-password', passwordResetLimiter, asyncWrapper(async (req, res, next) => {
+router.post('/forgot-password', passwordResetLimiter, asyncWrapper(async (req, res, _next) => {
   // Validate request body
   const { email } = forgotPasswordSchema.parse(req.body);
   
@@ -293,7 +292,7 @@ router.post('/forgot-password', passwordResetLimiter, asyncWrapper(async (req, r
 }));
 
 // Update password with reset token
-router.post('/reset-password', asyncWrapper(async (req, res, next) => {
+router.post('/reset-password', asyncWrapper(async (req, res, _next) => {
   // Validate request body
   const { token, password } = resetPasswordSchema.parse(req.body);
   
@@ -323,7 +322,7 @@ router.post('/reset-password', asyncWrapper(async (req, res, next) => {
 }));
 
 // Performance metrics endpoint (admin only, development only)
-router.get('/metrics', requireAuth, asyncWrapper(async (req, res, next) => {
+router.get('/metrics', requireAuth, asyncWrapper(async (req, res, _next) => {
   if (process.env.NODE_ENV !== 'development' || !req.user?.isAdmin) {
     throw new NotFoundError('Resource not found', ErrorCode.RES_001);
   }

@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { db } from '../db';
-import { students, quizSubmissions } from '@shared/schema';
+import { students } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 
 // Extend Express Request type

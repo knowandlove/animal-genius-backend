@@ -7,7 +7,7 @@ const failedAttempts = new Map<string, { count: number; lastAttempt: number }>()
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_DURATION = 15 * 60 * 1000; // 15 minutes
 
-const logger = createSecureLogger('PassportAuth');
+const _logger = createSecureLogger('PassportAuth');
 
 // Type for the validate_student_login RPC response
 interface StudentLoginData {
@@ -38,7 +38,7 @@ declare global {
  * Middleware to authenticate students using passport codes
  * Students should include their passport code in the X-Passport-Code header
  */
-export async function requireStudentAuth(req: Request, res: Response, next: NextFunction) {
+export async function requireStudentAuth(req: Request, res: Response, _next: NextFunction) {
   try {
     // Get passport code from header
     const passportCode = req.headers['x-passport-code'] as string;
@@ -132,7 +132,7 @@ export async function requireStudentAuth(req: Request, res: Response, next: Next
  * Optional student authentication - doesn't fail if no passport code provided
  * Useful for endpoints that work for both authenticated and anonymous users
  */
-export async function optionalStudentAuth(req: Request, res: Response, next: NextFunction) {
+export async function optionalStudentAuth(req: Request, res: Response, _next: NextFunction) {
   const passportCode = req.headers['x-passport-code'] as string;
   
   if (!passportCode) {
@@ -175,7 +175,7 @@ export async function optionalStudentAuth(req: Request, res: Response, next: Nex
  * Middleware to ensure student belongs to a specific class
  * Use after requireStudentAuth
  */
-export function requireStudentInClass(req: Request, res: Response, next: NextFunction) {
+export function requireStudentInClass(req: Request, res: Response, _next: NextFunction) {
   if (!req.student) {
     return res.status(401).json({ 
       error: 'Student authentication required' 

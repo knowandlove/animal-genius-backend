@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Router } from 'express';
 import { AuthenticatedRequest } from '../types/api';
 import { requireAuth } from '../middleware/auth';
 import { pairingQueue } from '../queues/pairing-queue';

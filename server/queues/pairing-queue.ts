@@ -170,7 +170,7 @@ pairingQueue.process('generate-insights', async (job: Bull.Job) => {
 });
 
   // Queue event handlers
-  pairingQueue.on('completed', (job: Bull.Job, result: any) => {
+  pairingQueue.on('completed', (job: Bull.Job, _result: any) => {
     console.log(`[Pairing Queue] Job ${job.id} completed successfully`);
   });
 

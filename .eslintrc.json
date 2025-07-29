@@ -48,6 +48,15 @@
     "vitest.config.ts",
     "migrations",
     "*.sql",
-    "*.js"
+    "*.js",
+    "*.ts",
+    "!server/**/*.ts",
+    "!shared/**/*.ts",
+    "supabase",
+    "tests",
+    "test-*.ts",
+    "schema-backup",
+    "scripts",
+    "server/vite.ts"
   ]
 }
