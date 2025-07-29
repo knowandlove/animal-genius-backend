@@ -7,7 +7,7 @@ import { redisCache } from './redis-cache';
 import * as nodeCache from './cache';
 import { createSecureLogger } from '../utils/secure-logger';
 
-const _logger = createSecureLogger('CacheFactory');
+const logger = createSecureLogger('CacheFactory');
 
 export interface CacheInterface {
   get<T>(key: string): Promise<T | undefined> | T | undefined;
@@ -58,12 +58,12 @@ export interface CacheConfig {
 export function createCache(config?: CacheConfig): CacheInterface {
   // Default to NodeCache if not configured
   if (!config || config.type === 'node') {
-    logger.log('Using NodeCache (in-memory) cache implementation');
+    logger.info('Using NodeCache (in-memory) cache implementation');
     return new AsyncCacheWrapper(nodeCache);
   }
 
   if (config.type === 'redis') {
-    logger.log('Using Redis cache implementation');
+    logger.info('Using Redis cache implementation');
     return redisCache;
   }
 
@@ -168,6 +168,6 @@ export function createMigrationCache(): CacheInterface {
   const nodeCacheWrapper = new AsyncCacheWrapper(nodeCache);
   const redisInstance = redisCache;
 
-  logger.log('Creating migration cache (NodeCache + Redis)');
+  logger.info('Creating migration cache (NodeCache + Redis)');
   return new MigrationCache(redisInstance, nodeCacheWrapper);
 }
