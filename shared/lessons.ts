@@ -53,9 +53,16 @@ export const lessons: Lesson[] = [
             instruction: "Play Student-facing video [LINK TO A POP UP VIDEO TEACHERS CAN DRAG TO PROJECTOR SCREEN TO SHOW KIDS]"
           },
           {
+            instruction: "Open the Quiz Results Live View to display real-time quiz results on your projector screen",
+            tips: [
+              "Click the 'Quiz Results Live View' button to open in a new tab",
+              "Drag the tab to your projector screen for students to see",
+              "Watch as student results appear in real-time as they complete the quiz"
+            ]
+          },
+          {
             instruction: "Students take the Animal Genius Quiz® individually (15-20 min)",
             tips: [
-              "Project 'Live View' so students can see the results coming in live",
               "Remind students: there are no wrong answers, just be honest about their answers. Do not answer based on what their parents, friends or teacher would want them to say"
             ]
           },
