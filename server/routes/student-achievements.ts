@@ -51,7 +51,7 @@ const unlockAchievementSchema = z.object({
 export function registerStudentAchievementRoutes(app: Express) {
   
   // GET /api/student-achievements/my-achievements - Get all achievements for authenticated student
-  app.get("/api/student-achievements/my-achievements", optionalStudentAuth, roomBrowsingLimiter, async (_req, res) => {
+  app.get("/api/student-achievements/my-achievements", optionalStudentAuth, roomBrowsingLimiter, async (req, res) => {
     try {
       if (!req.student?.id) {
         return res.status(401).json({ 
@@ -117,7 +117,7 @@ export function registerStudentAchievementRoutes(app: Express) {
   });
 
   // POST /api/student-achievements/unlock - Unlock an achievement for the authenticated student
-  app.post("/api/student-achievements/unlock", optionalStudentAuth, roomBrowsingLimiter, async (_req, res) => {
+  app.post("/api/student-achievements/unlock", optionalStudentAuth, roomBrowsingLimiter, async (req, res) => {
     try {
       const { achievementId, progressData } = unlockAchievementSchema.parse(req.body);
       
@@ -223,7 +223,7 @@ export function registerStudentAchievementRoutes(app: Express) {
   });
 
   // GET /api/student-achievements/check-progress - Check progress for all achievements
-  app.get("/api/student-achievements/check-progress", optionalStudentAuth, roomBrowsingLimiter, async (_req, res) => {
+  app.get("/api/student-achievements/check-progress", optionalStudentAuth, roomBrowsingLimiter, async (req, res) => {
     try {
       if (!req.student?.id) {
         return res.status(401).json({ 
@@ -283,7 +283,7 @@ export function registerStudentAchievementRoutes(app: Express) {
   });
 
   // GET /api/student-achievements/definitions - Get all achievement definitions
-  app.get("/api/student-achievements/definitions", async (_req, res) => {
+  app.get("/api/student-achievements/definitions", async (req, res) => {
     try {
       const achievementList = Object.entries(ACHIEVEMENTS).map(([key, achievement]) => ({
         ...achievement,

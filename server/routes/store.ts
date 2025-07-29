@@ -10,7 +10,7 @@ import { InternalError, ErrorCode } from '../utils/errors';
 import { createSecureLogger } from '../utils/secure-logger';
 import { getCache } from '../lib/cache-factory';
 
-const _logger = createSecureLogger('StoreRoutes');
+const logger = createSecureLogger('StoreRoutes');
 
 const router = Router();
 
@@ -23,7 +23,7 @@ const CATALOG_CACHE_TTL = 300; // 5 minutes in seconds
  * Get active store items with pagination
  * Query params: ?page=1&limit=20
  */
-router.get('/catalog', storeBrowsingLimiter, asyncWrapper(async (req, res, _next) => {
+router.get('/catalog', storeBrowsingLimiter, asyncWrapper(async (req, res, next) => {
   const { page, limit, offset } = getPaginationParams(req);
   
   // Get cache instance
@@ -86,7 +86,7 @@ router.get('/catalog', storeBrowsingLimiter, asyncWrapper(async (req, res, _next
  * POST /api/store/items/batch
  * Get multiple items by IDs (for loading owned items)
  */
-router.post('/items/batch', storeBrowsingLimiter, asyncWrapper(async (req, res, _next) => {
+router.post('/items/batch', storeBrowsingLimiter, asyncWrapper(async (req, res, next) => {
   const { itemIds } = req.body;
   
   if (!Array.isArray(itemIds) || itemIds.length === 0) {

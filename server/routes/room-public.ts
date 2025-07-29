@@ -11,7 +11,7 @@ const cache = getCache();
 
 export function registerPublicRoomRoutes(app: Express) {
   // Public endpoint for viewing any student's room (READ ONLY)
-  app.get("/api/room/view/:passportCode", roomBrowsingLimiter, async (_req, res) => {
+  app.get("/api/room/view/:passportCode", roomBrowsingLimiter, async (req, res) => {
     try {
       const { passportCode } = req.params;
       

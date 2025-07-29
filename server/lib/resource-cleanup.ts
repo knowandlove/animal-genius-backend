@@ -5,7 +5,7 @@
 
 import { createSecureLogger } from '../utils/secure-logger';
 
-const _logger = createSecureLogger('ResourceCleanup');
+const logger = createSecureLogger('ResourceCleanup');
 
 export interface CleanupHandler {
   name: string;
@@ -192,11 +192,11 @@ export function registerProcessHandlers(): void {
   processHandlersRegistered = true;
 
   const handleShutdown = async (signal: string) => {
-    logger.log(`Received ${signal}, starting graceful shutdown...`);
+    logger.info(`Received ${signal}, starting graceful shutdown...`);
     
     try {
       await cleanupManager.cleanup();
-      logger.log('Graceful shutdown completed');
+      logger.info('Graceful shutdown completed');
       process.exit(0);
     } catch (error) {
       logger.error('Error during shutdown:', error);
@@ -234,5 +234,5 @@ export function registerProcessHandlers(): void {
     handleShutdown('unhandledRejection');
   });
 
-  logger.log('Process shutdown handlers registered');
+  logger.info('Process shutdown handlers registered');
 }

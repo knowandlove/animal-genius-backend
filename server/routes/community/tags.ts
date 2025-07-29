@@ -6,7 +6,7 @@ import { eq, ilike, desc, and, inArray } from 'drizzle-orm';
 import { createSecureLogger } from '../../utils/secure-logger.js';
 import type { Request, Response } from 'express';
 
-const _logger = createSecureLogger('CommunityTags');
+const logger = createSecureLogger('CommunityTags');
 const router = express.Router();
 
 // Validation schemas

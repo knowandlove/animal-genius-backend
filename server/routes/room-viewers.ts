@@ -24,7 +24,7 @@ setInterval(() => {
 
 export function registerRoomViewerRoutes(app: Express) {
   // Join a room as a viewer
-  app.post("/api/room/:passportCode/viewers/join", async (_req, res) => {
+  app.post("/api/room/:passportCode/viewers/join", async (req, res) => {
     try {
       const { passportCode } = req.params;
       const { viewerId, viewerName } = req.body;
@@ -56,7 +56,7 @@ export function registerRoomViewerRoutes(app: Express) {
   });
   
   // Leave a room
-  app.post("/api/room/:passportCode/viewers/leave", async (_req, res) => {
+  app.post("/api/room/:passportCode/viewers/leave", async (req, res) => {
     try {
       const { passportCode } = req.params;
       const { viewerId } = req.body;
@@ -82,7 +82,7 @@ export function registerRoomViewerRoutes(app: Express) {
   });
   
   // Get current viewers
-  app.get("/api/room/:passportCode/viewers", async (_req, res) => {
+  app.get("/api/room/:passportCode/viewers", async (req, res) => {
     try {
       const { passportCode } = req.params;
       
@@ -105,7 +105,7 @@ export function registerRoomViewerRoutes(app: Express) {
   });
   
   // Heartbeat to keep viewer active
-  app.post("/api/room/:passportCode/viewers/heartbeat", async (_req, res) => {
+  app.post("/api/room/:passportCode/viewers/heartbeat", async (req, res) => {
     try {
       const { passportCode } = req.params;
       const { viewerId } = req.body;

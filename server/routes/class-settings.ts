@@ -19,7 +19,7 @@ const updateClassSettingsSchema = z.object({
 });
 
 // Get class settings
-router.get('/:id/settings', requireAuth, verifyClassEditAccess, async (_req, res) => {
+router.get('/:id/settings', requireAuth, verifyClassEditAccess, async (req, res) => {
   const authReq = req as AuthenticatedRequest;
   try {
     const classId = authReq.params.id;
@@ -51,7 +51,7 @@ router.get('/:id/settings', requireAuth, verifyClassEditAccess, async (_req, res
 });
 
 // Update class settings
-router.put('/:id/settings', requireAuth, verifyClassEditAccess, async (_req, res) => {
+router.put('/:id/settings', requireAuth, verifyClassEditAccess, async (req, res) => {
   const authReq = req as AuthenticatedRequest;
   try {
     const classId = authReq.params.id;
@@ -86,7 +86,7 @@ router.put('/:id/settings', requireAuth, verifyClassEditAccess, async (_req, res
 });
 
 // Archive/Unarchive class
-router.post('/:id/archive', requireAuth, verifyClassEditAccess, async (_req, res) => {
+router.post('/:id/archive', requireAuth, verifyClassEditAccess, async (req, res) => {
   const authReq = req as AuthenticatedRequest;
   try {
     const classId = authReq.params.id;

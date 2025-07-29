@@ -19,7 +19,7 @@ const getVisitStatsSchema = z.object({
 export function registerRoomVisitRoutes(app: Express) {
   
   // POST /api/room-visits/record - Record a room visit
-  app.post("/api/room-visits/record", optionalStudentAuth, roomBrowsingLimiter, async (_req, res) => {
+  app.post("/api/room-visits/record", optionalStudentAuth, roomBrowsingLimiter, async (req, res) => {
     try {
       const { visitedPassportCode } = recordVisitSchema.parse(req.body);
       
@@ -138,7 +138,7 @@ export function registerRoomVisitRoutes(app: Express) {
   });
 
   // GET /api/room-visits/my-visits - Get visits made by the authenticated student
-  app.get("/api/room-visits/my-visits", optionalStudentAuth, roomBrowsingLimiter, async (_req, res) => {
+  app.get("/api/room-visits/my-visits", optionalStudentAuth, roomBrowsingLimiter, async (req, res) => {
     try {
       if (!req.student?.id) {
         return res.status(401).json({ 
@@ -182,7 +182,7 @@ export function registerRoomVisitRoutes(app: Express) {
   });
 
   // GET /api/room-visits/visitors/:passportCode - Get visitors to a student's room
-  app.get("/api/room-visits/visitors/:passportCode", optionalStudentAuth, roomBrowsingLimiter, async (_req, res) => {
+  app.get("/api/room-visits/visitors/:passportCode", optionalStudentAuth, roomBrowsingLimiter, async (req, res) => {
     try {
       const { passportCode } = getVisitStatsSchema.parse({ passportCode: req.params.passportCode });
 
@@ -258,7 +258,7 @@ export function registerRoomVisitRoutes(app: Express) {
   });
 
   // GET /api/room-visits/class-stats/:classId - Get class-wide visit statistics (for teachers)
-  app.get("/api/room-visits/class-stats/:classId", optionalStudentAuth, roomBrowsingLimiter, async (_req, res) => {
+  app.get("/api/room-visits/class-stats/:classId", optionalStudentAuth, roomBrowsingLimiter, async (req, res) => {
     try {
       const classId = req.params.classId;
 

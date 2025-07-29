@@ -13,9 +13,9 @@ export { getPaginationParams, setPaginationHeaders } from './pagination';
  * This allows gradual migration without breaking existing clients
  */
 export function paginationWrapper(
-  handler: (req: Request, res: Response, _next: NextFunction) => Promise<void>
+  handler: (req: Request, res: Response, next: NextFunction) => Promise<void>
 ) {
-  return async (req: Request, res: Response, _next: NextFunction) => {
+  return async (req: Request, res: Response, next: NextFunction) => {
     // If no pagination params, use original handler
     if (!req.query.page && !req.query.limit) {
       return handler(req, res, next);

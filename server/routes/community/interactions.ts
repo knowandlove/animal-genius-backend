@@ -6,7 +6,7 @@ import { eq, and, sql } from 'drizzle-orm';
 import { createSecureLogger } from '../../utils/secure-logger.js';
 import type { Request, Response } from 'express';
 
-const _logger = createSecureLogger('CommunityInteractions');
+const logger = createSecureLogger('CommunityInteractions');
 const router = express.Router();
 
 // Validation schemas

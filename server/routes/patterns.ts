@@ -39,7 +39,7 @@ const getSurfaceTypeSchema = z.object({
  * Get owned patterns for a student (filtered by surface type)
  * Requires student authentication OR teacher authentication with student passport code
  */
-router.get('/student/inventory/patterns', flexibleAuth, async (_req, res) => {
+router.get('/student/inventory/patterns', flexibleAuth, async (req, res) => {
   try {
     let studentId: string | undefined;
     
@@ -206,7 +206,7 @@ router.get('/student/inventory/patterns', flexibleAuth, async (_req, res) => {
  * Get all available patterns for store display
  * Public endpoint - no authentication required
  */
-router.get('/available', async (_req, res) => {
+router.get('/available', async (req, res) => {
   try {
     // Validate query parameters
     const query = getSurfaceTypeSchema.parse(req.query);
@@ -339,7 +339,7 @@ router.get('/available', async (_req, res) => {
  * Check if a student owns a specific pattern
  * Requires student authentication
  */
-router.get('/:patternId/ownership', requireUnifiedAuth, requireStudent, async (_req, res) => {
+router.get('/:patternId/ownership', requireUnifiedAuth, requireStudent, async (req, res) => {
   try {
     const studentId = (req as any).studentId;
     const { patternId } = req.params;

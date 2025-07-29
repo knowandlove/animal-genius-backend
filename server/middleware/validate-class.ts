@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { uuidStorage } from '../storage-uuid';
 
 // Simple middleware to validate class exists and is active
-export async function validateClassAccess(req: Request, res: Response, _next: NextFunction) {
+export async function validateClassAccess(req: Request, res: Response, next: NextFunction) {
   try {
     const classId = req.body.classId || req.params.classId;
     

@@ -4,7 +4,8 @@ import { db } from '../../db';
 import { 
   profiles, 
   storeItems,
-  students 
+  students,
+  quizSubmissions 
 } from '@shared/schema';
 import { sql, count, avg, desc, and, gte } from 'drizzle-orm';
 import { errorTracker } from '../../monitoring/error-tracker';
@@ -17,7 +18,7 @@ const router = Router();
  * GET /api/admin/quick-stats
  * Get quick statistics for the admin dashboard
  */
-router.get('/quick-stats', requireAuth, requireAdmin, async (_req, res) => {
+router.get('/quick-stats', requireAuth, requireAdmin, async (req, res) => {
   try {
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());

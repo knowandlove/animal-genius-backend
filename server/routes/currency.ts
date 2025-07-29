@@ -7,12 +7,12 @@ import { asyncWrapper } from '../utils/async-wrapper';
 import { ValidationError, NotFoundError, BusinessError, InternalError, ErrorCode } from '../utils/errors';
 import { createSecureLogger } from '../utils/secure-logger';
 
-const _logger = createSecureLogger('CurrencyRoutes');
+const logger = createSecureLogger('CurrencyRoutes');
 
 const router = Router();
 
 // Give coins to a student
-router.post('/give', requireUnifiedAuth, requireTeacher, verifyStudentClassEditAccess, asyncWrapper(async (req, res, _next) => {
+router.post('/give', requireUnifiedAuth, requireTeacher, verifyStudentClassEditAccess, asyncWrapper(async (req, res, next) => {
   const authReq = req as AuthenticatedRequest;
   const teacherId = authReq.auth?.userId || authReq.user?.userId;
   const { studentId, amount, reason } = authReq.body;
@@ -45,7 +45,7 @@ router.post('/give', requireUnifiedAuth, requireTeacher, verifyStudentClassEditA
 }));
 
 // Take coins from a student
-router.post('/take', requireUnifiedAuth, requireTeacher, verifyStudentClassEditAccess, asyncWrapper(async (req, res, _next) => {
+router.post('/take', requireUnifiedAuth, requireTeacher, verifyStudentClassEditAccess, asyncWrapper(async (req, res, next) => {
   const authReq = req as AuthenticatedRequest;
   const teacherId = authReq.auth?.userId || authReq.user?.userId;
   const { studentId, amount, reason } = authReq.body;
@@ -86,7 +86,7 @@ router.post('/take', requireUnifiedAuth, requireTeacher, verifyStudentClassEditA
 }));
 
 // Get currency transactions for a class
-router.get('/transactions/:classId', requireUnifiedAuth, requireTeacher, verifyClassAccess, asyncWrapper(async (req, res, _next) => {
+router.get('/transactions/:classId', requireUnifiedAuth, requireTeacher, verifyClassAccess, asyncWrapper(async (req, res, next) => {
   const authReq = req as AuthenticatedRequest;
   const teacherId = authReq.auth?.userId || authReq.user?.userId;
   const classId = authReq.params.classId;
@@ -98,7 +98,7 @@ router.get('/transactions/:classId', requireUnifiedAuth, requireTeacher, verifyC
 }));
 
 // Get transaction history for a specific student
-router.get('/history/:studentId', requireUnifiedAuth, requireTeacher, verifyStudentClassAccess, asyncWrapper(async (req, res, _next) => {
+router.get('/history/:studentId', requireUnifiedAuth, requireTeacher, verifyStudentClassAccess, asyncWrapper(async (req, res, next) => {
   const authReq = req as AuthenticatedRequest;
   const teacherId = authReq.auth?.userId || authReq.user?.userId;
   const studentId = authReq.params.studentId;

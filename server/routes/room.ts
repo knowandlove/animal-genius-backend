@@ -25,7 +25,7 @@ const passportCodeSchema = z.string().regex(/^[A-Z]{3}-[A-Z0-9]{3}$/, "Invalid p
 export function registerRoomRoutes(app: Express) {
   
   // TEMPORARY: Pet catalog endpoint - remove once pet routes are working
-  app.get("/api/pets/catalog", async (_req, res) => {
+  app.get("/api/pets/catalog", async (req, res) => {
     try {
       console.log('📱 Pet catalog requested (temporary endpoint)');
       const pets = await getAvailablePets();
@@ -37,7 +37,7 @@ export function registerRoomRoutes(app: Express) {
   });
   
   // NEW: Consolidated endpoint for student room page - Uses flexible access control
-  app.get("/api/room-page-data/:passportCode", optionalStudentAuth, checkRoomAccess, passportLoginLimiter, roomBrowsingLimiter, async (_req, res) => {
+  app.get("/api/room-page-data/:passportCode", optionalStudentAuth, checkRoomAccess, passportLoginLimiter, roomBrowsingLimiter, async (req, res) => {
     try {
       const { passportCode } = req.params;
       
@@ -426,7 +426,7 @@ export function registerRoomRoutes(app: Express) {
   });
   
   // Get student room data by passport code
-  app.get("/api/room/:passportCode", roomBrowsingLimiter, async (_req, res) => {
+  app.get("/api/room/:passportCode", roomBrowsingLimiter, async (req, res) => {
     try {
       const { passportCode } = req.params;
       
@@ -494,7 +494,7 @@ export function registerRoomRoutes(app: Express) {
   });
 
   // Check store status for student's class
-  app.get("/api/room/:passportCode/store", async (_req, res) => {
+  app.get("/api/room/:passportCode/store", async (req, res) => {
     try {
       const { passportCode } = req.params;
       
@@ -535,7 +535,7 @@ export function registerRoomRoutes(app: Express) {
 
 
   // Save room state endpoint - Must have edit permission
-  app.post("/api/room/:passportCode/state", optionalStudentAuth, checkRoomAccess, roomSaveLimiter, async (_req, res) => {
+  app.post("/api/room/:passportCode/state", optionalStudentAuth, checkRoomAccess, roomSaveLimiter, async (req, res) => {
     try {
       const { passportCode } = req.params;
       const { avatarData, roomData, lastUpdated } = req.body;
@@ -637,7 +637,7 @@ export function registerRoomRoutes(app: Express) {
   });
 
   // Equip/unequip items endpoint - Must have edit permission
-  app.post("/api/room/:passportCode/equip", optionalStudentAuth, checkRoomAccess, roomSaveLimiter, async (_req, res) => {
+  app.post("/api/room/:passportCode/equip", optionalStudentAuth, checkRoomAccess, roomSaveLimiter, async (req, res) => {
     try {
       const { passportCode } = req.params;
       const { slot, itemId } = req.body;
@@ -747,7 +747,7 @@ export function registerRoomRoutes(app: Express) {
   });
 
   // Save avatar customization endpoint - Must have edit permission
-  app.post("/api/room/:passportCode/avatar", optionalStudentAuth, checkRoomAccess, requireEditAccess, roomSaveLimiter, async (_req, res) => {
+  app.post("/api/room/:passportCode/avatar", optionalStudentAuth, checkRoomAccess, requireEditAccess, roomSaveLimiter, async (req, res) => {
     try {
       const { passportCode } = req.params;
       const { equipped, colors } = req.body;
@@ -856,7 +856,7 @@ export function registerRoomRoutes(app: Express) {
   });
 
   // Save room decoration endpoint - Must have edit permission
-  app.post("/api/room/:passportCode/room", optionalStudentAuth, checkRoomAccess, requireEditAccess, roomSaveLimiter, async (_req, res) => {
+  app.post("/api/room/:passportCode/room", optionalStudentAuth, checkRoomAccess, requireEditAccess, roomSaveLimiter, async (req, res) => {
     try {
       const { passportCode } = req.params;
       const { theme, wallColor, floorColor, wallPattern, floorPattern, furniture, wall, floor } = req.body;
@@ -1130,7 +1130,7 @@ export function registerRoomRoutes(app: Express) {
   });
 
   // Save avatar colors endpoint - Must have edit permission
-  app.post("/api/room/:passportCode/avatar-colors", optionalStudentAuth, checkRoomAccess, requireEditAccess, roomSaveLimiter, async (_req, res) => {
+  app.post("/api/room/:passportCode/avatar-colors", optionalStudentAuth, checkRoomAccess, requireEditAccess, roomSaveLimiter, async (req, res) => {
     try {
       const { passportCode } = req.params;
       const { primaryColor, secondaryColor } = req.body;
@@ -1201,7 +1201,7 @@ export function registerRoomRoutes(app: Express) {
   });
 
   // Update room surfaces endpoint - Must have edit permission
-  app.put("/api/room/:passportCode/surfaces", optionalStudentAuth, checkRoomAccess, requireEditAccess, roomSaveLimiter, async (_req, res) => {
+  app.put("/api/room/:passportCode/surfaces", optionalStudentAuth, checkRoomAccess, requireEditAccess, roomSaveLimiter, async (req, res) => {
     try {
       const { passportCode } = req.params;
       const { wall, floor } = req.body;

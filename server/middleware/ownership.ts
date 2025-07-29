@@ -4,7 +4,7 @@ import { classes, students } from '@shared/schema';
 import { and, eq } from 'drizzle-orm';
 import { createSecureLogger } from '../utils/secure-logger';
 
-const _logger = createSecureLogger('Ownership');
+const logger = createSecureLogger('Ownership');
 
 // UUID validation regex
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -18,7 +18,7 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
  * 
  * This middleware must be used after requireAuth middleware.
  */
-export const verifyClassOwnership = async (req: Request, res: Response, _next: NextFunction) => {
+export const verifyClassOwnership = async (req: Request, res: Response, next: NextFunction) => {
   try {
     // SECURITY: Only accept class ID from URL params to prevent IDOR attacks
     // Body parameters can be manipulated more easily
@@ -83,7 +83,7 @@ export const verifyClassOwnership = async (req: Request, res: Response, _next: N
  * 
  * This middleware must be used after requireAuth middleware.
  */
-export const verifyStudentClassOwnership = async (req: Request, res: Response, _next: NextFunction) => {
+export const verifyStudentClassOwnership = async (req: Request, res: Response, next: NextFunction) => {
   try {
     // SECURITY: Only accept student ID from URL params to prevent IDOR attacks
     const studentId = req.params.studentId;

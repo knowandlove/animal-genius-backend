@@ -7,7 +7,7 @@ import { asyncWrapper } from '../utils/async-wrapper';
 import { NotFoundError, AuthorizationError, ErrorCode } from '../utils/errors';
 import { createSecureLogger } from '../utils/secure-logger';
 
-const _logger = createSecureLogger('AnalyticsRoutes');
+const logger = createSecureLogger('AnalyticsRoutes');
 
 const router = Router();
 

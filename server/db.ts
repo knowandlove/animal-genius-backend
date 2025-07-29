@@ -100,10 +100,10 @@ const monitorDbPool = () => {
 // Use managed interval if available, fallback to regular interval
 if (process.env.NODE_ENV !== 'test') {
   import('./lib/resource-cleanup').then(({ createManagedInterval }) => {
-    dbMonitorInterval = createManagedInterval(monitorDbPool, 30000, 'db-pool-monitor');
+    _dbMonitorInterval = createManagedInterval(monitorDbPool, 30000, 'db-pool-monitor');
   }).catch(() => {
     // Fallback to regular interval
-    dbMonitorInterval = setInterval(monitorDbPool, 30000);
+    _dbMonitorInterval = setInterval(monitorDbPool, 30000);
   });
 }
 

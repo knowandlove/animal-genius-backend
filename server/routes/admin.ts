@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import { AuthenticatedRequest } from '../types/api';
 import { db } from '../db';
 import { uuidStorage } from '../storage-uuid';
@@ -21,7 +21,7 @@ const adminSchemas = {
 };
 
 // Admin force delete class (deletes class and all associated data)
-router.delete('/classes/:id/force', requireAuth, validateParams(adminSchemas.uuidParam), async (req: Request, res: Response) => {
+router.delete('/classes/:id/force', requireAuth, validateParams(adminSchemas.uuidParam), async (req, res) => {
   const authReq = req as AuthenticatedRequest;
   try {
     const classId = authReq.params.id;
@@ -71,14 +71,14 @@ router.delete('/classes/:id/force', requireAuth, validateParams(adminSchemas.uui
     });
     
     res.json({ message: "Class and all associated data deleted successfully" });
-  } catch (error: any) {
+  } catch (error) {
     console.error("Force delete class error:", error);
-    res.status(500).json({ message: "Failed to force delete class", error: error.message });
+    res.status(500).json({ message: "Failed to force delete class", error: error instanceof Error ? error.message : String(error) });
   }
 });
 
 // Get all teachers/profiles
-router.get('/teachers', requireAuth, requireAdmin, async (_req: Request, res: Response) => {
+router.get('/teachers', requireAuth, requireAdmin, async (req, res) => {
   try {
     const teachers = await uuidStorage.getAllProfiles();
     res.json(teachers);
@@ -89,7 +89,7 @@ router.get('/teachers', requireAuth, requireAdmin, async (_req: Request, res: Re
 });
 
 // Update admin status
-router.put('/teachers/:id/admin', requireAuth, requireAdmin, validateParams(adminSchemas.uuidParam), validateBody(adminSchemas.updateAdminStatus), async (req: Request, res: Response) => {
+router.put('/teachers/:id/admin', requireAuth, requireAdmin, validateParams(adminSchemas.uuidParam), validateBody(adminSchemas.updateAdminStatus), async (req, res) => {
   const authReq = req as AuthenticatedRequest;
   try {
     const teacherId = authReq.params.id;
@@ -109,14 +109,14 @@ router.put('/teachers/:id/admin', requireAuth, requireAdmin, validateParams(admi
     });
     
     res.json(updatedProfile);
-  } catch (error: any) {
+  } catch (error) {
     console.error("Update admin status error:", error);
     res.status(500).json({ message: "Failed to update admin status" });
   }
 });
 
 // Get all classes
-router.get('/classes', requireAuth, requireAdmin, async (_req: Request, res: Response) => {
+router.get('/classes', requireAuth, requireAdmin, async (req, res) => {
   try {
     const classes = await uuidStorage.getAllClassesWithStats();
     res.json(classes);
@@ -127,7 +127,7 @@ router.get('/classes', requireAuth, requireAdmin, async (_req: Request, res: Res
 });
 
 // Get admin stats
-router.get('/stats', requireAuth, requireAdmin, async (_req: Request, res: Response) => {
+router.get('/stats', requireAuth, requireAdmin, async (req, res) => {
   try {
     const stats = await uuidStorage.getAdminStats();
     res.json(stats);

@@ -20,7 +20,7 @@ const getGuestbookSchema = z.object({
 export function registerRoomGuestbookRoutes(app: Express) {
   
   // POST /api/room-guestbook/message - Create a guestbook message
-  app.post("/api/room-guestbook/message", optionalStudentAuth, roomBrowsingLimiter, async (_req, res) => {
+  app.post("/api/room-guestbook/message", optionalStudentAuth, roomBrowsingLimiter, async (req, res) => {
     try {
       const { roomOwnerPassportCode, message } = createMessageSchema.parse(req.body);
       
@@ -131,7 +131,7 @@ export function registerRoomGuestbookRoutes(app: Express) {
   });
 
   // GET /api/room-guestbook/my-messages - Get messages written by the authenticated student
-  app.get("/api/room-guestbook/my-messages", optionalStudentAuth, roomBrowsingLimiter, async (_req, res) => {
+  app.get("/api/room-guestbook/my-messages", optionalStudentAuth, roomBrowsingLimiter, async (req, res) => {
     try {
       if (!req.student?.id) {
         return res.status(401).json({ 
@@ -175,7 +175,7 @@ export function registerRoomGuestbookRoutes(app: Express) {
   });
 
   // GET /api/room-guestbook/:passportCode - Get guestbook messages for a room
-  app.get("/api/room-guestbook/:passportCode", optionalStudentAuth, roomBrowsingLimiter, async (_req, res) => {
+  app.get("/api/room-guestbook/:passportCode", optionalStudentAuth, roomBrowsingLimiter, async (req, res) => {
     try {
       const { passportCode } = getGuestbookSchema.parse({ passportCode: req.params.passportCode });
 
@@ -254,7 +254,7 @@ export function registerRoomGuestbookRoutes(app: Express) {
   });
 
   // DELETE /api/room-guestbook/message/:messageId - Delete a guestbook message (owner only)
-  app.delete("/api/room-guestbook/message/:messageId", optionalStudentAuth, roomBrowsingLimiter, async (_req, res) => {
+  app.delete("/api/room-guestbook/message/:messageId", optionalStudentAuth, roomBrowsingLimiter, async (req, res) => {
     try {
       const messageId = req.params.messageId;
 

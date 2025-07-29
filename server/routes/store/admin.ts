@@ -57,7 +57,7 @@ const updateItemSchema = createItemSchema.partial();
 export function registerStoreAdminRoutes(app: Express) {
   
   // Get all store items (admin view)
-  app.get("/api/store/admin/items", requireAuth, requireAdmin, async (_req, res) => {
+  app.get("/api/store/admin/items", requireAuth, requireAdmin, async (req, res) => {
     console.log('🔍 ADMIN STORE ITEMS REQUEST RECEIVED');
     console.log('Auth header:', req.headers.authorization);
     console.log('User from request:', req.user);
@@ -102,7 +102,7 @@ export function registerStoreAdminRoutes(app: Express) {
   });
   
   // Create new store item
-  app.post("/api/store/admin/items", requireAuth, requireAdmin, async (_req, res) => {
+  app.post("/api/store/admin/items", requireAuth, requireAdmin, async (req, res) => {
     console.log('🚀 HIT CREATE STORE ITEM ENDPOINT');
     try {
       console.log('=== CREATE STORE ITEM REQUEST ===');
@@ -240,7 +240,7 @@ export function registerStoreAdminRoutes(app: Express) {
   });
   
   // Update store item
-  app.put("/api/store/admin/items/:id", requireAuth, requireAdmin, validateUUID('id'), async (_req, res) => {
+  app.put("/api/store/admin/items/:id", requireAuth, requireAdmin, validateUUID('id'), async (req, res) => {
     try {
       const { id } = req.params;
       const validatedData = updateItemSchema.parse(req.body);
@@ -286,7 +286,7 @@ export function registerStoreAdminRoutes(app: Express) {
   });
   
   // Delete store item
-  app.delete("/api/store/admin/items/:id", requireAuth, requireAdmin, validateUUID('id'), async (_req, res) => {
+  app.delete("/api/store/admin/items/:id", requireAuth, requireAdmin, validateUUID('id'), async (req, res) => {
     try {
       const { id } = req.params;
       
@@ -344,7 +344,7 @@ export function registerStoreAdminRoutes(app: Express) {
     requireAuth, 
     requireAdmin,
     upload.single('image'),
-    async (_req, res) => {
+    async (req, res) => {
       try {
         if (!req.file) {
           return res.status(400).json({ message: "No image file provided" });

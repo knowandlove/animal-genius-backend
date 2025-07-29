@@ -12,7 +12,7 @@ import { eq } from 'drizzle-orm';
 import { createSecureLogger } from '../utils/secure-logger';
 import { v4 as uuidv4 } from 'uuid';
 
-const _logger = createSecureLogger('JITProvisioning');
+const logger = createSecureLogger('JITProvisioning');
 
 export interface JITUserData {
   email?: string;

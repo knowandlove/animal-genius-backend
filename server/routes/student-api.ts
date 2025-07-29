@@ -39,7 +39,7 @@ const equipItemSchema = z.object({
 export function registerStudentApiRoutes(app: Express) {
   
   // Get student dashboard/room data
-  app.get("/api/student/dashboard", requireUnifiedAuth, requireStudent, async (_req, res) => {
+  app.get("/api/student/dashboard", requireUnifiedAuth, requireStudent, async (req, res) => {
     try {
       // Bridge: Set req.studentId for legacy compatibility
       if (req.auth?.role === 'student') {
@@ -257,7 +257,7 @@ export function registerStudentApiRoutes(app: Express) {
 
 
   // Update avatar data
-  app.post("/api/student/avatar", requireUnifiedAuth, requireStudent, async (_req, res) => {
+  app.post("/api/student/avatar", requireUnifiedAuth, requireStudent, async (req, res) => {
     try {
       const studentId = (req as any).studentId as string;
       
@@ -314,7 +314,7 @@ export function registerStudentApiRoutes(app: Express) {
   });
 
   // Update room data  
-  app.post("/api/student/room", requireUnifiedAuth, requireStudent, async (_req, res) => {
+  app.post("/api/student/room", requireUnifiedAuth, requireStudent, async (req, res) => {
     try {
       const studentId = (req as any).studentId as string;
       

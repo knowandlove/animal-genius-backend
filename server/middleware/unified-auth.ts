@@ -13,7 +13,7 @@ import { authPerformanceMonitor } from './auth-monitor';
 import { createSecureLogger } from '../utils/secure-logger';
 // Removed migration imports - no longer needed with Custom JWT Authorizer pattern
 
-const _logger = createSecureLogger('UnifiedAuth');
+const logger = createSecureLogger('UnifiedAuth');
 
 // Extend Express Request type
 declare global {
@@ -35,7 +35,7 @@ declare global {
  * Unified authentication middleware
  * Handles Supabase tokens (both teacher and student JWTs)
  */
-export async function requireUnifiedAuth(req: Request, res: Response, _next: NextFunction) {
+export async function requireUnifiedAuth(req: Request, res: Response, next: NextFunction) {
   // Start performance monitoring
   authPerformanceMonitor(req, res, () => {});
   
@@ -59,7 +59,7 @@ export async function requireUnifiedAuth(req: Request, res: Response, _next: Nex
 /**
  * Handle Supabase authentication
  */
-async function handleSupabaseAuth(req: Request, res: Response, _next: NextFunction, token: string) {
+async function handleSupabaseAuth(req: Request, res: Response, next: NextFunction, token: string) {
   try {
     const { data: { user }, error } = await supabaseAnon.auth.getUser(token);
     
@@ -142,7 +142,7 @@ async function handleSupabaseAuth(req: Request, res: Response, _next: NextFuncti
  * Role-based middleware generators
  */
 export function requireRole(role: 'teacher' | 'student') {
-  return (req: Request, res: Response, _next: NextFunction) => {
+  return (req: Request, res: Response, next: NextFunction) => {
     if (!req.auth) {
       return res.status(401).json({ message: 'Authentication required' });
     }
@@ -161,7 +161,7 @@ export const requireStudent = requireRole('student');
 /**
  * Admin requirement middleware
  */
-export function requireUnifiedAdmin(req: Request, res: Response, _next: NextFunction) {
+export function requireUnifiedAdmin(req: Request, res: Response, next: NextFunction) {
   if (!req.auth || !req.auth.isAdmin) {
     return res.status(403).json({ message: 'Admin access required' });
   }
@@ -172,7 +172,7 @@ export function requireUnifiedAdmin(req: Request, res: Response, _next: NextFunc
 /**
  * Optional unified auth - doesn't fail if no auth present
  */
-export async function optionalUnifiedAuth(req: Request, res: Response, _next: NextFunction) {
+export async function optionalUnifiedAuth(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   const token = authHeader?.split(' ')[1];
   

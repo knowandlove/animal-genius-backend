@@ -11,7 +11,7 @@ import { updateProfileSchema, updatePasswordSchema } from '../validation/auth-sc
 const router = Router();
 
 // Get current user profile
-router.get('/me', requireAuth, async (_req, res) => {
+router.get('/me', requireAuth, async (req, res) => {
   try {
     // req.user is set by the requireAuth middleware
     const userId = req.user!.userId;
@@ -54,7 +54,7 @@ router.get('/me', requireAuth, async (_req, res) => {
 });
 
 // Update current user profile (only allowed fields)
-router.put('/me/profile', requireAuth, async (_req, res) => {
+router.put('/me/profile', requireAuth, async (req, res) => {
   try {
     const userId = req.user!.userId;
     
@@ -127,7 +127,7 @@ router.put('/me/profile', requireAuth, async (_req, res) => {
 });
 
 // Update password
-router.put('/me/password', requireAuth, async (_req, res) => {
+router.put('/me/password', requireAuth, async (req, res) => {
   try {
     const userId = req.user!.userId;
     

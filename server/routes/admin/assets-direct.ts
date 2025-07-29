@@ -234,7 +234,7 @@ router.post('/upload', requireAuth, requireAdmin, upload.fields([
  * GET /api/admin/assets/test-connection
  * Test Supabase connection and configuration
  */
-router.get('/test-connection', requireAuth, requireAdmin, async (_req, res) => {
+router.get('/test-connection', requireAuth, requireAdmin, async (req, res) => {
   try {
     // Test environment variables
     const envCheck = {

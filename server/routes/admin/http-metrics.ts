@@ -16,7 +16,7 @@ const router = Router();
  * Get HTTP request metrics
  * Admin only
  */
-router.get('/http', requireAuth, requireAdmin, asyncWrapper(async (_req, res, _next) => {
+router.get('/http', requireAuth, requireAdmin, asyncWrapper(async (req, res, next) => {
   const httpMetrics = getHttpMetrics();
   
   res.json({
