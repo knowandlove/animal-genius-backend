@@ -826,6 +826,24 @@ export const studentAchievements = pgTable('student_achievements', {
   };
 });
 
+// Lesson feedback table
+export const lessonFeedback = pgTable('lesson_feedback', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  lessonId: integer('lesson_id').notNull(), // References lesson number (1-4), not a UUID
+  teacherId: uuid('teacher_id').notNull().references(() => profiles.id, { onDelete: 'cascade' }),
+  rating: integer('rating').notNull(), // 1-5 stars
+  comment: text('comment'), // Optional feedback comment, max 1000 chars enforced in API
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => {
+  return {
+    uniqueTeacherLesson: uniqueIndex('unique_teacher_lesson_feedback').on(table.teacherId, table.lessonId),
+    teacherIdx: index('idx_lesson_feedback_teacher').on(table.teacherId),
+    lessonIdx: index('idx_lesson_feedback_lesson').on(table.lessonId),
+    ratingIdx: index('idx_lesson_feedback_rating').on(table.rating),
+  };
+});
+
 // Relations for new tables
 export const roomVisitsRelations = relations(roomVisits, ({ one }) => ({
   visitor: one(students, {
@@ -873,6 +891,14 @@ export const studentsRelationsUpdated = relations(students, ({ one, many }) => (
   achievements: many(studentAchievements),
 }));
 
+// Lesson feedback relations
+export const lessonFeedbackRelations = relations(lessonFeedback, ({ one }) => ({
+  teacher: one(profiles, {
+    fields: [lessonFeedback.teacherId],
+    references: [profiles.id],
+  }),
+}));
+
 // Type exports for new tables
 export type RoomVisit = typeof roomVisits.$inferSelect;
 export type NewRoomVisit = typeof roomVisits.$inferInsert;
@@ -880,6 +906,8 @@ export type RoomGuestbookMessage = typeof roomGuestbook.$inferSelect;
 export type NewRoomGuestbookMessage = typeof roomGuestbook.$inferInsert;
 export type StudentAchievement = typeof studentAchievements.$inferSelect;
 export type NewStudentAchievement = typeof studentAchievements.$inferInsert;
+export type LessonFeedback = typeof lessonFeedback.$inferSelect;
+export type NewLessonFeedback = typeof lessonFeedback.$inferInsert;
 
 // Community Hub type exports
 export type Discussion = typeof discussions.$inferSelect;

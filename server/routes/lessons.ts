@@ -2,8 +2,8 @@ import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { verifyClassAccess } from '../middleware/ownership-collaborator';
 import { db } from '../db';
-import { lessonProgress, lessonActivityProgress, classValuesSessions, classes, classValuesVotes, classValuesResults, students, currencyTransactions } from '../../shared/schema';
-import { eq, and } from 'drizzle-orm';
+import { lessonProgress, lessonActivityProgress, classValuesSessions, classes, classValuesVotes, classValuesResults, students, currencyTransactions, lessonFeedback, profiles } from '../../shared/schema';
+import { eq, and, sql, desc, avg } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import { lessons } from '../../shared/lessons';
 import { CURRENCY_CONSTANTS, TRANSACTION_REASONS } from '../../shared/currency-types';
@@ -306,6 +306,11 @@ router.post('/:classId/lessons/:lessonId/complete', requireAuth, verifyClassAcce
     const { classId, lessonId } = req.params;
     const lessonIdNum = parseInt(lessonId);
     const userId = (req as any).user?.userId;
+
+    // Validate lessonId
+    if (isNaN(lessonIdNum) || lessonIdNum < 1 || lessonIdNum > 4) {
+      return res.status(400).json({ error: 'Invalid lesson ID. Must be between 1 and 4' });
+    }
 
     // Start a database transaction to ensure atomicity
     await db.transaction(async (tx) => {
@@ -881,6 +886,242 @@ router.post('/:classId/lessons/:lessonId/activities/:activityNumber/reset', requ
   } catch (error) {
     console.error('Error resetting activity:', error);
     res.status(500).json({ error: 'Failed to reset activity' });
+  }
+});
+
+// POST /api/lessons/:lessonId/feedback
+// Create or update lesson feedback
+router.post('/lessons/:lessonId/feedback', requireAuth, async (req, res) => {
+  try {
+    const { lessonId } = req.params;
+    const { rating, comment } = req.body;
+    const teacherId = (req as any).user?.userId;
+    
+    console.log('Feedback endpoint hit:', { lessonId, rating, comment, teacherId });
+
+    // Validate input
+    const lessonIdNum = parseInt(lessonId);
+    if (isNaN(lessonIdNum) || lessonIdNum < 1 || lessonIdNum > 4) {
+      return res.status(400).json({ error: 'Invalid lesson ID. Must be between 1 and 4' });
+    }
+
+    if (!rating || rating < 1 || rating > 5) {
+      return res.status(400).json({ error: 'Rating must be between 1 and 5' });
+    }
+
+    if (comment && comment.length > 1000) {
+      return res.status(400).json({ error: 'Comment must be 1000 characters or less' });
+    }
+
+    // Sanitize comment (remove HTML tags)
+    const sanitizedComment = comment ? comment.replace(/<[^>]*>/g, '') : null;
+
+    // Use UPSERT logic - insert or update if exists
+    const existingFeedback = await db
+      .select()
+      .from(lessonFeedback)
+      .where(
+        and(
+          eq(lessonFeedback.teacherId, teacherId),
+          eq(lessonFeedback.lessonId, lessonIdNum)
+        )
+      )
+      .limit(1);
+
+    let result;
+    if (existingFeedback.length > 0) {
+      // Update existing feedback
+      [result] = await db
+        .update(lessonFeedback)
+        .set({
+          rating,
+          comment: sanitizedComment,
+          updatedAt: new Date(),
+        })
+        .where(eq(lessonFeedback.id, existingFeedback[0].id))
+        .returning();
+    } else {
+      // Create new feedback
+      [result] = await db
+        .insert(lessonFeedback)
+        .values({
+          id: uuidv7(),
+          lessonId: lessonIdNum,
+          teacherId,
+          rating,
+          comment: sanitizedComment,
+        })
+        .returning();
+    }
+
+    res.json(result);
+  } catch (error) {
+    console.error('Error saving lesson feedback:', error);
+    res.status(500).json({ error: 'Failed to save feedback' });
+  }
+});
+
+// GET /api/lessons/:lessonId/my-feedback
+// Get current teacher's feedback for a lesson
+router.get('/lessons/:lessonId/my-feedback', requireAuth, async (req, res) => {
+  try {
+    const { lessonId } = req.params;
+    const teacherId = (req as any).user?.userId;
+
+    // Validate lessonId
+    const lessonIdNum = parseInt(lessonId);
+    if (isNaN(lessonIdNum) || lessonIdNum < 1 || lessonIdNum > 4) {
+      return res.status(400).json({ error: 'Invalid lesson ID. Must be between 1 and 4' });
+    }
+
+    const [feedback] = await db
+      .select()
+      .from(lessonFeedback)
+      .where(
+        and(
+          eq(lessonFeedback.teacherId, teacherId),
+          eq(lessonFeedback.lessonId, lessonIdNum)
+        )
+      );
+
+    res.json(feedback || null);
+  } catch (error) {
+    console.error('Error fetching lesson feedback:', error);
+    res.status(500).json({ error: 'Failed to fetch feedback' });
+  }
+});
+
+// GET /api/admin/feedback/summary
+// Get overall feedback statistics (admin only)
+router.get('/admin/feedback/summary', requireAuth, async (req, res) => {
+  try {
+    const user = (req as any).user;
+    
+    // Check if user is admin
+    const [profile] = await db
+      .select()
+      .from(profiles)
+      .where(eq(profiles.id, user.userId));
+
+    if (!profile?.isAdmin) {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    // Get overall statistics
+    const overallStats = await db
+      .select({
+        totalFeedback: sql<number>`count(*)::int`,
+        averageRating: sql<number>`avg(${lessonFeedback.rating})::float`,
+        uniqueTeachers: sql<number>`count(distinct ${lessonFeedback.teacherId})::int`,
+      })
+      .from(lessonFeedback);
+
+    // Get per-lesson statistics
+    const perLessonStats = await db
+      .select({
+        lessonId: lessonFeedback.lessonId,
+        totalFeedback: sql<number>`count(*)::int`,
+        averageRating: sql<number>`avg(${lessonFeedback.rating})::float`,
+        latestFeedback: sql<Date>`max(${lessonFeedback.updatedAt})`,
+      })
+      .from(lessonFeedback)
+      .groupBy(lessonFeedback.lessonId)
+      .orderBy(lessonFeedback.lessonId);
+
+    // Get recent feedback trend (last 30 days)
+    const recentTrend = await db
+      .select({
+        date: sql<string>`date_trunc('day', ${lessonFeedback.createdAt})::date`,
+        count: sql<number>`count(*)::int`,
+        averageRating: sql<number>`avg(${lessonFeedback.rating})::float`,
+      })
+      .from(lessonFeedback)
+      .where(
+        sql`${lessonFeedback.createdAt} >= current_date - interval '30 days'`
+      )
+      .groupBy(sql`date_trunc('day', ${lessonFeedback.createdAt})`)
+      .orderBy(sql`date_trunc('day', ${lessonFeedback.createdAt})`);
+
+    res.json({
+      overall: overallStats[0] || { totalFeedback: 0, averageRating: 0, uniqueTeachers: 0 },
+      perLesson: perLessonStats,
+      recentTrend,
+    });
+  } catch (error) {
+    console.error('Error fetching feedback summary:', error);
+    res.status(500).json({ error: 'Failed to fetch feedback summary' });
+  }
+});
+
+// GET /api/admin/feedback/lessons/:lessonId
+// Get all feedback for a specific lesson (admin only)
+router.get('/admin/feedback/lessons/:lessonId', requireAuth, async (req, res) => {
+  try {
+    const { lessonId } = req.params;
+    const user = (req as any).user;
+    
+    // Validate lessonId
+    const lessonIdNum = parseInt(lessonId);
+    if (isNaN(lessonIdNum) || lessonIdNum < 1 || lessonIdNum > 4) {
+      return res.status(400).json({ error: 'Invalid lesson ID. Must be between 1 and 4' });
+    }
+    
+    // Check if user is admin
+    const [profile] = await db
+      .select()
+      .from(profiles)
+      .where(eq(profiles.id, user.userId));
+
+    if (!profile?.isAdmin) {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    // Get all feedback for the lesson with teacher details
+    const feedbackList = await db
+      .select({
+        id: lessonFeedback.id,
+        rating: lessonFeedback.rating,
+        comment: lessonFeedback.comment,
+        createdAt: lessonFeedback.createdAt,
+        updatedAt: lessonFeedback.updatedAt,
+        teacher: {
+          id: profiles.id,
+          fullName: profiles.fullName,
+          email: profiles.email,
+          schoolOrganization: profiles.schoolOrganization,
+        },
+      })
+      .from(lessonFeedback)
+      .innerJoin(profiles, eq(lessonFeedback.teacherId, profiles.id))
+      .where(eq(lessonFeedback.lessonId, lessonIdNum))
+      .orderBy(desc(lessonFeedback.updatedAt));
+
+    // Get aggregated stats for this lesson
+    const [stats] = await db
+      .select({
+        totalFeedback: sql<number>`count(*)::int`,
+        averageRating: sql<number>`avg(${lessonFeedback.rating})::float`,
+        distribution: sql<any>`
+          json_build_object(
+            '1', count(*) filter (where rating = 1),
+            '2', count(*) filter (where rating = 2),
+            '3', count(*) filter (where rating = 3),
+            '4', count(*) filter (where rating = 4),
+            '5', count(*) filter (where rating = 5)
+          )
+        `,
+      })
+      .from(lessonFeedback)
+      .where(eq(lessonFeedback.lessonId, lessonIdNum));
+
+    res.json({
+      lessonId: lessonIdNum,
+      stats: stats || { totalFeedback: 0, averageRating: 0, distribution: {} },
+      feedback: feedbackList,
+    });
+  } catch (error) {
+    console.error('Error fetching lesson feedback details:', error);
+    res.status(500).json({ error: 'Failed to fetch lesson feedback' });
   }
 });
 
