@@ -139,7 +139,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'x-passport-code']
 }));
 
-// Trust proxy for rate limiting to work properly in Replit
+// Trust proxy for rate limiting to work properly behind Render's load balancer
 app.set('trust proxy', 1);
 
 // Cookie parsing middleware (MUST be before routes that use cookies)

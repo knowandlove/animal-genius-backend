@@ -1,5 +1,7 @@
 # Student Auth Edge Function
 
+**Last Updated:** July 29, 2025
+
 This Edge Function generates Supabase-compatible JWTs for students using passport codes.
 
 ## Deployment

@@ -30,7 +30,10 @@
     "test:edge-functions": "tsx scripts/test-edge-functions.ts",
     "seed:community-tags": "tsx scripts/seed-community-tags.ts",
     "sync-schema": "bash ../scripts/sync-schema.sh",
-    "db:debug-stats": "tsx scripts/debug-stats.js"
+    "db:debug-stats": "tsx scripts/debug-stats.js",
+    "docs:generate": "typedoc",
+    "docs:watch": "typedoc --watch",
+    "docs:clean": "rm -rf docs/api"
   },
   "dependencies": {
     "@kalpro/shared-types": "file:../shared-types",

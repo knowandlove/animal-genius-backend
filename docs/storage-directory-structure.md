@@ -1,5 +1,7 @@
 # Store Items Storage Directory Structure
 
+**Last Updated:** July 29, 2025
+
 ## Overview
 
 All store item assets are stored in Supabase Storage using a standardized directory structure for organization and scalability.

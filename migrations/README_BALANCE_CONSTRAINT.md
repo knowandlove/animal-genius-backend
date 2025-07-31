@@ -1,5 +1,7 @@
 # Currency Balance Constraint Migration
 
+**Last Updated:** July 29, 2025
+
 ## Overview
 This migration adds database-level constraints to ensure financial data integrity:
 

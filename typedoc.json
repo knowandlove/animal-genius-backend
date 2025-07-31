@@ -1,0 +1,38 @@
+{
+  "entryPoints": ["./server"],
+  "entryPointStrategy": "expand",
+  "out": "./docs/api",
+  "exclude": [
+    "**/node_modules/**",
+    "**/tests/**",
+    "**/test/**",
+    "**/*.test.ts",
+    "**/migrations/**"
+  ],
+  "includeVersion": true,
+  "categorizeByGroup": true,
+  "navigation": {
+    "includeCategories": true,
+    "includeGroups": true
+  },
+  "plugin": ["typedoc-plugin-markdown"],
+  "theme": "markdown",
+  "readme": "./README.md",
+  "hideGenerator": true,
+  "excludePrivate": true,
+  "excludeInternal": true,
+  "categoryOrder": [
+    "Routes",
+    "Middleware", 
+    "Services",
+    "Types",
+    "Utils",
+    "*"
+  ],
+  "groupOrder": [
+    "API Endpoints",
+    "Authentication",
+    "Database",
+    "*"
+  ]
+}

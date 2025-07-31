@@ -1,5 +1,7 @@
 # Schema.ts Type Safety Enhancement
 
+**Last Updated:** July 29, 2025
+
 After running the migration, you might want to add better TypeScript type safety to your schema.ts file. This is **optional** but recommended for better developer experience.
 
 ## What This Does
