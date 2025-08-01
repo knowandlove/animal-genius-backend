@@ -50,7 +50,7 @@ export const lessons: Lesson[] = [
       "Parent letter and Family Zoo worksheet (optional)"
     ],
     videos: {
-      teacher: "1106551524"
+      teacher: "1106590110"
     },
     activities: {
       activity1: {
