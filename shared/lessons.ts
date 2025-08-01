@@ -5,6 +5,10 @@ export interface Lesson {
   description: string;
   objectives: string[];
   materialsNeeded: string[];
+  videos?: {
+    teacher?: string;  // Vimeo ID for teacher prep video
+    student?: string;  // Vimeo ID for student-facing video
+  };
   activities: {
     activity1: Activity;
     activity2: Activity;
@@ -45,6 +49,9 @@ export const lessons: Lesson[] = [
       "Knowing and Loving, Me! worksheet (optional)",
       "Parent letter and Family Zoo worksheet (optional)"
     ],
+    videos: {
+      teacher: "1106551524"
+    },
     activities: {
       activity1: {
         title: "Take the Animal Genius Quiz®",
