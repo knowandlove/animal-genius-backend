@@ -425,6 +425,23 @@ router.get('/:id/pairings', requireAuth, verifyClassAccess, async (req, res) => 
       return res.json(cachedPairings);
     }
     
+    // If queue is not available, generate pairings synchronously as fallback
+    if (!pairingQueue) {
+      console.log('[Pairings] Queue not available, generating synchronously');
+      const allSubmissions = await uuidStorage.getClassAnalytics(classId);
+      
+      if (!allSubmissions || allSubmissions.length === 0) {
+        return res.json({
+          dynamicDuos: [],
+          puzzlePairings: [],
+          soloWorkers: []
+        });
+      }
+      
+      const pairings = generatePairings(allSubmissions);
+      return res.json(pairings);
+    }
+    
     // No cached results, start a new job
     const job = await pairingQueue.add('generate-pairings', { classId });
     

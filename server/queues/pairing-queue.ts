@@ -183,28 +183,40 @@ export { pairingQueue };
 
 // Helper to get pairing results
 export async function getPairingResults(classId: string) {
-  const cacheKey = `pairings:${classId}`;
-  const cached = await pairingQueue.client.get(cacheKey);
-  
-  if (cached) {
-    return JSON.parse(cached);
+  try {
+    const cacheKey = `pairings:${classId}`;
+    
+    // Check if we have a client
+    if (!pairingQueue || !pairingQueue.client) {
+      console.error('[getPairingResults] No queue client available');
+      return null;
+    }
+    
+    const cached = await pairingQueue.client.get(cacheKey);
+    
+    if (cached) {
+      return JSON.parse(cached);
+    }
+    
+    // Check if job is already running
+    const jobs = await pairingQueue.getJobs(['active', 'waiting', 'delayed']);
+    const existingJob = jobs.find((job: any) => 
+      job.name === 'generate-pairings' && job.data.classId === classId
+    );
+    
+    if (existingJob) {
+      return {
+        status: 'processing',
+        jobId: existingJob.id
+      };
+    }
+    
+    // No cached result and no job running
+    return null;
+  } catch (error) {
+    console.error('[getPairingResults] Error:', error);
+    return null;
   }
-  
-  // Check if job is already running
-  const jobs = await pairingQueue.getJobs(['active', 'waiting', 'delayed']);
-  const existingJob = jobs.find((job: any) => 
-    job.name === 'generate-pairings' && job.data.classId === classId
-  );
-  
-  if (existingJob) {
-    return {
-      status: 'processing',
-      jobId: existingJob.id
-    };
-  }
-  
-  // No cached result and no job running
-  return null;
 }
 
 // Helper to get insights results
