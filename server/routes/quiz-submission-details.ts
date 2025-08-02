@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import { AuthenticatedRequest } from '../types/api';
 import { db } from '../db';
 import { quizSubmissions, students, classes, animalTypes, geniusTypes } from '@shared/schema';
@@ -8,7 +8,7 @@ import { requireAuth } from '../middleware/auth';
 const router = Router();
 
 // Get quiz submission details with student and class info
-router.get('/:id/details', requireAuth, async (req: Request, res: Response) => {
+router.get('/:id/details', requireAuth, async (req, res) => {
   const authReq = req as AuthenticatedRequest;
   try {
     const submissionId = authReq.params.id;

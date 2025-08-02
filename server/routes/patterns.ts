@@ -23,7 +23,7 @@ async function flexibleAuth(req: Request, res: Response, _next: NextFunction) {
       (req as any).user = req.user; // For backward compatibility
     }
     
-    next();
+    _next();
   });
 }
 

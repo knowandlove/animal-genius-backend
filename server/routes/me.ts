@@ -7,6 +7,7 @@ import { eq } from 'drizzle-orm';
 import bcrypt from 'bcrypt';
 import { supabaseAdmin, supabaseAnon } from '../supabase-clients';
 import { updateProfileSchema, updatePasswordSchema } from '../validation/auth-schemas';
+import { z } from 'zod';
 
 const router = Router();
 

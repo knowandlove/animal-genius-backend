@@ -34,10 +34,7 @@ const router = Router();
 
 // Teacher registration - integrates with Supabase Auth
 router.post('/register', authLimiter, asyncWrapper(async (req, res, _next) => {
-  // Debug logging
-  if (process.env.NODE_ENV === 'development') {
-    console.log('Registration request body:', JSON.stringify(req.body, null, 2));
-  }
+  try {
   
   // Validate request body
   let userData;
@@ -55,7 +52,6 @@ router.post('/register', authLimiter, asyncWrapper(async (req, res, _next) => {
     }
     
     // Create user in Supabase Auth
-    console.log('About to call Supabase signUp...');
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email: userData.email,
       password: userData.password,
@@ -70,18 +66,12 @@ router.post('/register', authLimiter, asyncWrapper(async (req, res, _next) => {
         }
       }
     });
-    console.log('Supabase signUp response:', { authData: !!authData, authError: !!authError });
 
     if (authError) {
       logger.error('Supabase auth error during registration', { 
         email: userData.email,
         error: authError.message 
       });
-      
-      // Temporarily show the actual error in development
-      if (process.env.NODE_ENV === 'development') {
-        console.error('ACTUAL SUPABASE ERROR:', authError.message);
-      }
       
       if (authError.message.includes('already registered')) {
         throw new ConflictError('An account already exists with this email address. Please log in instead.', ErrorCode.BIZ_006);
@@ -147,6 +137,9 @@ router.post('/register', authLimiter, asyncWrapper(async (req, res, _next) => {
         isAdmin: profile.isAdmin
       }
     });
+  } catch (error) {
+    throw error;
+  }
 }));
 
 // Teacher login - uses Supabase Auth

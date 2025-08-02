@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import { AuthenticatedRequest } from '../types/api';
 import { db } from '../db';
 import { uuidStorage } from '../storage-uuid';
@@ -9,7 +9,7 @@ import { requireAuth } from '../middleware/auth';
 const router = Router();
 
 // Delete submission
-router.delete('/:id', requireAuth, async (req: Request, res: Response) => {
+router.delete('/:id', requireAuth, async (req, res) => {
   const authReq = req as AuthenticatedRequest;
   try {
     const submissionId = authReq.params.id;

@@ -19,6 +19,12 @@ npm run lint
 npm run typecheck
 ```
 
+### Server Configuration
+
+- **Backend runs on port 5001** (configured in `/server/config/env.ts`)
+- Start backend: `npm run dev`
+- Frontend runs on port 5173 (separate Vite app)
+
 ### Authentication Flow
 
 1. Student enters class code → Takes quiz → Receives passport code

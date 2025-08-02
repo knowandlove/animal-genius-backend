@@ -14,11 +14,11 @@ export function typedHandler(
  * Typed handler for authenticated routes
  */
 export const authHandler = (...handlers: RequestHandler[]) => 
-  typedHandler<AuthenticatedRequest>(...handlers);
+  typedHandler(...handlers);
 
 /**
  * Typed handler for student authenticated routes
  */
 export const studentHandler = (...handlers: RequestHandler[]) => 
-  typedHandler<StudentAuthenticatedRequest>(...handlers);
+  typedHandler(...handlers);
 

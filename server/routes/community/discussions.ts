@@ -269,7 +269,10 @@ router.get('/:id', async (req: Request, res: Response) => {
       count: rawReplyCount[0].count 
     });
     
-    const repliesData = await db.select()
+    const repliesData = await db.select({
+      reply: replies,
+      teacher: profiles
+    })
     .from(replies)
     .leftJoin(profiles, eq(replies.teacherId, profiles.id))
     .where(eq(replies.discussionId, discussionId))
@@ -279,10 +282,10 @@ router.get('/:id', async (req: Request, res: Response) => {
       discussionId, 
       replyCount: repliesData.length,
       replies: repliesData.map(r => ({ 
-        id: r.replies.id, 
-        body: r.replies.body?.substring(0, 50),
-        teacherId: r.replies.teacherId,
-        hasTeacher: !!r.profiles
+        id: r.reply.id, 
+        body: r.reply.body?.substring(0, 50),
+        teacherId: r.reply.teacherId,
+        hasTeacher: !!r.teacher
       }))
     });
 
@@ -302,12 +305,12 @@ router.get('/:id', async (req: Request, res: Response) => {
 
     // Build response
     const formattedReplies = repliesData.map(row => ({
-      ...row.replies,
-      teacher: row.profiles ? {
-        id: row.profiles.id,
-        firstName: row.profiles.firstName,
-        lastName: row.profiles.lastName,
-        personalityAnimal: row.profiles.personalityAnimal,
+      ...row.reply,
+      teacher: row.teacher ? {
+        id: row.teacher.id,
+        firstName: row.teacher.firstName,
+        lastName: row.teacher.lastName,
+        personalityAnimal: row.teacher.personalityAnimal,
       } : null,
     }));
     
@@ -318,6 +321,7 @@ router.get('/:id', async (req: Request, res: Response) => {
       triedCount: discussionData.triedCount,
       tags: tagsData.map(t => t.tag).filter(Boolean),
       replies: formattedReplies,
+      replyCount: formattedReplies.length,
     };
     
     logger.info('Sending discussion response', { 
