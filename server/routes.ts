@@ -47,6 +47,7 @@ import { registerRoomGuestbookRoutes } from './routes/room-guestbook';
 import { registerStudentAchievementRoutes } from './routes/student-achievements';
 import communityRouter from './routes/community/index.js';
 import gameAIRouter from './routes/game-ai';
+import { avatarProcessor } from './routes/avatar-processor';
 // v2 Feature - Garden import disabled
 // import gardenRouter from './routes/garden.js';
 
@@ -145,6 +146,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Student Passport API routes (for anonymous auth)
   app.use('/api/student-passport', studentPassportRouter);
+  
+  // Avatar processing routes (server-side SVG processing)
+  app.use('/api/avatar', avatarProcessor);
   
   // ==================== LEGACY ROUTES ====================
   
