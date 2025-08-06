@@ -379,7 +379,10 @@ router.post('/vote', requireStudentAuth, async (req, res) => {
       .limit(1);
 
     if (existingVotes.length > 0) {
-      return res.status(400).json({ error: 'You have already voted in this session' });
+      return res.status(400).json({ 
+        error: 'Oops! It looks like you already voted in this session. Each student can only vote once to keep things fair. If you think this is a mistake, please check with your teacher.',
+        errorCode: 'ALREADY_VOTED'
+      });
     }
 
     // Validate all votes
