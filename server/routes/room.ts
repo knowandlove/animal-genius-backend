@@ -3,7 +3,7 @@ import type { Express } from "express";
 import { z } from "zod";
 import { db } from "../db";
 import { students, classes, currencyTransactions, storeItems, quizSubmissions, studentInventory, itemTypes, animalTypes, geniusTypes, patterns } from "@shared/schema";
-import { eq, and, or, desc, asc, inArray, sql } from "drizzle-orm";
+import { eq, and, or, desc, asc, inArray, sql, ne } from "drizzle-orm";
 import { isValidPassportCode, TRANSACTION_REASONS } from "@shared/currency-types";
 import { getCache } from "../lib/cache-factory";
 
@@ -126,7 +126,10 @@ export function registerRoomRoutes(app: Express) {
             })
             .from(storeItems)
             .innerJoin(itemTypes, eq(storeItems.itemTypeId, itemTypes.id))
-            .where(eq(storeItems.isActive, true))
+            .where(and(
+              eq(storeItems.isActive, true),
+              ne(itemTypes.category, 'garden') // v2 Feature - Exclude garden items
+            ))
             .orderBy(asc(storeItems.sortOrder), asc(storeItems.name));
             
           console.log(`🛍️ Found ${items.length} active store items`);
@@ -752,6 +755,13 @@ export function registerRoomRoutes(app: Express) {
       const { passportCode } = req.params;
       const { equipped, colors } = req.body;
       
+      console.log("[Avatar Save] Request received:", {
+        passportCode,
+        equipped,
+        colors,
+        body: req.body
+      });
+      
       // Check edit permission
       if (!req.roomAccess?.canEdit) {
         return res.status(403).json({ message: "You don't have permission to edit this room" });
@@ -850,8 +860,17 @@ export function registerRoomRoutes(app: Express) {
         message: "Avatar customization saved!"
       });
     } catch (error) {
-      console.error("Save avatar error:", error);
-      res.status(500).json({ message: "Failed to save avatar customization" });
+      console.error("Save avatar error - Full details:", {
+        error,
+        passportCode: req.params.passportCode,
+        body: req.body,
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      res.status(500).json({ 
+        message: "Failed to save avatar customization",
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   });
 

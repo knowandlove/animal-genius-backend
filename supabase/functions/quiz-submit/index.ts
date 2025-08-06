@@ -187,7 +187,7 @@ serve(async (req) => {
       grade: grade || '5',
       quiz_answers: transformedAnswers,
       p_user_id: authUser.user.id,
-      calculated_animal: quizResults.animal,
+      calculated_animal: quizResults.animal.toLowerCase().replace(' ', '_'),
       calculated_genius: quizResults.animalGenius,
       calculated_mbti: quizResults.mbtiType,
       calculated_learning_style: quizResults.learningStyle

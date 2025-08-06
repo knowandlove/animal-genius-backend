@@ -11,6 +11,7 @@ import { asyncWrapper } from '../utils/async-wrapper';
 import { createSecureLogger } from '../utils/secure-logger';
 import { NotFoundError, ErrorCode } from '../utils/errors';
 import type { AuthenticatedRequest } from '../types/api';
+import { gardenService } from '../services/gardenService';
 
 const logger = createSecureLogger('ClassRoutes');
 
@@ -455,5 +456,38 @@ router.get('/:id/pairings', requireAuth, verifyClassAccess, async (req, res) => 
     res.status(500).json({ message: "Failed to get pairings" });
   }
 });
+
+// Get class garden for teacher view
+router.get('/:classId/garden', 
+  requireAuth, 
+  verifyClassAccess,
+  asyncWrapper(async (req, res) => {
+    const { classId } = req.params;
+    
+    console.log('GET /classes/:classId/garden - classId:', classId);
+    
+    try {
+      const classGarden = await gardenService.getClassGarden(classId);
+      
+      console.log('Class garden data:', {
+        classId: classGarden.classId,
+        className: classGarden.className,
+        studentCount: classGarden.students.length,
+        stats: classGarden.stats
+      });
+      
+      res.json({
+        classId: classGarden.classId,
+        className: classGarden.className,
+        students: classGarden.students,
+        stats: classGarden.stats,
+        lastWatered: classGarden.lastWatered
+      });
+    } catch (error) {
+      console.error('getClassGarden error:', error);
+      throw error;
+    }
+  })
+);
 
 export default router;

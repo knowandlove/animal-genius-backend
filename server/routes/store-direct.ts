@@ -2,8 +2,8 @@
 import { z } from "zod";
 import { Router } from 'express';
 import { db } from '../db';
-import { students, storeItems, studentInventory, currencyTransactions, classes } from '@shared/schema';
-import { eq, and, sql, asc } from 'drizzle-orm';
+import { students, storeItems, studentInventory, currencyTransactions, classes, itemTypes } from '@shared/schema';
+import { eq, and, sql, asc, ne } from 'drizzle-orm';
 import StorageRouter from '../services/storage-router';
 import { storePurchaseLimiter, storeBrowsingLimiter } from '../middleware/rateLimiter';
 import { requireStudentAuth } from '../middleware/passport-auth';
@@ -35,10 +35,27 @@ router.get('/catalog', storeBrowsingLimiter, async (req, res) => {
       return res.json(cachedData);
     }
     
+    // v2 Feature - Join with itemTypes to exclude garden items
     const items = await db
-      .select()
+      .select({
+        id: storeItems.id,
+        name: storeItems.name,
+        description: storeItems.description,
+        cost: storeItems.cost,
+        rarity: storeItems.rarity,
+        itemTypeId: storeItems.itemTypeId,
+        assetId: storeItems.assetId,
+        sortOrder: storeItems.sortOrder,
+        isActive: storeItems.isActive,
+        createdAt: storeItems.createdAt,
+        updatedAt: storeItems.updatedAt
+      })
       .from(storeItems)
-      .where(eq(storeItems.isActive, true))
+      .innerJoin(itemTypes, eq(storeItems.itemTypeId, itemTypes.id))
+      .where(and(
+        eq(storeItems.isActive, true),
+        ne(itemTypes.category, 'garden') // Exclude garden items for v2
+      ))
       .orderBy(asc(storeItems.sortOrder), asc(storeItems.name));
     
     // Prepare items with proper image URLs

@@ -36,6 +36,7 @@
     "docs:clean": "rm -rf docs/api"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@kalpro/shared-types": "file:../shared-types",
     "@neondatabase/serverless": "^0.10.4",
     "@sentry/node": "^9.39.0",
@@ -62,6 +63,7 @@
     "multer": "^2.0.1",
     "node-cache": "^5.1.2",
     "node-fetch": "^2.7.0",
+    "openai": "^5.11.0",
     "openid-client": "^6.5.1",
     "passport": "^0.7.0",
     "passport-local": "^1.0.0",

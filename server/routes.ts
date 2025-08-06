@@ -46,6 +46,9 @@ import { registerRoomVisitRoutes } from './routes/room-visits';
 import { registerRoomGuestbookRoutes } from './routes/room-guestbook';
 import { registerStudentAchievementRoutes } from './routes/student-achievements';
 import communityRouter from './routes/community/index.js';
+import gameAIRouter from './routes/game-ai';
+// v2 Feature - Garden import disabled
+// import gardenRouter from './routes/garden.js';
 
 // Feature flags to disable unused features
 const FEATURE_FLAGS = {
@@ -171,8 +174,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Register direct store routes (no approval required)
   app.use('/api/store-direct', storeDirectRouter);
   
-  // Register patterns routes
+  // Register patterns routes (to be deprecated)
   app.use('/api/patterns', patternsRouter);
+  
+  // v2 Feature - Garden routes temporarily disabled
+  // app.use('/api/garden', gardenRouter);
   
   // Register pet routes
   console.log('📍 Registering pets router at /api/pets');
@@ -190,6 +196,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Register community hub routes
   app.use('/api/community', communityRouter);
+  app.use('/api/ai', gameAIRouter);
   
   // Register admin upload routes
   app.use('/api/admin', adminUploadRoutes);

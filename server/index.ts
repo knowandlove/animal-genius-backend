@@ -116,10 +116,7 @@ app.use(helmet({
 app.use(cors({
   credentials: true, // Allow cookies to be sent
   origin: (origin, callback) => {
-    // Log the origin for debugging in development only
-    if (env.NODE_ENV === 'development') {
-      jsonLogger.debug('CORS check', { origin, allowedOrigins });
-    }
+    // Only log CORS rejections, not every check
     
     // Allow requests with no origin (like mobile apps or Postman)
     if (!origin || allowedOrigins.includes(origin)) {
