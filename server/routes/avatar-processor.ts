@@ -39,6 +39,17 @@ const COLOR_MAPPINGS: Record<string, Record<string, string>> = {
     '#FFF8DC': 'secondary',  // Cream feathers
     '#FAEBD7': 'secondary',  // Light accents
   },
+  otter: {
+    '#6c4c40': 'primary',    // Dark brown
+    '#4c3b3b': 'primary',    // Darker brown
+    '#4f3a33': 'primary',    // Brown
+    '#755c51': 'primary',    // Medium brown
+    '#896f62': 'primary',    // Light brown
+    '#f6edd7': 'secondary',  // Light fur
+    '#d2b7a5': 'secondary',  // Light brown
+    '#f2f2f2': 'secondary',  // White
+    '#dba39f': 'secondary',  // Light accent
+  },
   // Add more animals as needed
   default: {
     '#dbb79c': 'primary',
@@ -67,6 +78,13 @@ router.get('/:animalType', async (req, res) => {
       secondary = '#FFFDD0',
       items 
     } = req.query;
+    
+    console.log('Avatar processor received:', {
+      animalType,
+      primary,
+      secondary,
+      items
+    });
 
     // Sanitize and normalize animal type to match file names
     // Replace spaces with underscores to match file naming convention
@@ -92,6 +110,8 @@ router.get('/:animalType', async (req, res) => {
     // Get color mappings for this animal type
     const colorMap = COLOR_MAPPINGS[safeAnimalType] || COLOR_MAPPINGS.default;
     
+    let replacementCount = 0;
+    
     // Replace colors - handle both hex colors in CSS and fill attributes
     for (const [originalColor, colorType] of Object.entries(colorMap)) {
       const targetColor = colorType === 'primary' ? primary : secondary;
@@ -99,24 +119,43 @@ router.get('/:animalType', async (req, res) => {
       // Create regex that escapes special characters in hex colors
       const escapedColor = originalColor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       
+      // Count replacements for debugging
+      let count = 0;
+      
       // Replace in CSS style blocks (both with and without semicolon)
       svgContent = svgContent.replace(
         new RegExp(`fill:\\s*${escapedColor}(;|})`, 'gi'),
-        `fill: ${targetColor}$1`
+        (match) => {
+          count++;
+          return `fill: ${targetColor}${match.slice(-1)}`;
+        }
       );
       
       // Also replace just the color value (for inline styles and CSS)
       svgContent = svgContent.replace(
         new RegExp(escapedColor, 'gi'),
-        targetColor as string
+        (match) => {
+          count++;
+          return targetColor as string;
+        }
       );
       
       // Replace in fill attributes
       svgContent = svgContent.replace(
         new RegExp(`fill="${escapedColor}"`, 'gi'),
-        `fill="${targetColor}"`
+        (match) => {
+          count++;
+          return `fill="${targetColor}"`;
+        }
       );
+      
+      if (count > 0) {
+        console.log(`Replaced ${originalColor} -> ${targetColor}: ${count} times`);
+        replacementCount += count;
+      }
     }
+    
+    console.log(`Total color replacements: ${replacementCount}`);
     
     // TODO: Future feature - compose items
     if (items && typeof items === 'string') {
