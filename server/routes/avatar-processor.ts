@@ -126,10 +126,8 @@ router.get('/:animalType', async (req, res) => {
       .replace(/\s+/g, '_')  // Replace spaces with underscores
       .replace(/[^a-z0-9_-]/g, '');  // Remove any other invalid chars
     
-    // Path to SVG files in the frontend's public folder
-    // Since backend and frontend are separate projects, we need to go up and over
-    const frontendPath = path.join(process.cwd(), '..', 'animal-genius-frontend');
-    const svgPath = path.join(frontendPath, 'public/avatars/animals', `${safeAnimalType}.svg`);
+    // Path to SVG files - now stored in backend's public folder for production
+    const svgPath = path.join(process.cwd(), 'public/avatars/animals', `${safeAnimalType}.svg`);
     
     // Check if file exists
     try {

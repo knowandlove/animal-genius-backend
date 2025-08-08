@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 
+  Animal Avatar SVG Template for Animal Genius
+  
+  IMPORTANT ILLUSTRATOR SETUP INSTRUCTIONS:
+  
+  1. Create your animal artwork at 600x600px
+  
+  2. ORGANIZE YOUR LAYERS exactly like this:
+     - Create a layer named "primary-color"
+       * Put all main body parts here (body, head, ears, limbs)
+       * These will be colored with the primary color
+     
+     - Create a layer named "secondary-color"  
+       * Put belly, inner ears, paws, tail tips here
+       * These will be colored with the secondary color
+     
+     - Create a layer named "fixed-parts"
+       * Put eyes, nose, claws, and other non-color-changing parts here
+       * These keep their original colors
+     
+     - Create a layer named "outlines"
+       * Put all black outlines/strokes here
+       * These always stay black
+  
+  3. NAMING YOUR PATHS:
+     - Give each path a descriptive ID like "body-main", "belly", "left-ear", etc.
+     - This helps with debugging and future enhancements
+  
+  4. EXPORT SETTINGS:
+     - File > Export > Export As...
+     - Choose SVG format
+     - Styling: Internal CSS
+     - Font: Convert to outlines
+     - Images: Embed
+     - Object IDs: Layer Names
+     - Decimal: 2
+     - Check: Minify
+     - Check: Responsive (no width/height attributes)
+  
+  5. COLORS TO USE AS PLACEHOLDERS:
+     - Primary: #D4A574 (golden/tan)
+     - Secondary: #FFFDD0 (cream)
+     - These will be replaced dynamically
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600">
+  <!-- Primary color group - main body parts -->
+  <g id="primary-color">
+    <!-- Example: Main body -->
+    <path id="body-main" fill="#D4A574" d="M300,400 C350,400 400,350 400,300 C400,250 350,200 300,200 C250,200 200,250 200,300 C200,350 250,400 300,400 Z"/>
+    
+    <!-- Example: Head -->
+    <circle id="head" fill="#D4A574" cx="300" cy="200" r="80"/>
+    
+    <!-- Example: Ears -->
+    <ellipse id="left-ear" fill="#D4A574" cx="250" cy="150" rx="30" ry="50" transform="rotate(-30 250 150)"/>
+    <ellipse id="right-ear" fill="#D4A574" cx="350" cy="150" rx="30" ry="50" transform="rotate(30 350 150)"/>
+    
+    <!-- Add more primary color parts here -->
+  </g>
+  
+  <!-- Secondary color group - accents and highlights -->
+  <g id="secondary-color">
+    <!-- Example: Belly -->
+    <ellipse id="belly" fill="#FFFDD0" cx="300" cy="320" rx="60" ry="80"/>
+    
+    <!-- Example: Inner ears -->
+    <ellipse id="inner-left-ear" fill="#FFFDD0" cx="250" cy="150" rx="15" ry="25" transform="rotate(-30 250 150)"/>
+    <ellipse id="inner-right-ear" fill="#FFFDD0" cx="350" cy="150" rx="15" ry="25" transform="rotate(30 350 150)"/>
+    
+    <!-- Example: Paws -->
+    <circle id="left-paw" fill="#FFFDD0" cx="250" cy="380" r="25"/>
+    <circle id="right-paw" fill="#FFFDD0" cx="350" cy="380" r="25"/>
+    
+    <!-- Add more secondary color parts here -->
+  </g>
+  
+  <!-- Fixed parts - these don't change color -->
+  <g id="fixed-parts">
+    <!-- Example: Eyes -->
+    <circle id="left-eye" fill="#000000" cx="280" cy="190" r="8"/>
+    <circle id="right-eye" fill="#000000" cx="320" cy="190" r="8"/>
+    
+    <!-- Example: Eye shine -->
+    <circle id="left-eye-shine" fill="#FFFFFF" cx="282" cy="188" r="3"/>
+    <circle id="right-eye-shine" fill="#FFFFFF" cx="322" cy="188" r="3"/>
+    
+    <!-- Example: Nose -->
+    <path id="nose" fill="#333333" d="M300,210 L295,215 L305,215 Z"/>
+    
+    <!-- Add more fixed parts here -->
+  </g>
+  
+  <!-- Outlines - always black -->
+  <g id="outlines">
+    <!-- Example: Body outline -->
+    <path id="body-outline" fill="none" stroke="#000000" stroke-width="3" d="M300,400 C350,400 400,350 400,300 C400,250 350,200 300,200 C250,200 200,250 200,300 C200,350 250,400 300,400 Z"/>
+    
+    <!-- Example: Head outline -->
+    <circle id="head-outline" fill="none" stroke="#000000" stroke-width="3" cx="300" cy="200" r="80"/>
+    
+    <!-- Add more outlines here -->
+  </g>
+</svg>
