@@ -4,63 +4,97 @@ import * as path from 'path';
 
 const router = Router();
 
-// Color mapping for each animal type's default colors
-const COLOR_MAPPINGS: Record<string, Record<string, string>> = {
-  meerkat: {
-    '#dbb79c': 'primary',    // Main fur color
-    '#f0d6c2': 'secondary',  // Light fur
-    '#e8c3a3': 'secondary',  // Light fur variant
-    '#d3ae91': 'primary',    // Darker fur
-    '#895f4a': 'primary',    // Dark accents
-    '#875c4b': 'primary',    // Dark accents
-    '#df9c8d': 'secondary',  // Light accents
-  },
-  panda: {
-    '#444': 'primary',       // Dark fur
-    '#1e1e1e': 'primary',    // Black patches
-    '#282828': 'primary',    // Dark accents
-    '#4d4d4d': 'primary',    // Gray fur
-    '#fff': 'secondary',     // White fur
-    '#b7483d': 'secondary',  // Accent color (nose/mouth)
-  },
-  border_collie: {
-    '#8B4513': 'primary',    // Brown fur
-    '#A0522D': 'primary',    // Darker brown
-    '#D2691E': 'primary',    // Light brown
-    '#FFFFFF': 'secondary',  // White markings
-    '#F5DEB3': 'secondary',  // Light fur
-    '#FFF8DC': 'secondary',  // Cream color
-  },
-  owl: {
-    '#8B7355': 'primary',    // Brown feathers
-    '#A0826D': 'primary',    // Medium brown
-    '#6B4E3D': 'primary',    // Dark brown
-    '#F5DEB3': 'secondary',  // Light feathers
-    '#FFF8DC': 'secondary',  // Cream feathers
-    '#FAEBD7': 'secondary',  // Light accents
-  },
-  otter: {
-    '#6c4c40': 'primary',    // Dark brown
-    '#4c3b3b': 'primary',    // Darker brown
-    '#4f3a33': 'primary',    // Brown
-    '#755c51': 'primary',    // Medium brown
-    '#896f62': 'primary',    // Light brown
-    '#f6edd7': 'secondary',  // Light fur
-    '#d2b7a5': 'secondary',  // Light brown
-    '#f2f2f2': 'secondary',  // White
-    '#dba39f': 'secondary',  // Light accent
-  },
-  // Add more animals as needed
-  default: {
-    '#dbb79c': 'primary',
-    '#f0d6c2': 'secondary',
-    '#e8c3a3': 'secondary',
-    '#d3ae91': 'primary',
-    '#895f4a': 'primary',
-    '#875c4b': 'primary',
-    '#df9c8d': 'secondary',
-  }
-};
+/**
+ * Process SVG by targeting specific elements with IDs
+ * Only elements with IDs containing 'primary' or 'secondary' should be colored
+ */
+function processSvgColors(svgContent: string, primaryColor: string, secondaryColor: string): string {
+  console.log('Processing SVG with colors:', { primaryColor, secondaryColor });
+  
+  // Create darker versions of the colors for primaryDark and secondaryDark
+  const primaryDark = darkenColor(primaryColor, 0.2);
+  const secondaryDark = darkenColor(secondaryColor, 0.2);
+  
+  let replacementCount = 0;
+  
+  // Strategy: Find elements by ID and add inline style to override class
+  // Match both self-closing and regular tags with id attributes
+  svgContent = svgContent.replace(
+    /<(path|circle|ellipse|rect|polygon|g)(\s+[^>]*?id="([^"]*?)"[^>]*?)(\/?>)/g,
+    (match, tagName, attributes, id, closingTag) => {
+      // Check if this element's ID indicates it should be colored
+      const idLower = id.toLowerCase();
+      let newFill: string | null = null;
+      
+      if (idLower.includes('_primary') && !idLower.includes('dark')) {
+        newFill = primaryColor;
+      } else if (idLower.includes('_primarydark')) {
+        newFill = primaryDark;
+      } else if (idLower.includes('_secondary') && !idLower.includes('dark')) {
+        newFill = secondaryColor;
+      } else if (idLower.includes('_secondarydark')) {
+        newFill = secondaryDark;
+      }
+      
+      if (newFill) {
+        replacementCount++;
+        console.log(`Adding style for #${id} with ${newFill}`);
+        
+        // Check if there's already a style attribute
+        if (attributes.includes('style="')) {
+          // Update existing style attribute
+          const updatedAttributes = attributes.replace(
+            /style="([^"]*)"/g,
+            (styleMatch, styleContent) => {
+              // Remove any existing fill from style
+              const cleanedStyle = styleContent.replace(/fill:\s*[^;]+;?/g, '').trim();
+              // Add new fill at the beginning
+              const separator = cleanedStyle ? '; ' : '';
+              return `style="fill: ${newFill}${separator}${cleanedStyle}"`;
+            }
+          );
+          return `<${tagName}${updatedAttributes}${closingTag}`;
+        } else {
+          // Add style attribute before the closing bracket
+          // Insert the style attribute right before the closing tag
+          return `<${tagName}${attributes} style="fill: ${newFill}"${closingTag}`;
+        }
+      }
+      
+      return match; // Return unchanged if not a target element
+    }
+  );
+  
+  console.log(`Total elements with colors updated: ${replacementCount}`);
+  
+  return svgContent;
+}
+
+/**
+ * Darken a hex color by a percentage
+ */
+function darkenColor(hex: string, percent: number): string {
+  // Remove # if present
+  const color = hex.replace('#', '');
+  
+  // Parse RGB values
+  const r = parseInt(color.substring(0, 2), 16);
+  const g = parseInt(color.substring(2, 4), 16);
+  const b = parseInt(color.substring(4, 6), 16);
+  
+  // Darken each component
+  const newR = Math.round(r * (1 - percent));
+  const newG = Math.round(g * (1 - percent));
+  const newB = Math.round(b * (1 - percent));
+  
+  // Convert back to hex
+  const toHex = (n: number) => {
+    const hex = n.toString(16);
+    return hex.length === 1 ? '0' + hex : hex;
+  };
+  
+  return `#${toHex(newR)}${toHex(newG)}${toHex(newB)}`;
+}
 
 /**
  * GET /api/avatar/:animalType
@@ -101,61 +135,15 @@ router.get('/:animalType', async (req, res) => {
     try {
       await fs.access(svgPath);
     } catch {
+      console.error(`Avatar file not found: ${svgPath}`);
       return res.status(404).json({ error: 'Avatar not found' });
     }
 
     // Read the SVG file
     let svgContent = await fs.readFile(svgPath, 'utf-8');
     
-    // Get color mappings for this animal type
-    const colorMap = COLOR_MAPPINGS[safeAnimalType] || COLOR_MAPPINGS.default;
-    
-    let replacementCount = 0;
-    
-    // Replace colors - handle both hex colors in CSS and fill attributes
-    for (const [originalColor, colorType] of Object.entries(colorMap)) {
-      const targetColor = colorType === 'primary' ? primary : secondary;
-      
-      // Create regex that escapes special characters in hex colors
-      const escapedColor = originalColor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      
-      // Count replacements for debugging
-      let count = 0;
-      
-      // Replace in CSS style blocks (both with and without semicolon)
-      svgContent = svgContent.replace(
-        new RegExp(`fill:\\s*${escapedColor}(;|})`, 'gi'),
-        (match) => {
-          count++;
-          return `fill: ${targetColor}${match.slice(-1)}`;
-        }
-      );
-      
-      // Also replace just the color value (for inline styles and CSS)
-      svgContent = svgContent.replace(
-        new RegExp(escapedColor, 'gi'),
-        (match) => {
-          count++;
-          return targetColor as string;
-        }
-      );
-      
-      // Replace in fill attributes
-      svgContent = svgContent.replace(
-        new RegExp(`fill="${escapedColor}"`, 'gi'),
-        (match) => {
-          count++;
-          return `fill="${targetColor}"`;
-        }
-      );
-      
-      if (count > 0) {
-        console.log(`Replaced ${originalColor} -> ${targetColor}: ${count} times`);
-        replacementCount += count;
-      }
-    }
-    
-    console.log(`Total color replacements: ${replacementCount}`);
+    // Process the SVG to replace colors only on specific elements
+    svgContent = processSvgColors(svgContent, primary as string, secondary as string);
     
     // TODO: Future feature - compose items
     if (items && typeof items === 'string') {
