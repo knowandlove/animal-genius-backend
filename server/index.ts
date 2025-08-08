@@ -86,6 +86,7 @@ const allowedOrigins = [
   'http://localhost:5175',
   'https://animal-genius-frontend.vercel.app',
   'https://animal-genius-quiz-pro.vercel.app',
+  'https://myclasstopia.com',
   env.FRONTEND_URL
 ].filter(Boolean) as string[];
 
